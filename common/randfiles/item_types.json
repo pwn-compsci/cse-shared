@@ -1,0 +1,122 @@
+{
+    "fruit": [
+        "apple",
+        "banana",
+        "cherry",
+        "grape",
+        "lemon",
+        "mango",
+        "orange",
+        "peach",
+        "pear",
+        "plum"
+    ],
+    "furniture": [
+        "chair",
+        "table",
+        "sofa",
+        "desk",
+        "cabinet",
+        "stool",
+        "couch",
+        "bench",
+        "shelf",
+        "dresser"
+    ],
+    "book": [
+        "dune",
+        "it",
+        "twilight",
+        "foundation",
+        "dracula",
+        "emma",
+        "beloved",
+        "frankenstein",
+        "mockingbird",
+        "hatchet"
+    ],
+    "tool": [
+        "hammer",
+        "screwdriver",
+        "wrench",
+        "pliers",
+        "drill",
+        "chisel",
+        "saw",
+        "mallet",
+        "file",
+        "level"
+    ],
+    "toy": [
+        "ball",
+        "puzzle",
+        "doll",
+        "yo-yo",
+        "blocks",
+        "marbles",
+        "teddy",
+        "lego",
+        "top",
+        "car"
+    ],
+    "vehicle": [
+        "car",
+        "truck",
+        "bus",
+        "bike",
+        "van",
+        "scooter",
+        "motorcycle",
+        "tractor",
+        "jeep",
+        "wagon"
+    ],
+    "drink": [
+        "water",
+        "soda",
+        "juice",
+        "milk",
+        "tea",
+        "coffee",
+        "lemonade",
+        "smoothie",
+        "cola",
+        "rootbeer"
+    ],
+    "instrument": [
+        "guitar",
+        "piano",
+        "violin",
+        "drum",
+        "flute",
+        "trumpet",
+        "cello",
+        "clarinet",
+        "harp",
+        "saxophone"
+    ],
+    "plant": [
+        "fern",
+        "cactus",
+        "ivy",
+        "bamboo",
+        "palm",
+        "moss",
+        "lily",
+        "rose",
+        "daisy",
+        "mint"
+    ],
+    "animal": [
+        "dog",
+        "cat",
+        "horse",
+        "tiger",
+        "lion",
+        "zebra",
+        "fox",
+        "bear",
+        "panda",
+        "sheep"
+    ]
+}

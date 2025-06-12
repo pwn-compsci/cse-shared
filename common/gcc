@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+for arg in "$@"; do
+    if [[ "$arg" == "-o" ]]; then
+        next_arg_is_output=true
+    elif [[ "$next_arg_is_output" == true ]]; then
+        if [[ "$arg" == *.c ]]; then
+            echo "Error: not allowed to output to source file"
+            exit 1
+        fi
+        next_arg_is_output=false
+    fi
+done
+
+if [ -f /challenge/.config/level.json ]; then 
+    if [ -z "$level_id" ]; then
+        level_id=$(jq -r '.level' /challenge/.config/level.json)    
+    fi
+
+    # we either have a labid or a hw
+    if [ -z "$hw_id" ] && [ -f "$lab_id" ]; then
+        if grep "labid" /challenge/.config/level.json; then 
+            lab_id=$(jq -r '.labid' /challenge/.config/level.json)    
+        else
+            hw_id=$(jq -r '.hw' /challenge/.config/level.json)
+        fi  
+    fi
+else
+    /run/challenge/bin/gcc  -O0 -g -fdiagnostics-color=always -Wall -Werror -Wno-stringop-overflow -ftest-coverage -fprofile-arcs "$@"
+    exit $?
+fi 
+
+
+{
+    clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
+    timestamp=$(date -Iseconds)
+    file_being_compiled=$(echo "$@" | grep -oP '[^\s]+\.c|[^\s]+\.cpp' | tr '\n' ' ')
+    level="your_level_variable"
+    project_id="your_project_id_variable"
+
+    rm -f clevel_work_dir/*.gcno clevel_work_dir/*.gcda
+
+    /run/challenge/bin/gcc  -O0 -g -fdiagnostics-color=always -Wall -Werror -Wno-stringop-overflow -ftest-coverage -fprofile-arcs "$@"
+
+    if [ ! -f /home/hacker/cse240/.vscode/trdb.db ]; then 
+        exit $?
+    fi
+    outcome=$?
+    outcome_text=$(if [ $outcome -eq 0 ]; then echo "success"; else echo "failure"; fi)
+
+    printf "outcome: %s\n" $outcome
+    printf "file_being_compiled: %s\n" $file_being_compiled
+    printf "level_id: %s\n" $level_id
+    printf "hw_id: %s\n" $hw_id
+    printf "clevel_work_dir: %s\n" $clevel_work_dir
+    printf "lab_id: %s\n" $lab_id
+    printf "outcome_text: %s\n" $outcome_text
+    printf "timestamp: %s\n" $timestamp
+    printf "\n\n"
+
+    sqlite3 /home/hacker/cse240/.vscode/trdb.db <<EOF
+    CREATE TABLE IF NOT EXISTS compilations (
+        id INTEGER PRIMARY KEY,
+        timestamp TEXT,
+        outcome TEXT,
+        file TEXT,
+        level_id TEXT,
+        hw_id TEXT,
+        clevel_work_dir TEXT,
+        lab_id TEXT
+    );
+    INSERT INTO compilations (timestamp, outcome, file, level_id, hw_id, clevel_work_dir, lab_id) VALUES (
+        '$timestamp',
+        '$outcome_text',
+        '$file_being_compiled',
+        '$level_id',
+        '$hw_id',
+        '$clevel_work_dir',
+        '$lab_id'
+    );
+    
+EOF
+}
+
+
+
+

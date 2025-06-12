@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+echo "Starting .bginit $(date) pid=$$" >> "/challenge/startup.log"
+start_time=$(date +%s)
+diff_start_time=$(date +%s)
+
+clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
+
+# Create modelGood, always updates incase of changes
+if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then 
+    # if one of the mud levels
+    if [ -f /challenge/model/Makefile ]; then 
+        cd /challenge/model
+        # if on of the MUD levels, use multiple threads
+        if [ -f /challenge/model/operations.cpp  ]; then 
+            make -j15
+        else
+            make        
+        fi 
+    else 
+        COMPILER=gcc
+        if [ -f /challenge/model/main.cpp ]; then 
+            COMPILER=g++
+            g++ /challenge/model/main.cpp -g -o /challenge/model/main.bin    
+        else 
+            gcc /challenge/model/main.c -g -o /challenge/model/main.bin    
+        fi 
+        $COMPILER 
+    fi  
+    end_time=$(date +%s)
+    execution_time=$((end_time - start_time))
+    diff_execution_time=$((end_time - diff_start_time))
+    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Built new version of BINARY  " >> "/challenge/startup.log"
+    diff_start_time=$(date +%s)
+    
+    cp /challenge/model/main.bin /challenge/model/modelGood.bin
+
+    chmod 755 /challenge/model/*.bin        
+
+    strip /challenge/model/modelGood.bin        
+    cp /challenge/model/modelGood.bin /challenge/modelGood.bin
+    cp /challenge/modelGood.bin $clevel_work_dir/modelGood.bin   
+    
+    # NOTE: model/main.bin will still have debug info
+    cp /challenge/model/main.bin /challenge/system_tests/main.bin
+        
+    end_time=$(date +%s)
+    execution_time=$((end_time - start_time))
+    diff_execution_time=$((end_time - diff_start_time))
+    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Completed copying Good copying" >> "/challenge/startup.log"
+    diff_start_time=$(date +%s)
+    
+fi 
+
+# create noexec so to prevent execve inside a binary
+if [ -f /challenge/.config/noexec.c ] && [ ! -f /challenge/.config/noexec.so ]; then
+    (cd /challenge/.config && gcc -shared -fPIC -o noexec.so noexec.c && echo "compiled noexec.so" >> /challenge/startup.log)
+fi 
+
+ # make core dumps go to away each time to save space for users 
+find /home/hacker/cse240 -name 'core.*' -type f -exec rm -f {} \; 
+find /home/hacker/cse240 -type f -name 'vgcore.*' -mmin +360 -exec rm -f {} +
+find /home/hacker/ -type f -name '.zcompdump*' -mmin +360 -exec rm -f {} +
+
+end_time=$(date +%s)
+execution_time=$((end_time - start_time))
+diff_execution_time=$((end_time - diff_start_time))
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after core cleanups " >> "/challenge/startup.log"
+diff_start_time=$(date +%s)
+
+if [ -d /home/hacker/.cache/vscode-cpptools ]; then 
+    THRESHOLD=102400  # 100 MB in kilobytes
+    DIR_SIZE=$(du -sk "/home/hacker/.cache/vscode-cpptools" | cut -f1)
+
+    # if cache is over 100mb then clean up cpptools cache files that are older than 2 days
+    if [ "$DIR_SIZE" -gt "$THRESHOLD" ]; then
+        find /home/hacker/.cache/vscode-cpptools -maxdepth 2 -type d -mtime +2 -print0 | xargs -0 echo >> /challenge/startup.log
+        find /home/hacker/.cache/vscode-cpptools -maxdepth 2 -type d -mtime +2 -exec rm -rf {} \;
+    fi        
+fi 
+
+if grep -q "digital god" /.admin_access; then     
+    if [ -d /challenge/model ]; then 
+        chmod 755 -R /challenge/model 
+    fi 
+else
+    rm -rf /challenge/{model,.levelinit,.init,.bginit,startup.log}
+    rm -f  /challenge/system_tests/main.bin
+fi 
+
+end_time=$(date +%s)
+execution_time=$((end_time - start_time))
+diff_execution_time=$((end_time - diff_start_time))
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after rm -f's " >> "/challenge/startup.log"
+diff_start_time=$(date +%s)
+
+ENVFILE=/home/hacker/cse240/.cse240env
+# if there's a model and system tests then run system tests on model program, report an error if it fails the tests
+if [ -d /challenge/model ] && [ -d /challenge/system_tests ] && [ -f /challenge/tester ] && [ $(stat -c%s /challenge/tester) -gt 500 ] && grep -q "RUN_TESTS" $ENVFILE;  then 
+    resize > /dev/null
+    test the tester works with model
+    echo "[+] Starting Model Test" >> /challenge/startup.log
+    sleep 2
+    python3 /challenge/tester --source-dir /challenge/model --test-dir /challenge/system_tests | tee -a /challenge/.config/init.log 2>&1
+    
+    echo "[+] Model test complete  -- result = $(grep -q "Congrats," /challenge/.config/init.log)\n" >> /challenge/startup.log
+    if ! grep -q "Congrats," /challenge/.config/init.log ; then
+        printf "************************** [ Model Auto Test ] ***************************************\n" | tee -a /challenge/errorlog
+        cat /challenge/.config/init.log  | tee -a /challenge/errorlog
+        printf "\n\033[31mA problem occurred when running the test of this challenge\nPlease let the staff know on Discord\n\033[0m"  | tee -a /challenge/errorlog
+        printf "^^^^^^^^^^^^^^^^^^^^^^^^^^ [ Model Auto Test ] ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n" | tee -a /challenge/errorlog        
+    fi 
+    echo "[+] Skipping model test" >> /challenge/startup.log
+    end_time=$(date +%s)
+    execution_time=$((end_time - start_time))
+    echo "Completed system_tests in .init in $execution_time seconds" >> "/challenge/startup.log"
+    start_time=$(date +%s)
+fi 
+
+end_time=$(date +%s)
+execution_time=$((end_time - start_time))
+diff_execution_time=$((end_time - diff_start_time))
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " >> "/challenge/startup.log"
+diff_start_time=$(date +%s)
+
+# clean up ownership under cse240 if needed
+
+find /home/hacker/cse240 ! -user hacker -not -path "/home/hacker/cse240/exam/*" -not -path "/home/hacker/cse240/.vscode/*" -exec chown hacker:hacker {} +
+# find /home/hacker/cse240 ! -user hacker and ! -type l -exec chown hacker:hacker {} +
+# find /home/hacker/cse240 -type l -exec sh -c '[ "$(readlink -f {})" != "/flag" ]' \; -print -or -not -type l -print
+
+end_time=$(date +%s)
+execution_time=$((end_time - start_time))
+diff_execution_time=$((end_time - diff_start_time))
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, completed chowns " >> "/challenge/startup.log"
+diff_start_time=$(date +%s)
+
+chown root:root /flag
+

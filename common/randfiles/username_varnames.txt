@@ -1,0 +1,17 @@
+username
+user_name
+login
+login_name
+account_name
+handle
+alias
+uname
+auth_name
+profile_name
+account_username
+system_username
+codename
+gamertag
+call_sign
+nickname
+avatar_name

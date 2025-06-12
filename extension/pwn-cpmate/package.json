@@ -1,0 +1,37 @@
+{
+  "name": "pwn-cpmate",
+  "displayName": "pwn-cpmate",
+  "description": "This extension is necessary for pwn.college interactions in c and cpp.",
+  "version": "0.0.1",
+  "publisher": "cse240",
+  "engines": {
+    "vscode": ">=1.88.0"
+  },
+  "repository": "https://github.com/etrickel/cse240",
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "browser": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/*.txt"
+  ],
+  "contributes": {
+    "commands": []
+  },
+  "scripts": {
+    "postinstall": "node ./node_modules/vsce/out/vsce install",
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.88.0",
+    "@types/mocha": "^10.0.9",
+    "@types/node": "20.x",
+    "eslint": "^9.13.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
+  }
+}

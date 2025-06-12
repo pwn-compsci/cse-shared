@@ -1,0 +1,50 @@
+You selected option __.
+Option __ chosen.
+You picked option __.
+You have selected option __.
+Your choice: option __.
+You went with option __.
+Option __ has been selected.
+Selection confirmed: option __.
+You opted for option __.
+Option __ is now active.
+Confirmed: option __.
+You chose number __.
+Choice registered: __.
+You've picked option __.
+Action selected: option __.
+You selected menu item __.
+Your selected item: __.
+You clicked on option __.
+Option __ acknowledged.
+We received your choice: __.
+Your current selection is __.
+You confirmed option __.
+That's option __.
+You tapped option __.
+You have gone with __.
+Option __ it is.
+Logged: option __.
+Selected: __.
+You indicated option __.
+You selected number __.
+Choice accepted: __.
+You've chosen __.
+That was option __.
+Executing option __.
+Proceeding with option __.
+Acknowledging selection: __.
+Registering your choice: __.
+You went ahead with __.
+Got it, option __.
+Thanks! You picked __.
+OK, option __ selected.
+We're working on option __.
+Processing option __.
+Let's go with option __.
+Option __ queued.
+Good choice: option __.
+You're on option __.
+Option __ recorded.
+Option __ loaded.
+Option __ locked in.

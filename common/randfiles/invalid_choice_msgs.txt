@@ -1,0 +1,30 @@
+Invalid choice. Please try again.
+That option isn't valid. Try again.
+Oops! That's not a valid selection.
+Invalid input. Please enter a valid option.
+Not a recognized choice, please retry.
+Sorry, that's not a valid option. Try again.
+Invalid entry. Please choose again.
+Unrecognized option. Please select again.
+That input wasn't valid. Try once more.
+Invalid selection. Pick a valid option.
+Whoops! That's not an option. Try again.
+That's not something you can choose. Try again.
+Nope, that's not valid. Give it another go.
+Try again, that choice isn't on the menu.
+Invalid command. Please retry.
+Selection not found. Please choose again.
+That didn't work. Please try a valid option.
+Hmm, not a valid choice. Try again.
+We didn't recognize that input. Try again.
+Error: invalid option selected.
+Choice not recognized. Try once more.
+Sorry, that's not a menu option.
+That's not on the list. Please retry.
+Try again, input not valid.
+Not a valid command. Please enter a new one.
+Invalid option. Please select from the list.
+That's not something we can process. Try again.
+Incorrect input. Let's try that again.
+That's not going to work. Please choose again.
+Entry not accepted. Please re-enter your choice.

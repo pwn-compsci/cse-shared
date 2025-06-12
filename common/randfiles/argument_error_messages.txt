@@ -1,0 +1,9 @@
+Missing command line argument.
+Filename not provided.
+Please provide a file to read.
+Expected a file name as argument.
+No input file specified.
+Error: file argument missing.
+Insufficient arguments.
+Error: expected argument.
+File path required as argument.

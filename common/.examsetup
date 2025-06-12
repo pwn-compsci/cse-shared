@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+echo "[e] Exam level found" >> /challenge/startup.log
+if [ "$admin_access" = false ]; then
+    # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
+    if grep "practice" /flag; then 
+        pkill -9 -f /run/dojo/bin/sleep 
+    fi
+    # TODO: REENBLE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+    # nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1  &
+fi
+timestamp=$(date '+%Y-%m-%d_%H%M')
+testpass="123"
+shapass=$(printf "%s%s" "$testpass" "$timestamp"| sha256sum | cut -d' ' -f1)
+echo "[e] the testpass=$testpass $timestamp" >> /challenge/startup.log
+echo "[e] shapass=$shapass" >> /challenge/startup.log
+sed -i 's/LETMEIN/'"$shapass"'/g' /challenge/web/nginx.conf
+sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
+sed -i 's/LETMEIN/123/g' /challenge/web/app.py
+sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
+
+echo "[e] pwn.college id is $pwn_college_id" >> /challenge/startup.log
+if [ -z "$pwn_college_id" ]; then 
+    echo "[e] pwn.colege id not found" >> /challenge/startup.log
+    sed -i "s/LEVEL_ID/Level $level/g" /challenge/web/js/exam-badge.js
+else
+    combined=""
+    if [ -f /challenge/.config/info.dat ]; then
+        echo "[e] found file /challenge/.config/info.dat using pwn_college_id=$pwn_college_id" >> /challenge/startup.log
+        student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
+        echo "[e] found file studentinfo $student_info" >> /challenge/startup.log
+        if [ -z "$student_info" ]; then
+            student_info="Student not found"            
+        fi
+        combined="$pwn_college_id - $student_info"
+        echo "[e] found combined of $combined" >> /challenge/startup.log
+    else
+        echo "[e] /challenge/.config/info.dat not found, using pwn_college_id only" >> /challenge/startup.log
+        combined="$pwn_college_id - No student info"
+    fi
+    echo "[e] attempting to re-write exam-badge.js" >> /challenge/startup.log
+    sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
+fi 
+
+echo "5" >> /challenge/startup.log
+
+if [ -d /home/me ]; then 
+    echo "[e] Running as_user, not configuring problem" >> /challenge/startup.log
+else
+    echo "[e] clevel_work_dir = $clevel_work_dir" >> /challenge/startup.log
+    if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
+        mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
+        echo "[e] created backup of old answer attempt" >> /challenge/startup.log
+    fi 
+    # List only directories in /challenge/problems
+    dirs=($(find /challenge/problems -mindepth 1 -maxdepth 1 -type d -printf '%f\n'))
+
+    # Check if the list is not empty
+    if [ ${#dirs[@]} -eq 0 ]; then
+        echo "[e] No problem directories found in /challenge/problems" >> challenge/startup.log
+        exit 1
+    fi
+
+    # Pick a random directory
+    chosen_problem="${dirs[RANDOM % ${#dirs[@]}]}"
+
+    # TOD: REMOVE DEBUGGING STATEMENT BELOW FORCING PROBLEM X
+    if [ "$level" -eq 11 ]; then
+        chosen_problem="a"
+    fi
+    #chosen_problem="d"
+
+    echo "[e] Randomly chosen problem: $chosen_problem" >> challenge/startup.log
+
+    cp -a /challenge/problems/$chosen_problem/. /challenge/
+
+    # removed /challenge/system_tests/*.json
+    if [ "$admin_access" = false ]; then
+        rm -rf /challenge/problems 
+        rm -rf /challenge/model 
+    fi
+    
+    json_tests=""
+    dat_tests=""
+    model_code=""
+    
+    model_code=$(find /challenge/model -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null |  tr '\n' ' ')
+    
+    json_tests=$(find /challenge/system_tests/ -type f \( -name "*.json" -o -name "*.json.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "*Makefile.j2" \) 2>/dev/null | tr '\n' ' ')
+    
+    template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null  | tr '\n' ' ')
+
+    levelinit_file=$(find /challenge/ -type f \( -name ".levelinit*" -o -name ".testprobleminit.j2"  \) 2>/dev/null  | tr '\n' ' ')
+    
+    # Call problem_generator.py with the appropriate arguments
+    python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests >> /challenge/startup.log 2>&1
+
+    echo "[e] generated problem files" >> /challenge/startup.log
+
+fi 
+
+if [ -f /challenge/.testprobleminit ]; then
+    source /challenge/.testprobleminit
+    echo "[e] Completed .testprobleminit" >> "/challenge/startup.log"
+    # rm /challenge/.testprobleminit
+fi 
+
+# c_level_work_dir comes from parent call .init, .examsetup is sourced
+echo "[e] creating clevel_work_dir = $clevel_work_dir in .examsetup" >> /challenge/startup.log
+
+mkdir -p $clevel_work_dir
+if [ -d /challenge/template ]; then 
+    echo "[e] Copying template files to $clevel_work_dir from /challenge/template " >> /challenge/startup.log
+    cp -a /challenge/template/* $clevel_work_dir
+    chown hacker:hacker -R $clevel_work_dir
+fi 
+if [ "$admin_access" = true ]; then
+    if [ -d /challenge/model ]; then
+        cp -a /challenge/model/* $clevel_work_dir
+        chown hacker:hacker -R $clevel_work_dir
+    fi
+fi 
+
+# bridges to tester because tester must run using setuid 
+/challenge/bin/bridge_landrun.sh > /var/log/bridge_landrun.log 2>&1 &
+
+sleep .1
+
+# # need all directories setup before 
+# # landrun secures the directories
+
+# hw_id and level come from parent call .init, .examsetup is sourced
+coder_workspace_file="/home/hacker/cse240/exam/$hw_id/level-$hw_id-$level.code-workspace"
+
+# cs_user_data_dir comes from parent call .init, .examsetup is sourced
+mkdir -p $cs_user_data_dir
+# eventually make && with chown
+chown hacker:hacker $cs_user_data_dir
+# mkdir -p $(dirname $coder_workspace_file)
+
+history_dir="$cs_user_data_dir/User/History"
+# Setup FIFOs if missing
+echo "[e] Starting vscode with $clevel_work_dir, $coder_workspace_file, and $cs_user_data_dir  " >> /challenge/startup.log
+
+# background is necessary because landrun blocks waiting for ready but .init blocks ready
+/challenge/bin/vscode.sh "$clevel_work_dir" "$coder_workspace_file" "$coder_workspace_file"  >> /challenge/startup.log 2>&1 &
+
+nohup nginx -c /challenge/web/nginx.conf > /challenge/web/nginx.log 2>&1 &
+echo "[e] Starting flask app" >> /challenge/startup.log
+nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 & 
+
+echo "[e] Completed code-server" >> /challenge/startup.log

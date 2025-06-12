@@ -1,0 +1,20 @@
+Enter a string: 
+Please type your input: 
+What text would you like to enter? 
+Type a line of text: 
+Input your string here: 
+Go ahead, enter some words: 
+Provide your text input: 
+What's your message? 
+Enter the string to process: 
+Drop your text here: 
+Ready to type something? Go: 
+Give me a string to work with: 
+Write your input below: 
+→ Enter a string: 
+Type your phrase and press Enter: 
+Enter any text: 
+What would you like to say? 
+Tell me something: 
+Start typing your string: 
+Your text, please: 

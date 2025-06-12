@@ -1,0 +1,12 @@
+input
+input_buffer
+file_input
+text
+raw_text
+data
+row
+line
+text_line
+incoming
+input_string
+text_buffer

@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+             
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "if [ -f ${fileDirname}/Makefile ]; then make; else COMPILER=gcc; if [ -f  ${fileDirname}/main.cpp ]; then COMPILER=g++; fi; $COMPILER -fdiagnostics-color=always -g -Wall -Werror $CFLAGS -o ${fileDirname}/main.bin ${fileDirname}/main.c*; fi",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Build task to use make if Makefile exists or gcc/g++ if it does not"
+        }
+        
+    ]
+}

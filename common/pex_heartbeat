@@ -1,0 +1,336 @@
+#!/opt/pwn.college/python
+
+import time
+import subprocess
+import os
+import base64
+import json 
+import logging
+import random
+import re 
+import glob
+import shutil
+import atexit
+import signal
+import sys
+import json
+import os 
+from pathlib import Path
+import shutil 
+
+logging.basicConfig(filename='/home/hacker/.local/share/ultima/pexs.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+pexs_file_path = '/home/hacker/.local/share/ultima/pexs.dat'
+
+def handle_exit():
+    logging.info('Normal exit')
+
+def handle_signal(signal_num, frame):
+    reason = f"Received signal {signal_num} ({signal.strsignal(signal_num)})"
+    logging.info(reason)
+    sys.exit(111)
+
+def setup_signal_handlers():
+    
+    signal_list = [signal.SIGHUP, signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]
+    for sig in signal_list:
+        signal.signal(sig, handle_signal)
+
+
+def check_process_exists(process_name):
+    """Check if there is any running process that contains the given name."""
+    ps = subprocess.Popen("ps ax -o cmd", shell=True, stdout=subprocess.PIPE)
+    output = ps.stdout.read()
+    ps.stdout.close()
+    process_exists = process_name in output.decode()
+    #logging.info(f"Check process exists: {process_name} - Exists: {process_exists}")
+    return process_exists
+
+def update_file_with_time(filepath, initial, minutes=None):
+    """Encode message to base64 and append/update the last line of the file."""
+    # Prepare the message
+    if initial:
+        message = f"The pwn Extension was disabled at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+    else:
+        message = f"The pwn extension has been disabled for {minutes} minutes (cumulative)"
+
+    # Encode the message to base64
+    encoded_message = base64.b64encode(message.encode()).decode() + '\n'
+    logging.info("Encoded message to base64")
+
+    # Read the existing content and decide whether to append or replace the last line
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as file:
+            lines = file.readlines()
+
+        if lines and "has been disabled for" in base64.b64decode(lines[-1]).decode():
+            lines[-1] = encoded_message  # Replace the last line
+        else:
+            lines.append(encoded_message)  # Append a new line
+
+        with open(filepath, 'w') as file:
+            file.writelines(lines)
+    else:
+        with open(filepath, 'w') as file:
+            file.write(encoded_message)
+
+
+def get_last_line():
+    try:
+        with open(pexs_file_path, 'r') as file:
+            lines = file.readlines()
+            if len(lines) > 0:
+                last_line = lines[-1].strip()
+            else:
+                last_line = ""
+    except Exception as ex:
+        logging.error(f"Error with reading from file: {ex}")
+        last_line = ""
+    return last_line.lower()
+
+
+def update_package_json(new_extdir):
+    # Generate a random number between 1 and 32000
+    random_number = random.randint(1, 32000)
+
+    # Construct the path to the directory
+    directory_path = os.path.join(new_extdir, 'cse240.pwn-cpmate*')
+
+    # Iterate over matching directories
+    for dirname in os.listdir(new_extdir):
+        if re.match(r'cse240\.pwn-cpmate.*', dirname):
+            json_file_path = os.path.join(new_extdir, dirname, 'package.json')
+
+            # Ensure the file exists
+            if os.path.isfile(json_file_path):
+                # Read the existing JSON data
+                with open(json_file_path, 'r') as file:
+                    data = file.read()
+
+                # Replace the target string with the new value containing the random number
+                new_data = re.sub(r'"pwn-cpmate.*?"', f'"pwn-cpmate-{random_number}"', data)
+
+                # Write the changes back to the file
+                with open(json_file_path, 'w') as file:
+                    file.write(new_data)
+                logging.info(f'Updated {json_file_path} to pwn-cpmate-{random_number}')
+
+def attempt_to_reload_extension():
+    new_extdir="/run/challenge/share/code/extensions"
+    coder_json_fp = "/home/hacker/.local/share/code-server/coder.json"
+    
+    if os.path.exists(coder_json_fp):
+        with open(coder_json_fp, "r") as rw:
+            jd = json.load(rw)
+            workspace = jd.get('query',{}).get('workspace',"")
+        with open("/challenge/.config/level.json") as rf:
+            leveljd = json.load(rf)
+            hwdir = leveljd['hwdir']
+            if hwdir not in workspace:
+                logging.error(f"error finding workspace {workspace} {hwdir}")
+                return False
+
+        if os.path.exists(workspace):
+            try:
+                source_pattern = '/challenge/pwn-cpmate-*.vsix'
+                destination_path = f'{new_extdir}/pwn-cpmate-0.0.2.vsix'
+                files = glob.glob(source_pattern)
+                if files:
+                    # Copy the first matching file to the new location
+                    shutil.copy(files[0], destination_path)
+                    
+                    subprocess.run(["/run/workspace/bin/code-server","-vvv",
+                                "--auth=none", "--disable-telemetry", 
+                                "--extensions-dir", new_extdir,
+                                "--install-extension", destination_path], check=True)
+                    logging.info(f"Reinstall completed")
+
+                else:
+                   logging.error("No vsix file found in /challenge matching the pattern.")
+
+            except Exception as ex:
+                logging.error(f"Error trying to reinstall extension {ex}")
+            
+            update_package_json(new_extdir)
+
+            time.sleep(2)
+            success = False 
+            execute_stepone = True
+            for x in range(0, 3):
+                if execute_stepone:
+                    try:
+                        subprocess.run(["/run/workspace/bin/code-server", "-r","/home/hacker"], check=True)
+                        execute_stepone = False 
+                    except Exception as ex:
+                        logging.error(f"Attempt #{x+1} Error trying to restart code-server in /home/hacker dir\n{ex}")
+                        time.sleep(5) 
+                        continue
+                
+                time.sleep(5)
+
+                try:
+                    logging.info(f"reloading workspace at {workspace}")
+                    subprocess.run(["/run/workspace/bin/code-server", "-r",workspace], check=True)
+                    logging.info(f"Reload of {workspace} successful")
+                    success = True
+                    break
+                except Exception as ex:
+                    logging.error(f"Attempt #{x+1} Error trying to load {workspace}\n\t{ex}")
+                    time.sleep(5) 
+                    continue
+            
+            if not success:
+                return False 
+            time.sleep(2)
+
+            last_line = get_last_line()
+            if "activated" in last_line:
+                logging.info("Reinstall of extension successful, extension is active!!!")
+                return True
+
+def extension_has_been_started():
+    try:
+        with open(pexs_file_path, "r") as rf:
+            info = rf.read().lower()
+            return "activated" in info
+    except FileNotFoundError:
+        logging.info(f"The {pexs_file_path} does not exist, returning false")
+
+def get_is_extension_active():
+
+    if extension_has_been_started():
+        last_line = get_last_line()
+        # using deactivated because 'activated' is a substring of deactivated
+        if "deactivated" in last_line:
+            #logging.info(f"Marking extension as deactivated because could not find activated in extension line in data file")
+            return False 
+        else:
+            return True
+    else:
+        return False  
+
+
+def copy_missing_copies_to_hist_dir():
+    vscode_history_dir = "/home/hacker/.local/share/code-server/User/History"
+    def find_entries_json_with_file(file_path):
+        # Search for entries.json files under all subdirectories of vscode_history_dir
+        for root, dirs, files in os.walk(vscode_history_dir):
+            if "entries.json" in files:
+                entries_file = Path(root) / "entries.json"
+                # Open the entries.json file and look for the file_path within its entries
+                try:
+                    with open(entries_file, 'r') as f:
+                        data = json.load(f)
+                    res = data.get("resource","")
+                    if res.endswith(file_path):
+                        # Check if any entry matches the file_path
+                        return entries_file, data.get("entries",[])
+                except Exception as e:
+                    print(f"Error reading {entries_file}: {e}")
+                    continue
+        return None, None
+
+    skipped_dir = "/home/hacker/.local/share/ultima/skipped/"
+    with open(f"{skipped_dir}/log.json", "r") as rf:
+        jd = json.load(rf)
+
+    for relpath, copies in jd.items():
+        for index, info in enumerate(copies):
+            if not info.get('copied', False):
+                entries_file, entries = find_entries_json_with_file(relpath)
+                if not entries_file or not entries:
+                    print(f"skipping because did not find {relpath=}")
+                    continue 
+                hash_fp = os.path.join(skipped_dir,info["hashed_filename"])
+                hash_dest_fp = os.path.join(os.path.dirname(entries_file), info["hashed_filename"])
+                if os.path.exists(hash_fp):
+                    shutil.copy2(hash_fp, hash_dest_fp)
+                jd[relpath][index]["copied"] = True 
+
+
+    with open(f"{skipped_dir}/log.json", "w") as wf:
+        json.dump(jd, wf)
+     
+# Path to the monitored and output files
+extension_loaded = True
+
+output_file_path = '/home/hacker/cse240/.vscode/cp.dat'
+start_time = None
+atexit.register(handle_exit)
+setup_signal_handlers()
+loopcount = 0
+attempt_reload_threshold = 5
+logging.info("Heartbeat is starting up")
+show_all_dead_msg_in = 1 
+show_deactivated_but_running = 1
+show_alert_and_reload_on_next_orbit = False 
+show_active_message_in = 10
+while True:
+    
+     # Wait for 1 minute before the next cycle
+    time.sleep(60)
+    try:
+        copy_missing_copies_to_hist_dir()
+    except Exception as ex:
+        logging.error(f"Error with copying missing copies to vscode history directory: {ex}")
+        logging.exception(ex)
+    
+    try:
+        is_extension_active = get_is_extension_active()
+        
+        # is the extension active?
+        if is_extension_active:
+            start_time = None  # Reset the start time
+            attempt_reload_threshold = 5
+            if (loopcount % show_active_message_in) == 0:
+                show_active_message_in *= 2 if show_active_message_in < 60 else 60
+                logging.info(f"Extension is active because did not find 'deactivated' in the last line will show again in {show_active_message_in} minutes")            
+                
+        else: #if not is_extension_active or not extension_loaded:
+            cpptools_active = check_process_exists("cpptools") 
+            extension_host_active = check_process_exists("extensionHost")
+            show_active_message_in = 1
+            if cpptools_active or extension_host_active:
+                show_all_dead_msg_in = 1
+                # vscode is running but extension is not running
+                if not start_time:  
+                    # first time in here since last detected extension running
+                    start_time = time.time()
+                    show_deactivated_but_running = 1
+                    show_alert_and_reload_on_next_orbit = True
+                    attempt_reload_threshold = 5
+                else:
+                    elapsed_minutes = int((time.time() - start_time) / 60)
+                    if ((elapsed_minutes % attempt_reload_threshold) == 0 and elapsed_minutes > 0) or show_alert_and_reload_on_next_orbit:
+                        if show_alert_and_reload_on_next_orbit:
+                            show_alert_and_reload_on_next_orbit = False
+                            logging.critical("Alerted that deactivated because found VSCode process but extension is deactivated, attempting reload ")
+
+                        logging.info(f"Attempting extension reload after {elapsed_minutes} minutes {cpptools_active=} {extension_host_active=} ")
+                        if attempt_to_reload_extension():
+                            # sucess, extension is reporting it reloaded successfully
+                            attempt_reload_threshold = 5
+                            start_time = None 
+                        else:
+                            attempt_reload_threshold *= 2               
+                            logging.info(f"Reload failed will try again in  {attempt_reload_threshold} minutes")
+                    else:
+                        if cpptools_active and extension_host_active: 
+                            logging.info(f"Been deactivated for {elapsed_minutes} minutes {cpptools_active=} {extension_host_active=} \n\tNext reload attempt in {attempt_reload_threshold - (elapsed_minutes % attempt_reload_threshold) } minutes")
+                        elif (elapsed_minutes % show_deactivated_but_running) == 0 :
+                            show_deactivated_but_running *= 2
+                            logging.info(f"Been deactivated for {elapsed_minutes} minutes {cpptools_active=} {extension_host_active=} \n\tNext reload attempt in {attempt_reload_threshold - (elapsed_minutes % attempt_reload_threshold) } minutes")
+                        
+                    update_file_with_time(output_file_path, initial=False, minutes=elapsed_minutes)
+            else:
+                show_deactivated_but_running = 1
+                if (loopcount % show_all_dead_msg_in) == 0 :
+                    show_all_dead_msg_in = show_all_dead_msg_in * 2
+                    logging.info(f"Found deactivated in pexs.dat and did not find either vscode process running, will display next message in {show_all_dead_msg_in} minutes ")
+            
+    except Exception as ex:
+        logging.error(f"Error with processing: {ex}")
+        logging.exception(ex)
+    finally:
+        loopcount += 1
+   

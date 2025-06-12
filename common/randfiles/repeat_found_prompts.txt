@@ -1,0 +1,12 @@
+First repeating letter is: __
+Repeated lowercase letter: __
+We found the first repeat: __
+Duplicate character detected: __
+Already seen: __
+Repeat spotted: __
+Oops! Letter repeated: __
+Match found again: __
+Letter occurs again: __
+Echo detected: __
+Recurring letter is: __
+Repetition alert: __

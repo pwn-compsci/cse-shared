@@ -1,0 +1,20 @@
+Got another one? Type it in:
+Hit me with the next one:
+What's next? I'm listening:
+Your turn—enter something magical:
+Feed me more data:
+Another one, please:
+Ready for round two (or three)? Let’s go:
+Enter your next move:
+Don't be shy, type another:
+Show me what you’ve got next:
+The input beast hungers. Feed it again:
+Zap in your next input:
+Whisper another value to the void:
+Crunch another value into the code machine:
+I bet you’ve got another — type it!
+Fire off another one!
+Reload with a new input:
+What wisdom shall you share next?
+Thinking of something else? Enter it:
+Let’s keep it going! Next value:

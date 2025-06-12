@@ -1,0 +1,50 @@
+Please select an option:
+Choose an action:
+What would you like to do?
+Select from the following options:
+Make a selection:
+Enter your choice:
+Pick an option:
+Choose one of the following:
+Select an item from the menu:
+Choose your next step:
+Please pick a task:
+What is your desired action?
+Choose what to do next:
+Make your choice from the list:
+Select a command:
+Choose a function to perform:
+Please enter a menu option:
+Select a number to proceed:
+Choose from the options below:
+Please choose an operation:
+Indicate your selection:
+Choose your preferred option:
+Select the task to execute:
+What action do you want to take?
+Choose your option from the menu:
+Pick your desired operation:
+Make your selection to continue:
+Which option do you want?
+Please make a decision:
+Type the number of your choice:
+Choose how you'd like to proceed:
+Select your desired menu item:
+What would you like to perform?
+Enter the number for your selection:
+Choose what you want to do:
+Please select your next command:
+Make a menu selection:
+Choose a step to continue:
+Select what you'd like to work on:
+Choose an available option:
+Pick the next action:
+What do you want to manage?
+Pick a command from the list:
+Please choose an item:
+Choose your next move:
+Enter your preferred option:
+Please choose what to do:
+Choose a listed function:
+Select a menu command:
+Choose a numbered action:

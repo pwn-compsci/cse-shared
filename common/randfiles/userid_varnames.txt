@@ -1,0 +1,16 @@
+id
+user_id
+uid
+userid
+identifier
+account_id
+profile_id
+system_id
+login_id
+identity_id
+record_id
+user_record_id
+member_id
+handle_id
+node_id
+registry_id

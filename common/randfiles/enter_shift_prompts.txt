@@ -1,0 +1,11 @@
+Enter number of positions to shift:
+How far should we shift the characters?
+Shift the string to the right by how many?
+Enter the shift amount:
+Provide a number of spaces to shift:
+Shift characters by how many positions?
+How many places should we move the letters?
+Give me the shift value:
+Right-shift amount, please:
+Set the number of positions to move:
+Input number of characters to shift:

@@ -1,0 +1,52 @@
+#!/usr/bin/exec-suid -- /usr/bin/python3
+""""
+#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+#!/usr/bin/exec-suid --real -- /usr/bin/python3
+
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.append("/challenge/bin")
+from tester_main import run_tests
+from tester_db import init_db
+1
+if os.path.exists("/run/challenge/bin") or os.path.exists("/challenge"):
+    os.environ["PATH"] = "/run/challenge/bin:/run/workspace/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/challenge:" + os.environ.get("PATH", "")
+
+def main():
+
+    parser = argparse.ArgumentParser(description="C/C++ Program Tester")
+    parser.add_argument(
+        "--source_dir",
+        "--source-dir",
+        "-s",
+        help="Directory containing the source files",
+    )
+    parser.add_argument(
+        "--test_dir", "--test-dir", "-t", help="Directory containing the test files"
+    )
+
+    args = parser.parse_args()
+
+    if args.test_dir:
+        test_dir = args.test_dir
+    elif os.path.exists("/challenge/system_tests"):
+        test_dir = os.path.join("/challenge", "system_tests")
+    else:
+        test_dir = None
+
+    init_db()
+
+    if not run_tests(args, test_dir):
+        print(
+            "For the tester to run there must be a level config file located under /challenge/.config or the --source-dir and --test-dir options must be added "
+        )
+        parser.print_usage()
+        sys.exit(10)
+
+
+if __name__ == "__main__":
+    main()

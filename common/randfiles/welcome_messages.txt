@@ -1,0 +1,38 @@
+Welcome to the system!
+Hello and welcome
+Greetings! Choose an option from the menu below.
+Welcome! Your command center is ready.
+Hi there! Let's get started.
+You've entered the system.
+Welcome back! What would you like to do today?
+System ready. 
+Good to see you! 
+Welcome, user! 
+Welcome aboard. Your tasks await.
+Ready when you are. 
+Nice to have you here! Let's begin.
+System initialized. 
+Welcome to your interactive dashboard.
+Let's get started.
+You've reached the system. What's next?
+System online. Ready to Serve.
+Welcome to root system.
+System started, ready for input.
+Hi, system ready for you to proceed! 
+Greetings, operator. The system is at your service.
+System activated, ready to proceed.
+Welcome to the hub. What would you to do?
+Let's begin! Select your first task.
+Welcome to the task selector.
+Greetings! Ready to begin your session?
+Access granted. Welcome to the system.
+System booted. Select an operation to run.
+Glad you're here. The system is at your fingertips.
+You're in! What now?
+Main interface unlocked. Welcome!
+Hello again. What task would you like to perform?
+The system is yours. Make your move.
+Happy to have you here. 
+Hello world.
+Boot sequence complete. Welcome to the system.
+System initialized, welcome, interactive mode started. 

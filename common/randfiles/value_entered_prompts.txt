@@ -1,0 +1,29 @@
+Thank you for your entry, __
+Your input has been recorded as __
+You entered: __
+Got it! Your input is __
+We've saved your entry as __
+Input received: __
+We've got your input as __
+Thanks! Your entry was __
+The input has been noted as __
+Thanks for the input, __
+Great! Your entry was recorded as __
+Your input has been accepted as __
+Confirmed your entry as __
+Successfully captured your input of __
+You typed in __
+Your entry is __
+Hello, Thanks for providing your input of __
+Input acknowledged as __
+Entry successful: __
+Got your input of __
+We registered your input as __
+Cool, your entry was __
+You’ve given your input as __
+Saved input of __
+Input complete: __
+We've logged your entry as __
+Thanks! We see your input is __
+Your response was __
+You went with __

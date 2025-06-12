@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import json
+import subprocess
+from datetime import datetime
+import hashlib 
+
+comment = "// this file is encrypted, add key to /home/key file and use ./start to decrypt \n"
+decryption_comment_prefix = "// file decrypted"
+
+def read_key_from_file(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            return file.read().strip()
+    except FileNotFoundError:
+        print(f"Error: The key file '{file_path}' does not exist.")
+        sys.exit(1)
+
+def process_key(key):
+    if key.isdigit():
+        return int(key)
+    else:
+        return sum(ord(char) for char in key)
+
+def xor_encrypt_decrypt(contents, key):
+    key = process_key(key)  # Ensure key is a number
+    encrypted_decrypted_chars = []
+    
+    for char in contents:
+        encrypted_decrypted_char = chr(ord(char) ^ key)
+        encrypted_decrypted_chars.append(encrypted_decrypted_char)
+    
+    return ''.join(encrypted_decrypted_chars)
+
+def add_remove_comment(contents, mode='add'):
+    if mode == 'add':
+        return comment + contents
+    elif mode == 'remove':
+        if contents.startswith(comment):
+            return contents[len(comment):]  # Remove the comment
+        return contents
+
+def add_decryption_comment(contents, key):
+    # Add comment in the format: day_of_year + HHMM + key
+    now = datetime.now()
+    day_of_year = now.timetuple().tm_yday
+    time_str = now.strftime("%H%M")
+    decryption_comment = f"{decryption_comment_prefix} {day_of_year}{time_str} {key}\n"
+    return contents + decryption_comment
+
+def remove_decryption_comment(contents):
+    # Split the file into lines
+    lines = contents.split('\n')
+    # Filter out any line that starts with the decryption comment prefix
+    lines = [line for line in lines if not line.startswith(decryption_comment_prefix)]
+    # Join the remaining lines back into a single string
+    return '\n'.join(lines)
+
+def find_files():
+    c_files = []
+    cpp_files = []
+
+    for root, dirs, files in os.walk('/home'):  # Start walking from the current directory
+        for file in files:
+            if file.endswith('.c'):
+                c_files.append(os.path.join(root, file))  # Append the full path
+            elif file.endswith('.cpp'):
+                cpp_files.append(os.path.join(root, file))  # Append the full path
+
+    if c_files or cpp_files:
+        return c_files + cpp_files  # Return all .c and .cpp files found
+    else:
+        print("Error: No .c or .cpp files found in the directory tree.")
+        sys.exit(1)
+
+def main():
+
+    # Determine the key
+    if len(sys.argv) > 1:
+        key = sys.argv[1]
+    else:
+        valid_keys = None
+        if os.path.exists("/home/.config/level.json"):
+            with open("/home/.config/level.json", "r") as rf:
+                jdata = json.load(rf)
+                valid_keys = jdata.get("groupLabKeys", None)
+            
+        key = read_key_from_file('/home/key')
+        if len(key) < 2:
+            print("Key was not found in key file, please add the proper value to the key file")
+            sys.exit(99)
+        
+        if valid_keys is not None:
+            hash_obj = hashlib.md5()
+            hash_obj.update(key.encode('utf-8'))
+            md5_hash = hash_obj.hexdigest()
+            valid_key_found = False
+            for vk in valid_keys:
+                if (md5_hash == vk):
+                    valid_key_found = True 
+                    break 
+            if valid_key_found == False:
+                print("Invalid key in key file please check that it matches what was given to you in class")
+                sys.exit(249)
+            
+
+
+    if len(sys.argv) > 2 and sys.argv[2].startswith("enc"):
+        # Encrypting
+        action = "encrypted"
+    else:
+        action = "decrypted"
+    
+    if action == "encrypted":
+        subprocess.run(["mkdir", "-p", "/home/template"])
+        subprocess.run(["rsync", "-av", "--exclude", "template/", "--exclude", ".bin/", "--exclude", "key", "/home/", "/home/template/"])
+
+    # Search for the C or C++ file
+    file_paths = find_files()
+
+    for file_path in file_paths:
+        # Read the file contents
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                contents = file.read()
+        except FileNotFoundError:
+            print(f"Error: The file '{file_path}' does not exist.")
+            sys.exit(1)
+
+        if action == "decrypted":
+            # Remove comment before decrypting
+            contents = add_remove_comment(contents, mode='remove')
+
+        if action == "encrypted":
+            # Remove decryption comment before encrypting if it exists
+            contents = remove_decryption_comment(contents)
+
+        # Process encryption or decryption
+        result = xor_encrypt_decrypt(contents, key)
+
+        # Add the encryption comment if encrypting
+        if action == "encrypted":
+            result = add_remove_comment(result, mode='add')
+        elif action == "decrypted":
+            # Add the decryption comment with datetime and key
+            result = add_decryption_comment(result, key)
+
+        # Write back to the original file (in place)
+        try:
+            if (action == "decrypted" and ("int" in result or "char" in result or "void" in result or "/**" in result)) or (action == "encrypted"):
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(result)
+                print(f"File '{file_path}' has been successfully {action}.")
+            else:
+                print(f"Failed to {action} the file '{file_path}'")
+        except Exception as e:
+            print(f"An error occurred while writing to the file: {e}")
+            sys.exit(1)
+
+if __name__ == "__main__":
+    main()

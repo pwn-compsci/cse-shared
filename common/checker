@@ -1,0 +1,30 @@
+#!/usr/bin/exec-suid -- /usr/bin/python3
+import os
+import sys
+import argparse
+import json 
+sys.path.insert(0, '/challenge/bin')
+import checker as challenge_checker
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='A simple argparse example with optional positional argument.')
+
+    # Add a positional argument that is optional (with nargs='?', it allows zero or one argument)
+    parser.add_argument('checkdir', nargs='?', default=None, help='An optional value on pwn.college, but required locally (default: None)')
+    parser.add_argument('--basedir', type=str, default=None, help='base dir is required for local run')
+    parser.add_argument('--all_diffs', '--all-diffs', '--all','-a', action='store_true', default=False, help='An option to view all icdiffs')
+    parser.add_argument('--student_info','-s', type=str, default=None, help='Add student info id to report ')
+    parser.add_argument('--save_tar','--save-tar', action='store_true', default=False,help='if enabled will create a tar backup of students code and history')
+    parser.add_argument('--pid', type=str, default=None, help='Add pwn.college id to report ')
+
+    args = parser.parse_args()
+    
+    clevel_work_dir = None
+    level_config_file = os.path.join("/challenge",".config", "level.json")
+    if os.path.exists(level_config_file):
+        with open(level_config_file) as cf:
+            level_config=json.load(cf)
+            clevel_work_dir = f"level_config.get('hwdir')/level_config.get('level')"
+
+    challenge_checker.main(args, clevel_work_dir)
+
