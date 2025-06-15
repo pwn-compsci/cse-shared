@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lecture</title>
+    <style>
+        :root {
+            --progress-bar-height: 20px;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        #player-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid grey;
+            box-sizing: border-box;
+        }
+        #progress-container {
+            width: 100%;
+            height: var(--progress-bar-height);
+            background-color: grey;
+        }
+        .progress-bar {
+            position: absolute;
+            height: var(--progress-bar-height);
+            opacity: 0.5;
+        }
+        .progress-bar.invalid-coverage {
+            background-color: #f44336;
+        }
+        .progress-bar.valid-coverage {
+            background-color: #4caf50;
+        }
+        .modal {
+            color: white;
+            background-color: #333;
+            font-family: monospace;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+        .modal::backdrop {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        .modal-field {
+            padding: 10px;
+            background-color: white;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+        }
+        .modal-close {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: white;
+        }
+        .modal-close:hover {
+            cursor: pointer;
+        }
+        .modal-close:focus {
+            outline: none;
+        }
+        .field-copy {
+            padding: 10px;
+            margin-left: 20px;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+        }
+        .field-copy:hover {
+            cursor: pointer;
+            background-color: #ccc;
+        }
+        .field-copy:active {
+            background-color: lightblue;
+        }
+        .field-submit {
+            padding: 10px;
+            margin-left: 20px;
+            color: white;
+            font-weight: bold;            
+            background-color: transparent;
+            border: 1px solid #ffffff;
+            border-radius: 10px;
+        }
+        .field-submit:hover {
+            cursor: pointer;
+            background-color: #6c757d;
+        }
+        .field-submit:active {
+            background-color: lightblue;
+        }
+        .mcq-options {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: left;
+            gap: 10px;
+        }
+        .loading-modal {            
+            font-family: 'Space Grotesk';
+            font-weight: 500;
+            font-size: 3em;
+            color: #78be20;
+            background-color: #222;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 8px 16px;
+        }
+    </style>
+    <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+    <div id="player-container">
+        <div id="player"></div>
+    </div>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+    <dialog id="flag-modal" class="modal">
+        <button class="modal-close" onclick="document.getElementById('flag-modal').close()">&times;</button>
+        <div class="modal-field">
+            <span id="flag-text"></span>
+            <button class="field-copy" onclick="navigator.clipboard.writeText(document.getElementById('flag-text').textContent)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>            
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+            <button class="field-submit" id="submit-flag-btn" type="button">Submit Flag</button>
+            <button class="field-submit" id="submit-flag-next-btn" type="button">Submit Flag and Start Next Level</button>
+        </div>
+    </dialog>
+    <dialog id="mcq-modal" class="modal">
+        <button class="modal-close" onclick="document.getElementById('mcq-modal').close()">&times;</button>
+        <form method="dialog" id="mcq-form">
+            <div class="modal-field" style="text-align: left;">
+                <div id="mcq-question" style="text-align: left;">
+                    {{ mcq_question }}
+                </div>
+                <div id="mcq-options" class="mcq-options" style="align-items: flex-start;"></div>
+                    {% for option in mcq_options %}
+                    <div>
+                        <label>
+                            <input type="radio" name="mcq_answer" value="{{ option.value }}">
+                            {{ option.text }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="field-copy" style="margin-top: 15px;">Submit</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="message-modal-content" class="modal">
+        <button class="modal-close" onclick="document.getElementById('message-modal-content').close()">&times;</button>
+        <div class="modal-field" style="color: #f44336;">
+            Incorrect. Please re-watch the video and try again.
+        </div>
+    </dialog>
+    <dialog id="loading-modal" class="loading-modal">
+        <div class="loading-field" >
+            Loading next challenge, please wait...
+        </div>
+    </dialog>
+    <script>
+        
+        const MCQ_QUESTION = "{{ mcq_question }}";
+
+        document.getElementById('mcq-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const answer = document.querySelector('input[name="mcq_answer"]:checked');
+            if (!answer) {
+                alert("Please select an answer.");
+                return;
+            }
+            fetch("knowledge_check", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    answer_value: answer.value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {                
+                document.getElementById('mcq-modal').close();
+                if (data.status === "correct") {
+                    const flagModal = document.getElementById("flag-modal");
+                    const flagText = document.getElementById("flag-text");
+                    flagText.textContent = data.flag;
+                    flagModal.showModal();
+                    return;
+                }
+                if (data.status === "incorrect") {                    
+                    const incorrectModal = document.getElementById("message-modal-content");
+                    const modalField = incorrectModal.querySelector('.modal-field');
+                    modalField.textContent = data.message;
+                    if (data.answer_attempts == data.max_mcq_attempts){
+                        incorrectModal.querySelector('.modal-close').onclick = () => {
+                            location.reload();                            
+                        }
+                    } else {
+                        incorrectModal.querySelector('.modal-close').onclick = () => {
+                            document.getElementById('message-modal-content').close();
+                            document.getElementById('mcq-modal').showModal();                                      
+                        }
+                    }
+                    incorrectModal.showModal();
+                    return;
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                alert("An error occurred while submitting your answer. Please try again.");
+            });
+
+        });
+        async function tryConnect() {
+            let checknbr = 0;
+            while (true) {
+                try {                        
+                    const response = await fetch("/workspace/code", { method: "GET" });
+                    if (response.ok) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Pause 1 second between checks
+                        if (window.location.href.includes("/workspace/challenge")){
+                            console.log("Workspace is ready, redirecting to /workspace/code");
+                            window.parent.location.href = "/workspace/code";
+                        } else {
+                            console.log("Workspace is ready, reloading the page");
+                            window.parent.location.reload();
+                        }
+                        console.log(response)                        
+                        break;
+                    } else {
+                        checknbr++;
+                        loadingModal.querySelector('.loading-field').textContent = `Waiting for workspace to be ready, attempt #${checknbr}...Please wait.`;
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Pause 1 second between checks
+                    }
+                } catch (e) {
+                    console.log("error checking workspace readiness:", e);
+                    break;
+                }
+            }
+            document.getElementById("loading-modal").close();            
+        }
+        function submitFlag(){
+            const flagText = document.getElementById("flag-text").textContent;
+            /*{challenge_id: "17289", submission: "asdfasdf"} */            
+            return fetch("/api/v1/challenges/attempt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Csrf-Token": csrf_token
+                },
+                body: JSON.stringify({ 
+                    challenge_id: current_challenge_id,
+                    submission: flagText
+                 })
+            }).then(response => response.json())
+            .then(data => {
+                console.log(data);
+                success = data.success;
+                data = data.data; 
+                if (data.status === "correct") {
+                    alert("Flag submitted successfully!");
+                    return true;
+                } else if (data.status ==="already_solved") {
+                    alert("Already submitted this flag.");
+                    return true;
+                } else {
+                    alert("Error submitting flag: " + data.message + ". Please try to submit the flag manually.");
+                    return false;
+                }
+            }).catch(error => {
+                console.error("Error:", error);
+                alert("An error occurred while submitting the flag. Please try again.");
+                return false;
+            });
+        }
+        function loadNextChallenge() {
+            if (next_challenge_id && next_challenge_name && dojo && dojo_module) {
+                const loadingModal = document.getElementById("loading-modal");
+                loadingModal.showModal();
+                console.log("Starting load of next challenge:", next_challenge_id, next_challenge_name, dojo, dojo_module);
+                fetch("/pwncollege_api/v1/docker", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Csrf-Token": csrf_token
+                    },
+                    body: JSON.stringify({
+                        challenge: next_challenge_name,
+                        dojo: dojo,
+                        module: dojo_module,
+                        practice: false
+                    })
+                }).then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                    success = data.success;
+                    const messageModal = document.getElementById("message-modal-content");
+                    const modalField = messageModal.querySelector('.modal-field');
+                    
+                    if (success) {
+                        console.log("Received success response for next challenge load, now checking if workspace is ready...")      
+                        tryConnect();
+                    } else {
+                        alert("Error starting next challenge: ");
+                    }                    
+                })
+            } else {
+                alert("Next challenge information is not available.");
+            }
+        }
+        document.getElementById('submit-flag-btn').addEventListener('click', function() {
+            submitFlag();
+        });
+        document.getElementById('submit-flag-next-btn').addEventListener('click', function() {
+            submitFlag().then((result) => {
+                if (result) {
+                    loadNextChallenge();
+                }                
+            });            
+        });
+    </script>
+    <script>
+        const VIDEO_ID = "{{ youtube_id }}";
+        var csrf_token = ""
+        var player;
+        var interval;
+        var flag;
+        var videoCompleted = false; 
+        var next_challenge_id = "", 
+               next_challenge_name = "",
+               dojo = "",
+               dojo_module = "";
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player("player", {
+                height: "100%",
+                width: "100%",
+                videoId: VIDEO_ID,
+                playerVars: {
+                    controls: 1,
+                    rel: 0,
+                },
+                events: {
+                    onReady: onPlayerReady,
+                    onStateChange: onPlayerStateChange,
+                    onPlaybackRateChange: onPlayerPlaybackRateChange,
+                }
+            });
+        }
+
+        function telemetry(reason) {
+            return fetch("telemetry", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    reason: reason,
+                    player: {
+                        state: player.getPlayerState(),
+                        time: player.getCurrentTime(),
+                        rate: player.getPlaybackRate(),
+                        volume: player.getVolume(),
+                        muted: player.isMuted(),
+                        loaded: player.getVideoLoadedFraction(),
+                        duration: player.getDuration(),
+                        url: player.getVideoUrl(),
+                    },
+                    document: {
+                        visibility: document.visibilityState,
+                        fullscreen: !!document.fullscreenElement,
+                        agent: navigator.userAgent,
+                    },
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error && data.error === "Incorrect video") {
+                    window.location.href = "..";
+                }
+                const progressContainer = document.getElementById("progress-container");
+                progressContainer.innerHTML = "";
+                const coverages = [
+                    { intervals: data.coverage.invalid, type: "invalid-coverage" },
+                    { intervals: data.coverage.valid, type: "valid-coverage" }
+                ];
+                coverages.forEach(({ intervals, type }) => {
+                    intervals.forEach(([startTime, endTime]) => {
+                        const start = (startTime / player.getDuration()) * 100;
+                        const end = (endTime / player.getDuration()) * 100;
+                        const bar = document.createElement("div");
+                        bar.classList.add("progress-bar", type);
+                        Object.assign(bar.style, {
+                            left: `${start}%`,
+                            width: `${end - start}%`,
+                        });
+                        bar.addEventListener("click", () => {
+                            if (type === "invalid-coverage") {
+                                player.seekTo(Math.max(startTime - 2, 0));
+                                player.playVideo();
+                            }
+                            if (type === "valid-coverage") {
+                                player.seekTo(Math.max(endTime - 2, 0));
+                                player.playVideo();
+                            }
+                        });
+                        bar.addEventListener("mouseover", () => {
+                            bar.style.opacity = 1.0;
+                        });
+                        bar.addEventListener("mouseout", () => {
+                            bar.style.opacity = "";
+                        });
+                        progressContainer.appendChild(bar);
+                    });
+                });
+                if (data.flag) {
+                    flag = data.flag;
+                }
+                if (data.completed){
+                    videoCompleted = true; 
+                }
+                if (data.video && data.video == VIDEO_ID){
+                    if (data.total_valid_time){
+                        total_valid_time = data.total_valid_time
+                    }
+                }
+            });
+        }
+        
+        function onPlayerReady(event) {
+            interval = setInterval(() => {
+                if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                    telemetry("interval");
+                }
+            }, 10000);
+            player.playVideo();
+
+            let current_element = window.parent.document.getElementById('current');
+            if (current_element){
+                current_challenge_id = current_element.querySelector('#challenge-id').value;
+                console.log(`current_challenge_id=${current_challenge_id}`);
+            } else {
+                console.log("No current challenge element found.")
+            }
+            
+            let next_element = window.parent.document.getElementById('next');
+            if (next_element){
+                next_challenge_id = next_element.querySelector('#challenge-id').value;
+                next_challenge_name = next_element.querySelector('#challenge').value;
+                dojo = next_element.querySelector('#dojo').value;
+                dojo_module = next_element.querySelector('#module').value;
+                console.log(`next_challenge_id=${next_challenge_id}`);
+                console.log(`next_challenge_name=${next_challenge_name}`);
+                console.log(`dojo=${dojo}`);
+                console.log(`dojo_module=${dojo_module}`);   
+                csrf_token = window.parent.init.csrfNonce             
+            } else {
+                console.log("No next challenge element found.");
+                document.getElementById("submit-flag").style.display = "none";
+                document.getElementById("submit-flag-next-btn").style.display = "none";
+            }
+
+            // const loadingModal = document.getElementById("loading-modal");
+            // loadingModal.showModal();
+            // fetch("/workspace/code",{
+            //     method: "GET",                
+            // })
+            // .then( rtest =>{
+            //     console.log(rtest);
+            //     tryConnect();
+            // })
+            
+            // const flagModal = document.getElementById("flag-modal");
+            // const flagText = document.getElementById("flag-text");
+            // flagText.textContent = "pwn.college{nadaflag}";
+            // flagModal.showModal();
+            // UNSTARTED=-1, ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3, CUED=5
+            // console.log(`UNSTARTED=${YT.PlayerState.UNSTARTED}, ENDED=${YT.PlayerState.ENDED}, PLAYING=${YT.PlayerState.PLAYING}, PAUSED=${YT.PlayerState.PAUSED}, BUFFERING=${YT.PlayerState.BUFFERING}, CUED=${YT.PlayerState.CUED}`);
+        }
+
+        function onPlayerStateChange(event) {
+            telemetry("player-state-change").then(() => {
+                if (videoCompleted && event.data === YT.PlayerState.ENDED){
+                    if (MCQ_QUESTION.length > 3) {
+                        const mcqModal = document.getElementById("mcq-modal");
+                        mcqModal.showModal();
+                    } else if (flag) {
+                        const flagModal = document.getElementById("flag-modal");
+                        const flagText = document.getElementById("flag-text");
+                        flagText.textContent = flag;
+                        flagModal.showModal();
+                    } else {
+                        alert("The video has ended but flag was not found.");
+                    }
+                } else if (event.data === YT.PlayerState.ENDED) { // video not completed, not enough watch time
+                    const incorrectModal = document.getElementById("message-modal-content");
+                    const modalField = incorrectModal.querySelector('.modal-field');
+                    modalField.textContent = "ERROR: The video has ended but it appears your fast-forwarded through it. Please refresh the page and watch the video in full to obtain the flag (you may increase the video speed)."
+                    incorrectModal.showModal();
+                }     
+            });
+            switch (event.data) {
+                case YT.PlayerState.UNSTARTED:
+                    color = "grey";
+                    break;
+                case YT.PlayerState.ENDED:
+                    color = "green";
+                    break;
+                case YT.PlayerState.PLAYING:
+                    color = "yellow";
+                    break;
+                case YT.PlayerState.PAUSED:
+                    color = "red";
+                    break;
+                case YT.PlayerState.BUFFERING:
+                    color = "orange";
+                    break;
+                case YT.PlayerState.CUED:
+                    color = "purple";
+                    break;
+                default:
+                    color = "white";
+                    break;
+            }
+            document.getElementById("player-container").style.borderColor = color;
+        }
+
+        function onPlayerPlaybackRateChange(event) {
+            telemetry("playback-rate-change");
+        }
+
+        document.addEventListener("visibilitychange", () => telemetry("document-visibility-change"));
+        document.addEventListener("fullscreenchange", () => telemetry("fullscreen-change"));
+    </script>
+</body>
+</html>
