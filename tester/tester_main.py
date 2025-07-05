@@ -136,10 +136,7 @@ def calculate_md5(file_path):
 
 
 def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
-    if len(other_compile_args) > 0:
-        print(f"Other compile args: {other_compile_args}")
-    if len(alt_target_name) > 0:
-        print(f"Using alternate target name: {alt_target_name}")
+    
     binary_name = "main.bin"
     if len(alt_target_name) > 0:
         binary_name = alt_target_name
@@ -182,7 +179,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
         
         if other_compile_args and len(other_compile_args) > 0:
             compile_command.extend(other_compile_args)
-        print(f"Compile Command: {BLUE}{' '.join(compile_command)}{RESET_COLOR}")
+        # print(f"Compile Command: {BLUE}{' '.join(compile_command)}{RESET_COLOR}")
     try:        
         subprocess.run(compile_command, check=True, capture_output=True, text=True)
         if not ED_ENV:
