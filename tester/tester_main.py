@@ -963,8 +963,15 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         run_reset_commands(reset_commands)
 
     other_compile_args = test_json.get("otherCompileArgs", [])    
+    alt_target_name = test_json.get("altTargetName", "altmain.bin")
     if len(other_compile_args) > 0:
-        compile_program(source_dir, other_compile_args=other_compile_args, alt_target_path=test_json.get("altTargetPath", "altmain.bin"))
+        compile_program(source_dir, other_compile_args=other_compile_args, alt_target_name=alt_target_name)
+        source_alt_main_bin = os.path.join(source_dir, alt_target_name)
+        system_alt_test_main_bin = os.path.join(SYSTEM_TESTS_DIR, alt_target_name)
+        if (os.path.exists(source_alt_main_bin)):
+            kill_process(system_alt_test_main_bin)
+            kill_process(source_alt_main_bin)
+            shutil.copy(source_alt_main_bin, system_alt_test_main_bin)
 
     if target_path is None:
         target_filename = test_json.get("target", "main.bin")
