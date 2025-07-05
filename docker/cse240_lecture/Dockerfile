@@ -4,6 +4,8 @@ FROM python:3.13-slim
 
 RUN pip install --no-cache-dir flask gunicorn
 
+RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
+
 ADD wsgi.py /opt/lecture/
 ADD templates/ /opt/lecture/templates/
 
@@ -22,3 +24,5 @@ mkdir -p /var/log/gunicorn
 cd /opt/lecture
 gunicorn --daemon
 EOF
+
+RUN mkdir /lec_v4

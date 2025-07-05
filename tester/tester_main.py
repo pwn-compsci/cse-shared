@@ -135,8 +135,14 @@ def calculate_md5(file_path):
     return md5.hexdigest()
 
 
-def compile_program(source_dir):
+def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
+    if len(other_compile_args) > 0:
+        print(f"Other compile args: {other_compile_args}")
+    if len(alt_target_name) > 0:
+        print(f"Using alternate target name: {alt_target_name}")
     binary_name = "main.bin"
+    if len(alt_target_name) > 0:
+        binary_name = alt_target_name
     output_path = os.path.join(source_dir, binary_name)
     if os.path.exists(output_path):
         os.remove(output_path)
@@ -173,7 +179,11 @@ def compile_program(source_dir):
             compile_command = ["/usr/bin/gcc", source_path, "-O0", "-Wall", "-Werror", "-g", "-o", output_path]
         elif source_file.endswith(".cpp"):
             compile_command = ["/usr/bin/g++", source_path, "-O0", "-Wall", "-Werror","-g", "-o", output_path]
-    try:
+        
+        if other_compile_args and len(other_compile_args) > 0:
+            compile_command.extend(other_compile_args)
+        print(f"Compile Command: {BLUE}{' '.join(compile_command)}{RESET_COLOR}")
+    try:        
         subprocess.run(compile_command, check=True, capture_output=True, text=True)
         if not ED_ENV:
             chown_recursive(source_dir, 1000, 1000)
@@ -952,6 +962,10 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
     if len(reset_commands) > 0:
         run_reset_commands(reset_commands)
 
+    other_compile_args = test_json.get("otherCompileArgs", [])    
+    if len(other_compile_args) > 0:
+        compile_program(source_dir, other_compile_args=other_compile_args, alt_target_name=test_json.get("altTargetName", None), alt_target_path=test_json.get("altTargetPath", "altmain.bin"))
+
     if target_path is None:
         target_filename = test_json.get("target", "main.bin")
         source_binary_path = os.path.join(working_dir, target_filename)
@@ -1394,6 +1408,7 @@ def run_tests(args, system_test_dir):
         level_id = int(level_config.get('level', '0'))
         show_flag = level_config.get("testerShowsFlag", True)
         performCompile = level_config.get("performCompile", True)
+        other_compile_args = level_config.get("otherCompileArgs", [])
         codecoverage = level_config.get("codecoverage", 0)
         checkForExecution = level_config.get("checkForExecution", False)
         case_sensitive = level_config.get("caseSensitive", False)
@@ -1448,7 +1463,7 @@ def run_tests(args, system_test_dir):
     compiled_users_code = False
     if source_dir != "/challenge/model":
         if performCompile:
-            compile_success = compile_program(source_dir)
+            compile_success = compile_program(source_dir, other_compile_args=other_compile_args)
             compiled_users_code = True
         else:
             compile_success = True

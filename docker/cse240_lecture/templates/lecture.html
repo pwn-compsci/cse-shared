@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lecture</title>
+    
     <style>
         :root {
             --progress-bar-height: 20px;
@@ -14,6 +15,15 @@
             display: flex;
             flex-direction: column;
         }
+        #level-info {
+            padding: 10px;
+            background-color: #333;
+            color: #00a3e0;
+            font-size: 1.7rem;
+            font-weight: bold;
+            font-family: 'Space Grotesk', sans-serif;
+            text-align: left;            
+        }
         #player-container {
             flex: 1;
             display: flex;
@@ -21,39 +31,120 @@
             justify-content: center;
             border: 2px solid grey;
             box-sizing: border-box;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 540px; /* Ensure minimum height for percentage calculations */
+        }
+        #iframe_player {
+            width: 100%;
+            height: 100%;
+        }
+        #iframe_player.iframe-mode {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #iframe_player iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
         }
         #mcq-container {
-            width: 100%;
-            background-color: transparent; 
             display: none;
+            width: 100%;
+            background: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            border-top: 2px solid #404040;
+            max-height: 50vh;
+            overflow-y: auto;
         }
         #mcq-border {
-            background-color: #333; 
-            margin: 10px 0px 0px 0px;
-            padding: 0px 0px 10px 0px;
-            border: 1px solid #ccc;
+            background-color: #1a1a1a;
+            margin: 0;
+            padding: 20px 20px 5px 5px;
+            border: none;
+            border-radius: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .mcq-field {
+            margin: 15px 0;
+            padding: 20px;
+            background-color: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid #404040;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            flex: 1 1 400px;
+            min-width: 350px;
+            max-width: calc(50% - 10px);
+            box-sizing: border-box;
+        }
+        @media (max-width: 800px) {
+            .mcq-field {
+                flex: 1 1 100%;
+                max-width: 100%;
+                min-width: 0;
+            }
+        }
+        .mcq-question {
+            font-size: 16px;
+            font-weight: 500;
+            color: #ffffff;
+            margin-bottom: 15px;
         }
         .mcq-options {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            text-align: left;
-            gap: 10px;
+            gap: 8px;
+            margin: 0;
+            width: 100%;
         }
-        .mcq-field {
-            margin: 10px;
-            padding: 10px;
-            background-color: white;
-            color: #333;
-            border: 1px solid #ccc;
-            border-radius: 10px;
+        .mcq-options label {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            background-color: #333333;
+            border: 1px solid #555555;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 14px;
+            color: #ffffff;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .mcq-options label:hover {
+            background-color: #404040;
+        }
+        .mcq-options input[type="radio"] {
+            margin: 0;
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+        }
+        .mcq-options .option-letter {
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #555555;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 12px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .mcq-options .option-text {
+            flex: 1;
+            color: #ffffff;
         }
         #progress-container {
             width: 100%;
             height: var(--progress-bar-height);
             background-color: grey;
-        }
-        
+        }        
         .progress-bar {
             position: absolute;
             height: var(--progress-bar-height);
@@ -84,12 +175,13 @@
         }
         .modal-close {
             position: absolute;
-            top: 0;
-            right: 0;
+            top: 10px;
+            right: 15px;
             background: none;
             border: none;
             font-size: 1.5rem;
             color: white;
+            z-index: 10000;
         }
         .modal-close:hover {
             cursor: pointer;
@@ -131,46 +223,456 @@
         .loading-modal {            
             font-family: 'Space Grotesk';
             font-weight: 500;
-            font-size: 3em;
+            font-size: 2em;
             color: #78be20;
             background-color: #222;
             border: 1px solid #ccc;
             border-radius: 8px;
             padding: 8px 16px;
         }
+        .mcq-fields-flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            width: 100%;
+        }
+        #flag-submitted-modal {
+            display: none;
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            min-width: 320px;
+            max-width: 90vw;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+            border-radius: 12px;
+            background: #222;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 26px 16px 4px 16px;
+            border: 1px solid #ccc;
+        }
+        #flag-submitted-close {
+            position: absolute;
+            top: 8px;
+            right: 12px;            
+        }
+        #flag-submitted-modal .modal-field {
+            color: #4caf50;
+            font-size: 1.3em;
+            border: none;
+            background: #222;
+            margin-bottom: 10px;
+        }
+        #flag-submitted-modal.warning .modal-field {
+            color: #ff9800;
+            background: #222;
+            border: none;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        #flag-submitted-modal.error .modal-field {
+            color: #f44336;
+            background: #222;
+            border: none;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        .mcq-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 3px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #404040;
+        }
+        .mcq-title {
+             color: #00a3e0;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .mcq-points {
+            color: #999999;
+            font-size: 14px;
+        }
+        #mcq-container .modal-close {
+            position: static;
+            background: #333333;
+            /* border: 1px solid #555555; */
+            /* border-radius: 6px; */
+            color: #ffffff;
+            /* padding: 8px 12px; */
+            font-size: 14px;
+            cursor: pointer;
+            z-index: auto;
+        }
+        /* #mcq-container .modal-close:hover {
+            background: #404040;
+        } */
+         #mcq-container .mcq-submit-btn {
+            background-color: #007acc;
+            border: 1px solid #007acc;
+            color: white;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 12px 40px;
+            margin-top: 0px;
+            margin-bottom: 0px;
+         }
+        #mcq-container .mcq-submit-btn:hover,
+        #mcq-container .modal-close:hover {
+            background-color: #005f99;
+            border-color: #005f99;
+        }
+        /* Code highlighting for MCQ content */
+        #mcq-container pre {
+            background-color: #1e1e1e;
+            border: 1px solid #404040;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            color: #d4d4d4;
+        }
+        #mcq-container code {
+            background-color: #2d2d2d;
+            border: 1px solid #404040;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
+            font-size: 13px;
+            color: #d4d4d4;
+        }
+        #mcq-container pre code {
+            background: transparent;
+            border: none;
+            padding: 0;
+            color: inherit;
+        }
+        /* Syntax highlighting colors */
+        #mcq-container .hljs-keyword {
+            color: #569cd6;
+        }
+        #mcq-container .hljs-string {
+            color: #ce9178;
+        }
+        #mcq-container .hljs-number {
+            color: #b5cea8;
+        }
+        #mcq-container .hljs-comment {
+            color: #6a9955;
+        }
+        #mcq-container .hljs-type {
+            color: #4ec9b0;
+        }
+        #mcq-container .hljs-function {
+            color: #dcdcaa;
+        }
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+        // Enhanced YouTube API loading detection and debugging
+        let ytApiLoaded = false;
+        let ytPlayerReady = false;
+        let VIDEO_ID = "{{ youtube_id }}"; // Will be set when template renders
+        let IFRAME_URL = "{{ iframe_url }}"
+        var videoCompleted = false; 
+        var csrf_token = ""
+        
+        // MCQ_QUESTIONS is set from the Jinja template variable 'mcqs'
+        const MCQ_QUESTIONS = {{ mcqs|tojson }}; 
+        console.log("MCQ_QUESTIONS value:", MCQ_QUESTIONS);
+
+        // This function is called automatically by YouTube when the API is ready
+        if (IFRAME_URL && IFRAME_URL.trim() !== "" && !IFRAME_URL.includes("{{") && !IFRAME_URL.includes("}}")) {
+            // If iframe_url is set, embed the iframe and skip YouTube API
+            document.addEventListener("DOMContentLoaded", function() {
+                const playerDiv = document.getElementById("player");
+                playerDiv.style.background = "#1a1a1a"
+                playerDiv.style.width = "100%";
+                playerDiv.style.height = "100%";
+                const wrapperDiv = document.createElement("div");
+                wrapperDiv.id = "iframe_player";
+                wrapperDiv.style.width = "100%";
+                wrapperDiv.style.height = "100%";
+                wrapperDiv.style.position = "relative";
+                wrapperDiv.style.background = "transparent";
+                while (playerDiv.firstChild) {
+                    wrapperDiv.appendChild(playerDiv.firstChild);
+                }
+                playerDiv.appendChild(wrapperDiv);                
+                wrapperDiv.classList.add("iframe-mode"); // Add class for iframe-specific styling
+                wrapperDiv.innerHTML = `<iframe src="${IFRAME_URL}" style='width: 100%; height: 100%;' id='media_iframe' frameborder="0" allowfullscreen loading='lazy' allow='geolocation *; microphone *; camera *; midi *; encrypted-media *; autoplay *; clipboard-write *; display-capture *'></iframe>`;
+                
+                // Add error handling for iframe loading
+                const iframe = document.getElementById("media_iframe");
+                iframe.onload = function() {
+                    console.log("Iframe loaded successfully");
+                };
+                iframe.onerror = function() {
+                    console.error("Failed to load iframe content");
+                    playerDiv.innerHTML = `<div style="color: red; text-align: center; padding: 20px;">
+                        Failed to load media content. This may be due to CORS restrictions or X-Frame-Options policy.
+                        <br><br>
+                        <a href="${IFRAME_URL}" target="_blank" style="color: #00a3e0;">Click here to open in a new tab</a>
+                    </div>`;
+                };
+                
+                const statusBar = document.getElementById("progress-container");
+                statusBar.style.display = "none"; // Hide the progress bar for iframe mode
+                
+                iframe.addEventListener("load", function() {
+                    try {
+                        const appContainers = iframe.contentWindow.document.querySelectorAll(".app-container");
+                        appContainers.forEach(container => {
+                            container.style.backgroundColor = "#1a1a1a";
+                        });
+                        console.log("@@@@@@@@@@@@@@@@@@ loaded iframe background attempt", e);
+                    } catch (e) {
+                        // Cross-origin, ignore
+                        console.log("***** Unable to access iframe contents for background color change:", e);
+                    }
+                });
+                console.log("Embedded iframe with URL:", IFRAME_URL);
+                
+            });
+            // Prevent further YouTube API initialization
+            window.onYouTubeIframeAPIReady = function() {};
+
+            if (Array.isArray(MCQ_QUESTIONS) && MCQ_QUESTIONS.length > 0) {
+                document.addEventListener("DOMContentLoaded", function() {
+                    videoCompleted = true; 
+                    const mcqModal = document.getElementById("mcq-container");                        
+                    mcqModal.style.display = "block";                
+                });
+            }
+            
+            loadChallengeData();
+            
+            
+        } else if (VIDEO_ID && VIDEO_ID.trim() !== "" && !VIDEO_ID.includes("{{") && !VIDEO_ID.includes("}}")) {
+           
+            // Proceed with YouTube API initialization
+            console.log("YouTube API will be initialized with video ID:", VIDEO_ID);
+            window.onYouTubeIframeAPIReady = function() {
+                console.log("YouTube API is ready!");
+                console.log("VIDEO_ID value:", VIDEO_ID);
+                ytApiLoaded = true;
+                
+                // Check if we have a valid video ID (more flexible validation)
+                if (!VIDEO_ID || VIDEO_ID.trim() === "" || VIDEO_ID.includes("{{") || VIDEO_ID.includes("}}")) {
+                    console.error("No valid YouTube video ID found:", VIDEO_ID);
+                    document.getElementById("level-info").innerHTML = "Error: No video ID provided. Please check the lecture configuration.";
+                    return;
+                }
+                
+                console.log("Creating YouTube player with video ID:", VIDEO_ID);
+                initializeYouTubePlayer();
+            };
+            
+            function initializeYouTubePlayer() {
+                try {
+                    player = new YT.Player("player", {
+                        height: "100%",
+                        width: "100%",
+                        videoId: VIDEO_ID,
+                        playerVars: {
+                            controls: 1,
+                            rel: 0,
+                            enablejsapi: 1,
+                            origin: window.location.origin
+                        },
+                        events: {
+                            onReady: onPlayerReady,
+                            onStateChange: onPlayerStateChange,
+                            onPlaybackRateChange: onPlayerPlaybackRateChange,
+                            onError: onPlayerError
+                        }
+                    });
+                    console.log("YouTube player created successfully");
+                } catch (error) {
+                    console.error("Error creating YouTube player:", error);
+                    document.getElementById("level-info").innerHTML = "Error creating video player. Please refresh the page.";
+                }
+            }
+            
+            function onPlayerError(event) {
+                console.error("YouTube player error:", event.data);
+                let errorMessage = "Video player error: ";
+                switch(event.data) {
+                    case 2:
+                        errorMessage += "Invalid video ID";
+                        break;
+                    case 5:
+                        errorMessage += "Video cannot be played in HTML5 player";
+                        break;
+                    case 100:
+                        errorMessage += "Video not found or private";
+                        break;
+                    case 101:
+                    case 150:
+                        errorMessage += "Video owner does not allow embedding";
+                        break;
+                    default:
+                        errorMessage += "Unknown error (" + event.data + ")";
+                }
+                document.getElementById("level-info").innerHTML = errorMessage + ". Please contact your instructor.";
+            }
+            
+            // Fallback check if YouTube API doesn't load within 5 seconds
+            setTimeout(function() {
+                if (!ytApiLoaded) {
+                    console.error("YouTube API failed to load within 5 seconds");
+                    document.getElementById("level-info").innerHTML = "Failed to load video player. Please check your internet connection and refresh the page.";
+                    
+                    // Try manual initialization as backup
+                    if (typeof YT !== "undefined" && YT.Player) {
+                        console.log("YouTube API available, trying manual initialization");
+                        ytApiLoaded = true;
+                        // Use the same improved validation
+                        if (VIDEO_ID && VIDEO_ID.trim() !== "" && !VIDEO_ID.includes("{{") && !VIDEO_ID.includes("}}")) {
+                            initializeYouTubePlayer();
+                        }
+                    }
+                }
+            }, 5000);
+            
+            // Additional check after DOM is loaded
+            document.addEventListener("DOMContentLoaded", function() {
+                console.log("DOM loaded, checking YouTube API status");
+                console.log("YT object:", typeof YT);
+                console.log("VIDEO_ID:", VIDEO_ID);
+                
+                setTimeout(function() {
+                    if (!ytPlayerReady && ytApiLoaded) {
+                        console.warn("YouTube API loaded but player not ready, checking...");
+                        if (typeof player === "undefined" || !player) {
+                            console.log("Player not initialized, attempting retry");
+                            // Use the same improved validation
+                            if (VIDEO_ID && VIDEO_ID.trim() !== "" && !VIDEO_ID.includes("{{") && !VIDEO_ID.includes("}}")) {
+                                initializeYouTubePlayer();
+                            }
+                        }
+                    }
+                }, 2000);
+            });
+        } else {
+            // If no valid video ID, show error and skip YouTube API
+            console.error("No valid YouTube video ID found:", VIDEO_ID);
+            document.getElementById("level-info").innerHTML = "Error: No video ID provided. Please check the lecture configuration.";
+        }
+        
+        
+        async function loadChallengeData() {
+            csrf_token = window.parent.init.csrfNonce
+            try {
+                const response = await fetch("/active-module", {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+                let data = await response.json();
+                console.log("Challenge data loaded:", data);
+                if (data.c_current) {
+                    curChal = data.c_current;    
+                }
+                if (data.c_next) {
+                    nextChal = data.c_next;                    
+                }
+            } catch (error) {
+                console.log("Error loading challenge data:", error);
+            }
+            
+            const levelInfo = document.getElementById("level-info");
+            if (curChal && curChal.challenge_name && curChal.module_name) {
+                console.log("Current challenge:", curChal);                
+                levelInfo.innerHTML = `
+                    ${curChal.challenge_name}  <span style='font-size:1.3rem'>(${curChal.module_name})</span>
+                `;
+            } else {
+                levelInfo.innerHTML = `Failed to load challenge information...`;
+            }            
+        }
+    </script>
 </head>
 <body>
+    
+    <div id="level-info">
+        Loading challenge information...
+    </div>
+    <script>
+        // Show error if challenge info doesn't load in 10 seconds
+        setTimeout(function() {
+            var levelInfo = document.getElementById("level-info");
+            if (levelInfo && levelInfo.textContent.trim().startsWith("Loading challenge")) {
+            levelInfo.innerHTML = "Failed to load lecture information. Please refresh the page and try again. The page will refresh automatically in 5 seconds.";
+            setTimeout(function() {
+                location.reload();
+            }, 5000);
+            }
+        }, 7000);
+    </script>
     <div id="player-container">
         <div id="player"></div>
     </div>
     <div id="progress-container">
         <div id="progress-bar"></div>
     </div>
-    <div id="mcq-container" >
-        <div id="mcq-border" >
-            <button class="modal-close" onclick="document.getElementById('mcq-container').style.display='none'">&times;</button>
-            <form method="dialog" id="mcq-form">
-                <div class="mcq-field" style="text-align: left;">
-                    <div id="mcq-question" style="text-align: left;">
-                        {{ mcq_question }}
-                    </div>
-                    <div id="mcq-options" class="mcq-options" style="align-items: flex-start;"></div>
-                        {% for option in mcq_options %}
-                        <div>
-                            <label>
-                                <input type="radio" name="mcq_answer" value="{{ option.value }}">
-                                {{ option.text }}
-                            </label>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    <button type="submit" class="field-submit" style="margin-top: 15px;">Submit</button>
+    
+    <div id="mcq-container">
+        <div id="mcq-border">
+            <div class="mcq-header">
+                <h2 class="mcq-title">Knowledge Check Questions</h2>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button class="modal-close" onclick="document.getElementById('mcq-container').style.display='none'">&times;</button>
                 </div>
+            </div>
+            <form method="dialog" id="mcq-form">
+                <input type="hidden" name="pwnid" id="pwnid" value="">                
+                <div class="mcq-fields-flex">
+                    {% for mcq in mcqs %}
+                    <div class="mcq-field" id="mcq-field-{{ mcq.id }}">
+                        <div class="mcq-incorrect" id="mcq-incorrect-{{ mcq.id }}"></div>
+                        <div class="mcq-question" id="mcq-question-{{ mcq.id }}">
+                            <span id="mcq-question-incorrect-{{ mcq.id }}" style="color: red; display: none; font-size: 2em; vertical-align: middle;">❌</span>
+                            <span id="mcq-question-correct-{{ mcq.id }}" style="color: green; display: none; font-size: 2em; vertical-align: middle;">✅</span>
+                            {{ mcq.question|safe }}
+                        </div>
+                        <div class="mcq-options" id="mcq-options-{{ mcq.id }}">
+                            {% for option in mcq.options %}
+                            {% set option_letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[loop.index0] %}
+                            <label>
+                                <input type="radio" name="mcq_answer_{{ mcq.id }}" value="{{ option.value }}">
+                                <span class="option-letter">{{ option_letter }}</span>
+                                <span class="option-text">{{ option.text|safe }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="field-submit mcq-submit-btn" >Submit</button>
             </form>
         </div>
-    </dialog>
+    </div>
+    
+    <style>
+        
+    </style>
+    <div id="flag-submitted-modal" class="modal">
+        <button id="flag-submitted-close" class="modal-close">&times;</button>
+        <div class="modal-field">
+            Flag submitted successfully!
+        </div>
+    </div>
     <dialog id="flag-modal" class="modal">
         <button class="modal-close" onclick="document.getElementById('flag-modal').close()">&times;</button>
         <div class="modal-field">
@@ -200,10 +702,18 @@
             Loading next challenge, please wait...
         </div>
     </dialog>
+    
     <script>
         
-        const MCQ_QUESTION = "{{ mcq_question }}";
-       
+        
+        // Set the value of the hidden input to window.parent.init.userId if available
+        document.addEventListener("DOMContentLoaded", function() {
+            var userId = window.parent && window.parent.init && window.parent.init.userId;
+            if (userId) {
+                document.getElementById("pwnid").value = userId;
+            }
+        });
+
         document.getElementById('mcq-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             if (!videoCompleted){
@@ -214,31 +724,60 @@
                 return;
             }
             console.log("Submitting MCQ answer...");
-            const answer = document.querySelector('input[name="mcq_answer"]:checked');
-            if (!answer) {
-                const messageModal = document.getElementById("message-modal-content");
-                const modalField = messageModal.querySelector('.modal-field');
-                modalField.textContent = "Please select an answer before submitting.";
-                messageModal.showModal();
-                return;
-            }
+            const form = event.target;
+            const question_responses = [];
+
+            // For each group of radio buttons (one per MCQ)
+            const mcqFields = form.querySelectorAll('.mcq-field');
+            mcqFields.forEach(field => {
+                const mcqId = field.id.replace('mcq-field-', '');
+                const answer = field.querySelector('input[type="radio"]:checked');
+                if (answer) {
+                    question_responses.push({
+                        question_id: mcqId,
+                        answer: answer.value
+                    });                    
+                } else {
+                    const messageModal = document.getElementById("message-modal-content");
+                    const modalField = messageModal.querySelector('.modal-field');
+                    modalField.textContent = "Please select an answer for each question before submitting.";
+                    messageModal.showModal();
+                    return;
+                }                    
+            });
+            
             fetch("knowledge_check", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    answer_value: answer.value
+                    responses: question_responses
                 })
             })
             .then(response => response.json())
             .then(data => {                
-                
+                if (data.question_eval) {
+                    console.log(data.question_eval);
+                    Object.entries(data.question_eval).forEach(([mcqId, value]) => {
+                        const incorrectIcon = document.getElementById(`mcq-question-incorrect-${mcqId}`);
+                        const correctIcon = document.getElementById(`mcq-question-correct-${mcqId}`);
+                        if (value.status === "incorrect") {
+                            if (incorrectIcon) incorrectIcon.style.display = "";
+                            if (correctIcon) correctIcon.style.display = "none";
+                        } else if (value.status === "correct") {
+                            if (correctIcon) correctIcon.style.display = "";
+                            if (incorrectIcon) incorrectIcon.style.display = "none";
+                        }
+                    });
+                }
                 if (data.status === "correct") {
+                    document.querySelectorAll('.mcq-incorrect').forEach(el => el.style.display = "none");
+                    document.querySelectorAll('.mcq-correct').forEach(el => el.style.display = "inline");
                     const flagModal = document.getElementById("flag-modal");
                     const flagText = document.getElementById("flag-text");
                     flagText.textContent = data.flag;
-                    flagModal.showModal();
+                    flagModal.showModal();                    
                     return;
                 }
                 if (data.status === "incorrect") {                    
@@ -255,6 +794,8 @@
                         }
                     }
                     incorrectModal.showModal();
+                    // data.question_eval = {"question_0": {"status": "incorrect", "message": "Incorrect answer. Please try again."}}]
+                    
                     return;
                 }
             })
@@ -294,7 +835,11 @@
         }
         function submitFlag(){
             const flagText = document.getElementById("flag-text").textContent;
-            /*{challenge_id: "17289", submission: "asdfasdf"} */            
+            /*{challenge_id: "17289", submission: "asdfasdf"} */       
+            const loadingModal = document.getElementById("loading-modal");
+            loadingModal.querySelector('.loading-field').textContent = "Submitting flag, please wait...";
+            loadingModal.showModal();     
+            console.log("csrf_token=", csrf_token);
             return fetch("/api/v1/challenges/attempt", {
                 method: "POST",
                 headers: {
@@ -302,7 +847,7 @@
                     "Csrf-Token": csrf_token
                 },
                 body: JSON.stringify({ 
-                    challenge_id: current_challenge_id,
+                    challenge_id: curChal.challenge_id,     // 17360
                     submission: flagText
                  })
             }).then(response => response.json())
@@ -310,27 +855,49 @@
                 console.log(data);
                 success = data.success;
                 data = data.data; 
-                if (data.status === "correct") {
-                    alert("Flag submitted successfully!");
+                loadingModal.close();
+                // Show the flag submitted message modal at the top of the frame
+                const flagSubmittedModal = document.getElementById("flag-submitted-modal");
+                flagSubmittedModal.style.display = "flex";
+                // Hide modal when X is clicked
+                document.getElementById("flag-submitted-close").onclick = () => {
+                    flagSubmittedModal.style.display = "none";
+                };
+                const flagModal = document.getElementById("flag-modal");
+                if (data && data.status === "correct") {
+                    flagSubmittedModal.querySelector('.modal-field').textContent = "Flag submitted successfully!";
+                    flagModal.close();
                     return true;
-                } else if (data.status ==="already_solved") {
-                    alert("Already submitted this flag.");
+                } else if (data && data.status ==="already_solved") {
+                    flagSubmittedModal.querySelector('.modal-field').textContent = "Already submitted this flag.";                    
+                    flagSubmittedModal.classList.add("warning");                 
+                    flagModal.close();
                     return true;
-                } else {
-                    alert("Error submitting flag: " + data.message + ". Please try to submit the flag manually.");
+                } else if (data) {
+                    flagSubmittedModal.querySelector('.modal-field').textContent = "Error submitting flag: " + data.message + ". Please try to submit the flag manually.";                    
+                    flagSubmittedModal.classList.add("error");   
                     return false;
+                } else {
+                    
                 }
             }).catch(error => {
-                console.error("Error:", error);
-                alert("An error occurred while submitting the flag. Please try again.");
+                const flagSubmittedModal = document.getElementById("flag-submitted-modal");
+                flagSubmittedModal.style.display = "flex";
+                flagSubmittedModal.querySelector('.modal-field').textContent = "An error occurred while submitting flag ";                    
+                flagSubmittedModal.classList.add("error");   
+                console.log("Error:", error);
+                //alert("An error occurred while submitting the flag. Please try again.");
                 return false;
             });
         }
         function loadNextChallenge() {
-            if (next_challenge_id && next_challenge_name && dojo && dojo_module) {
+            if (nextChal) {
+                const flagSubmittedModal = document.getElementById("flag-submitted-modal");
+                flagSubmittedModal.style.display = "none";                 
                 const loadingModal = document.getElementById("loading-modal");
+                loadingModal.querySelector('.loading-field').textContent = `Loading next challenge: ${nextChal.challenge_name}, please wait...`;
                 loadingModal.showModal();
-                console.log("Starting load of next challenge:", next_challenge_id, next_challenge_name, dojo, dojo_module);
+                console.log("Starting load of next challenge:", nextChal.challenge_name, nextChal.dojo_reference_id, nextChal.module_id);
                 fetch("/pwncollege_api/v1/docker", {
                     method: "POST",
                     headers: {
@@ -338,9 +905,9 @@
                         "Csrf-Token": csrf_token
                     },
                     body: JSON.stringify({
-                        challenge: next_challenge_name,
-                        dojo: dojo,
-                        module: dojo_module,
+                        challenge: nextChal.challenge_reference_id, // lec-2-1-3-2-function-params-and-
+                        dojo: nextChal.dojo_reference_id,           // cse240-fc25~e7a1867c
+                        module: nextChal.module_id,                 // 2-1-ll-c-intro-vars
                         practice: false
                     })
                 }).then(response => response.json())
@@ -367,47 +934,48 @@
         document.getElementById('submit-flag-next-btn').addEventListener('click', function() {
             submitFlag().then((result) => {
                 if (result) {
-                    loadNextChallenge();
+                    setTimeout(loadNextChallenge, 2000);
                 }                
             });            
         });
     </script>
     <script>
-        const VIDEO_ID = "{{ youtube_id }}";
-        var csrf_token = ""
+        
         var player;
         var interval;
-        var flag;
-        var videoCompleted = false; 
-        var next_challenge_id = "", 
-               next_challenge_name = "",
-               dojo = "",
-               dojo_module = "";
+        var flag;        
+        var nextChal={}, curChal={};
 
-        function onYouTubeIframeAPIReady() {
-            player = new YT.Player("player", {
-                height: "100%",
-                width: "100%",
-                videoId: VIDEO_ID,
-                playerVars: {
-                    controls: 1,
-                    rel: 0,
-                },
-                events: {
-                    onReady: onPlayerReady,
-                    onStateChange: onPlayerStateChange,
-                    onPlaybackRateChange: onPlayerPlaybackRateChange,
+        function onPlayerReady(event) {
+            console.log("YouTube player is ready!");
+            ytPlayerReady = true;
+            
+            interval = setInterval(() => {
+                if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                    telemetry("interval");
                 }
-            });
+            }, 10000);
+            
+            // Try to play the video
+            try {
+                player.playVideo();
+                console.log("Video playback started");
+            } catch (error) {
+                console.error("Error starting video playback:", error);
+            }
+
+            loadChallengeData();
         }
 
         function telemetry(reason) {
+            console.log(`Telemetry event: ${reason}, ${window.parent.init.userId}`);
             return fetch("telemetry", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
+                    userId: window.parent.init.userId,
                     reason: reason,
                     player: {
                         state: player.getPlayerState(),
@@ -479,78 +1047,72 @@
                 }
             });
         }
-        
-        function onPlayerReady(event) {
-            interval = setInterval(() => {
-                if (player.getPlayerState() === YT.PlayerState.PLAYING) {
-                    telemetry("interval");
+        /*
+            {
+                "c_current": {
+                    "challenge_id": 17360,
+                    "challenge_name": "2.1.3.1. Globals & Locals",
+                    "challenge_reference_id": "lec-2-1-3-1-globals-locals",
+                    "description": "\u003Cp\u003ELecture video on Globals &amp; Locals\u003C/p\u003E",
+                    "dojo_name": "CSE240-FC25 - Introduction to Programming Languages",
+                    "dojo_reference_id": "cse240-fc25~e7a1867c",
+                    "module_id": "2-1-ll-c-intro-vars",
+                    "module_name": "2.1 C Intro and Vars LecLabs"
+                },
+                "c_next": {
+                    "challenge_id": 17361,                                         // old challenge_id  (same)
+                    "challenge_name": "2.1.3.2. Function Params and Ret Vals ",
+                    "challenge_reference_id": "lec-2-1-3-2-function-params-and-",  // old challenge and next_challenge_name
+                    "description": null,
+                    "dojo_name": "CSE240-FC25 - Introduction to Programming Languages",
+                    "dojo_reference_id": "cse240-fc25~e7a1867c",                  // old dojo 
+                    "module_id": "2-1-ll-c-intro-vars",                           // old module and dojo_module
+                    "module_name": "2.1 C Intro and Vars LecLabs"
+                },
+                "c_previous": {
+                    "challenge_id": 17359,
+                    "challenge_name": "2.1.3. Dec & Def Functions",
+                    "challenge_reference_id": "lec-2-1-3-dec-def-functions",
+                    "description": null,
+                    "dojo_name": "CSE240-FC25 - Introduction to Programming Languages",
+                    "dojo_reference_id": "cse240-fc25~e7a1867c",
+                    "module_id": "2-1-ll-c-intro-vars",
+                    "module_name": "2.1 C Intro and Vars LecLabs"
                 }
-            }, 10000);
-            player.playVideo();
-
-            let current_element = window.parent.document.getElementById('current');
-            if (current_element){
-                current_challenge_id = current_element.querySelector('#challenge-id').value;
-                console.log(`current_challenge_id=${current_challenge_id}`);
-            } else {
-                console.log("No current challenge element found.")
             }
-            
-            let next_element = window.parent.document.getElementById('next');
-            if (next_element){
-                next_challenge_id = next_element.querySelector('#challenge-id').value;
-                next_challenge_name = next_element.querySelector('#challenge').value;
-                dojo = next_element.querySelector('#dojo').value;
-                dojo_module = next_element.querySelector('#module').value;
-                console.log(`next_challenge_id=${next_challenge_id}`);
-                console.log(`next_challenge_name=${next_challenge_name}`);
-                console.log(`dojo=${dojo}`);
-                console.log(`dojo_module=${dojo_module}`);   
-                csrf_token = window.parent.init.csrfNonce             
-            } else {
-                console.log("No next challenge element found.");
-                document.getElementById("submit-flag").style.display = "none";
-                document.getElementById("submit-flag-next-btn").style.display = "none";
-            }
-
-            // const loadingModal = document.getElementById("loading-modal");
-            // loadingModal.showModal();
-            // fetch("/workspace/code",{
-            //     method: "GET",                
-            // })
-            // .then( rtest =>{
-            //     console.log(rtest);
-            //     tryConnect();
-            // })
-            
-            // const flagModal = document.getElementById("flag-modal");
-            // const flagText = document.getElementById("flag-text");
-            // flagText.textContent = "pwn.college{nadaflag}";
-            // flagModal.showModal();
-            // UNSTARTED=-1, ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3, CUED=5
-            // console.log(`UNSTARTED=${YT.PlayerState.UNSTARTED}, ENDED=${YT.PlayerState.ENDED}, PLAYING=${YT.PlayerState.PLAYING}, PAUSED=${YT.PlayerState.PAUSED}, BUFFERING=${YT.PlayerState.BUFFERING}, CUED=${YT.PlayerState.CUED}`);
-        }
+        */
+        
 
         function onPlayerStateChange(event) {
+            console.log("Player state changed to:", event.data);
+            
             telemetry("player-state-change").then(() => {
                 if (videoCompleted && event.data === YT.PlayerState.ENDED){
-                    if (MCQ_QUESTION.length > 3) {
+                    console.log("Video completed and ended, checking for MCQ questions");
+                    if (MCQ_QUESTIONS && MCQ_QUESTIONS.length > 0) {
                         const mcqModal = document.getElementById("mcq-container");
+                        console.log("Video completed, showing MCQ modal.");
+                        console.log(mcqModal);
                         mcqModal.style.display = "block";
                     } else if (flag) {
+                        console.log("No MCQ questions, showing flag modal");
                         const flagModal = document.getElementById("flag-modal");
                         const flagText = document.getElementById("flag-text");
                         flagText.textContent = flag;
                         flagModal.showModal();
                     } else {
+                        console.log("No MCQ questions and no flag found");
                         alert("The video has ended but flag was not found.");
                     }
                 } else if (event.data === YT.PlayerState.ENDED) { // video not completed, not enough watch time
+                    console.log("Video ended but not completed (insufficient watch time)");
                     const incorrectModal = document.getElementById("message-modal-content");
                     const modalField = incorrectModal.querySelector('.modal-field');
-                    modalField.textContent = "ERROR: The video has ended but it appears your fast-forwarded through it. Please refresh the page and watch the video in full to obtain the flag (you may increase the video speed)."
+                    modalField.textContent = "ERROR: The video has ended but it appears you fast-forwarded through it. Please refresh the page and watch the video in full to obtain the flag (you may increase the video speed)."
                     incorrectModal.showModal();
                 }     
+            }).catch(error => {
+                console.error("Error in telemetry call:", error);
             });
             switch (event.data) {
                 case YT.PlayerState.UNSTARTED:
