@@ -20,6 +20,7 @@ declare -A statuses
 
 # Start all scripts in parallel
 for script in "${scripts[@]}"; do
+  touch "$script"  # Ensure the script exists
   echo "🔄 Running: $script"
   "$script" &
   pids["$script"]=$!
