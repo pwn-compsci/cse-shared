@@ -7,6 +7,14 @@ scripts=(
   # Add more paths here as needed
 )
 
+# Change to the directory of this script
+cd "$(dirname "$0")" || exit 1
+
+# Git add, commit, and push
+git add .
+git commit -m "Update dojo scripts"
+git push
+
 declare -A pids
 declare -A statuses
 

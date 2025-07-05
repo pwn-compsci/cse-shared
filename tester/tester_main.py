@@ -964,7 +964,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
 
     other_compile_args = test_json.get("otherCompileArgs", [])    
     if len(other_compile_args) > 0:
-        compile_program(source_dir, other_compile_args=other_compile_args, alt_target_name=test_json.get("altTargetName", None), alt_target_path=test_json.get("altTargetPath", "altmain.bin"))
+        compile_program(source_dir, other_compile_args=other_compile_args, alt_target_path=test_json.get("altTargetPath", "altmain.bin"))
 
     if target_path is None:
         target_filename = test_json.get("target", "main.bin")
