@@ -740,7 +740,7 @@ if [ "$admin_access" = true ]; then
     
     # Add any additional admin-specific commands here
 else
-    rm -f /challenge/startup.log 
+   # rm -f /challenge/startup.log 
     # set chmod on important files that will be deleted by .bginit
     find "$base_dir" -type f \( -name model -o -name .levelinit -o -name .init -o -name .bginit -o -path "$base_dir/system_tests/main.bin" \) -exec chmod 700 {} +
     rm -f /usr/bin/vim.basic /run/workspace/bin/vim /run/dojo/bin/vim
