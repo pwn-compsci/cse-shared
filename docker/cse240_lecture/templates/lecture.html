@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lecture</title>
-    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
     <style>
-        :root {
+        :root { 
             --progress-bar-height: 20px;
         }
         html, body {
@@ -14,6 +16,47 @@
             margin: 0;
             display: flex;
             flex-direction: column;
+            overflow: hidden; /* Prevent page-level scrolling */
+        }
+        
+        /* Main container for responsive layout */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0; /* Allow flex shrinking */
+            height: 100%; /* Ensure it fills the available space exactly */
+            overflow: hidden; /* Prevent overflow at this level */
+        }
+        
+        /* In vertical layout, make player-and-status grow to fill available space */
+        .player-and-status {
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* Grow to fill available space */
+            min-height: 0; /* Allow flex shrinking */
+        }
+        
+        /* When height < 1080px, switch to side-by-side layout */
+        @media (max-height: 1079px) {
+            .main-content {
+                flex-direction: row;
+            }
+            
+            .player-and-status {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-width: 0; /* Allow flex shrinking */
+                border-right: 1px solid #666; /* Debug border */
+            }
+            
+            #mcq-container {
+                flex: 0 0 400px; /* Fixed width for MCQ container */
+                max-height: none; /* Remove max-height restriction */
+                border-top: none;
+                border-left: 2px solid #404040;
+            }
         }
         #level-info {
             padding: 10px;
@@ -54,10 +97,37 @@
             display: none;
             width: 100%;
             background: #1a1a1a;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
             border-top: 2px solid #404040;
-            max-height: 50vh;
             overflow-y: auto;
+            /* In vertical layout, use a more conservative max-height */
+            max-height: 40vh; /* Conservative height to prevent page overflow */
+        }
+        
+        /* Responsive layout adjustments */
+        @media (max-height: 1079px) {
+            #mcq-container {
+                max-height: 100vh; /* Full height in horizontal layout */
+                width: 400px; /* Fixed width in horizontal layout */
+                border-top: none;
+                border-left: 2px solid #404040;
+            }
+            
+            .mcq-fields-flex {
+                flex-direction: column; /* Stack questions vertically in sidebar */
+            }
+            
+            .mcq-field {
+                max-width: 100%; /* Use full width of sidebar */
+                flex: 1 1 auto;
+            }
+        }
+        
+        /* Ensure proper spacing and layout for smaller screens */
+        @media (max-height: 1079px) and (max-width: 1200px) {
+            #mcq-container {
+                width: 350px; /* Narrower on smaller screens */
+            }
         }
         #mcq-border {
             background-color: #1a1a1a;
@@ -607,6 +677,8 @@
     
     <div id="level-info">
         Loading challenge information...
+        <!-- <button onclick="toggleMCQForTesting()" style="margin-left: 20px; padding: 5px 10px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer;">Toggle MCQ (Test)</button> -->
+        <!-- <span id="responsive-mode-indicator" style="margin-left: 20px; padding: 5px 10px; background: #333; color: #00a3e0; border-radius: 4px; font-size: 12px;"></span> -->
     </div>
     <script>
         // Show error if challenge info doesn't load in 10 seconds
@@ -620,47 +692,52 @@
             }
         }, 7000);
     </script>
-    <div id="player-container">
-        <div id="player"></div>
-    </div>
-    <div id="progress-container">
-        <div id="progress-bar"></div>
-    </div>
-    
-    <div id="mcq-container">
-        <div id="mcq-border">
-            <div class="mcq-header">
-                <h2 class="mcq-title">Knowledge Check Questions</h2>
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <button class="modal-close" onclick="document.getElementById('mcq-container').style.display='none'">&times;</button>
-                </div>
+     
+    <div class="main-content">
+        <div class="player-and-status">
+            <div id="player-container">
+                <div id="player"></div>
             </div>
-            <form method="dialog" id="mcq-form">
-                <input type="hidden" name="pwnid" id="pwnid" value="">                
-                <div class="mcq-fields-flex">
-                    {% for mcq in mcqs %}
-                    <div class="mcq-field" id="mcq-field-{{ mcq.id }}">
-                        <div class="mcq-incorrect" id="mcq-incorrect-{{ mcq.id }}"></div>
-                        <div class="mcq-question" id="mcq-question-{{ mcq.id }}">
-                            <span id="mcq-question-incorrect-{{ mcq.id }}" style="color: red; display: none; font-size: 2em; vertical-align: middle;">❌</span>
-                            <span id="mcq-question-correct-{{ mcq.id }}" style="color: green; display: none; font-size: 2em; vertical-align: middle;">✅</span>
-                            {{ mcq.question|safe }}
-                        </div>
-                        <div class="mcq-options" id="mcq-options-{{ mcq.id }}">
-                            {% for option in mcq.options %}
-                            {% set option_letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[loop.index0] %}
-                            <label>
-                                <input type="radio" name="mcq_answer_{{ mcq.id }}" value="{{ option.value }}">
-                                <span class="option-letter">{{ option_letter }}</span>
-                                <span class="option-text">{{ option.text|safe }}</span>
-                            </label>
-                            {% endfor %}
-                        </div>
+            <div id="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+        </div>
+        
+        <div id="mcq-container">
+            <div id="mcq-border">
+                <div class="mcq-header">
+                    <h2 class="mcq-title">Knowledge Check Questions</h2>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <button class="modal-close" onclick="document.getElementById('mcq-container').style.display='none'">&times;</button>
                     </div>
-                    {% endfor %}
                 </div>
-                <button type="submit" class="field-submit mcq-submit-btn" >Submit</button>
-            </form>
+                <form method="dialog" id="mcq-form">
+                    <input type="hidden" name="pwnid" id="pwnid" value="">                
+                    <div class="mcq-fields-flex">
+                        {% for mcq in mcqs %}
+                        <div class="mcq-field" id="mcq-field-{{ mcq.id }}">
+                            <div class="mcq-incorrect" id="mcq-incorrect-{{ mcq.id }}"></div>
+                            <div class="mcq-question" id="mcq-question-{{ mcq.id }}">
+                                <span id="mcq-question-incorrect-{{ mcq.id }}" style="color: red; display: none; font-size: 2em; vertical-align: middle;">❌</span>
+                                <span id="mcq-question-correct-{{ mcq.id }}" style="color: green; display: none; font-size: 2em; vertical-align: middle;">✅</span>
+                                {{ mcq.question|safe }}
+                            </div>
+                            <div class="mcq-options" id="mcq-options-{{ mcq.id }}">
+                                {% for option in mcq.options %}
+                                {% set option_letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[loop.index0] %}
+                                <label>
+                                    <input type="radio" name="mcq_answer_{{ mcq.id }}" value="{{ option.value }}">
+                                    <span class="option-letter">{{ option_letter }}</span>
+                                    <span class="option-text">{{ option.text|safe }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="field-submit mcq-submit-btn" >Submit</button>
+                </form>
+            </div>
         </div>
     </div>
     
@@ -713,6 +790,21 @@
                 document.getElementById("pwnid").value = userId;
             }
         });
+
+        // Add resize handler for responsive layout
+        window.addEventListener("resize", function() {
+            // Force reflow to ensure CSS media queries are re-evaluated
+            // This helps with dynamic layout changes
+            const mcqContainer = document.getElementById('mcq-container');
+            if (mcqContainer && mcqContainer.style.display === 'block') {
+                // Briefly hide and show to force layout recalculation
+                mcqContainer.style.display = 'none';
+                requestAnimationFrame(() => {
+                    mcqContainer.style.display = 'block';
+                });
+            }
+        });
+
 
         document.getElementById('mcq-form').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -1143,7 +1235,7 @@
         function onPlayerPlaybackRateChange(event) {
             telemetry("playback-rate-change");
         }
-
+ 
         document.addEventListener("visibilitychange", () => telemetry("document-visibility-change"));
         document.addEventListener("fullscreenchange", () => telemetry("fullscreen-change"));
     </script>

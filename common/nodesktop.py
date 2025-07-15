@@ -27,7 +27,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run():
     server_address = ("0.0.0.0", 6080)
     httpd = HTTPServer(server_address, SimpleHandler)
-    print("Serving 'Desktop not enabled' on http://0.0.0.0:8080")
+    print("Serving 'Desktop not enabled'")
     httpd.serve_forever()
 
 if __name__ == "__main__":

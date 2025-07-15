@@ -1573,6 +1573,11 @@ def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_se
     module_num, level_num, test_num = extract_numbers(ut)
     model_good = os.path.join(CHALLENGE_DIR, "modelGood.bin")
     model_bad = os.path.join(CHALLENGE_DIR, f"modelBad{module_num}.{level_num}.{test_num}.bin")
+    
+    if not os.path.exists(model_bad):
+        # Format level_num with a leading zero if less than 10
+        level_num_str = f"{level_num:02d}"
+        model_bad = os.path.join(CHALLENGE_DIR, f"modelBad{module_num}.{level_num_str}.{test_num}.bin")
 
     # the expectation is that the test will fail when running with model_bad, so we invert using expect_failure
     if run_test(source_dir, os.path.dirname(ut), ut, model_bad, expect_failure=True, case_sensitive=case_sensitive):

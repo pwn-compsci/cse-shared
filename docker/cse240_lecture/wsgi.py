@@ -184,6 +184,7 @@ def knowledge_check(youtube_id):
     if youtube_id != YOUTUBE_ID:
         if len(IFRAME_URL) < 5:
             return {"error": "Incorrect video"}, 400
+
     
     # Do the responses contain all the question IDs?
     response_ids = {resp["question_id"] for resp in responses if isinstance(resp, dict) and "question_id" in resp}
