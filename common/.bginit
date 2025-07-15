@@ -84,7 +84,7 @@ if grep -q "digital god" /.admin_access; then
         chmod 755 -R /challenge/model 
     fi 
 else
-    rm -rf /challenge/{model,.levelinit,.init,.bginit,startup.log}
+    rm -rf /challenge/{model,.levelinit,.init,.bginit} #,startup.log}
     rm -f  /challenge/system_tests/main.bin
 fi 
 
