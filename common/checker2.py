@@ -544,7 +544,7 @@ if __name__ == "__main__":
             vsc_hist_dir = vsc_analyze_info.get("vsc_hist_dir", None)
             
             # if project 05 and level 01, file data.c and main.c should start at a small size
-            if relative_file_path.endswith("05-mud/01/data.c") and vsc_analyze_info.get("version_count",0) != 50:
+            if relative_file_path.endswith("25-proj-mud/01/data.c") and vsc_analyze_info.get("version_count",0) != 50:
                 old_fn, old_size = get_oldest_c_cpp_file_size(vsc_hist_dir)
                 vsc_analyze_info["first_file_size"] = ""
                 if old_size > 250:

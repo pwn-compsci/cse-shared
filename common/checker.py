@@ -318,8 +318,8 @@ def get_prior_level_path(path):
 
 def get_last_level_equiv_file(abs_file_path):
 
-    if "05-mud" in abs_file_path:
-        if "05-mud/01" not in abs_file_path: # avoid first level file
+    if "25-proj-mud" in abs_file_path:
+        if "25-proj-mud/01" not in abs_file_path: # avoid first level file
             prior_level_file_path = get_prior_level_path(abs_file_path)
             #print (f"{prior_level_file_path=}")
             if (os.path.exists(prior_level_file_path)):
@@ -328,7 +328,7 @@ def get_last_level_equiv_file(abs_file_path):
     if "06-mudshop" in abs_file_path:
         if "06-mudshop/01" in abs_file_path: # get from prior project
             abs_filename = os.path.basename(abs_file_path).replace("cpp", "c")
-            prior_project_path = os.path.dirname(abs_file_path).replace("06-mudshop/01", "05-mud")
+            prior_project_path = os.path.dirname(abs_file_path).replace("06-mudshop/01", "25-proj-mud")
             max_dir = max_numerical_subdir(prior_project_path)
             prior_project_path = os.path.join(prior_project_path, max_dir, abs_filename)
             if (os.path.exists(prior_project_path)):
@@ -846,14 +846,14 @@ def analyze_first_file_size(abs_file_path, version_count, vsc_hist_dir, vsc_disp
                 first_file_size_message += f" \033[38;5;202mCODE COMMENT NOT FOUND\033[0m"
     
     # mud check data.c
-    if abs_file_path.endswith("05-mud/01/data.c"):
+    if abs_file_path.endswith("25-proj-mud/01/data.c"):
         old_fn, old_size = get_oldest_c_cpp_file_size(vsc_hist_dir)
         if old_size > 250:
             display_fn = os.path.join(vsc_display_his_dir, os.path.basename(old_fn))
             first_file_size_message = f"\t\tWARN: \033[38;5;202mFirst file {display_fn} is unusually large at {old_size} bytes\033[0m"   
 
     # mud check level 3, operations.c
-    if abs_file_path.endswith("05-mud/03/operations.c") :
+    if abs_file_path.endswith("25-proj-mud/03/operations.c") :
         old_fn, old_size = get_oldest_c_cpp_file_size(vsc_hist_dir)
         if old_size > 250:
             display_fn = os.path.join(vsc_display_his_dir, os.path.basename(old_fn))
@@ -907,8 +907,8 @@ def run_analysis(pid, sid, analyze_files, show_all_diffs, save_tar):
             if vsc_analyze_info.get("version_count",0) == 1:
                 if (relative_file_path.endswith("03-c-chars/06/main.c") or
                     relative_file_path.endswith("04-c-pigl/01/main.c") or relative_file_path.endswith("04-c-pigl/02/main.c") or relative_file_path.endswith("04-c-pigl/03/main.c") or relative_file_path.endswith("04-c-pigl/04/main.c") or
-                    relative_file_path.endswith("05-mud/01/data.c") or relative_file_path.endswith("05-mud/01/main.c") or
-                    relative_file_path.endswith("05-mud/03/operations.c") or 
+                    relative_file_path.endswith("25-proj-mud/01/data.c") or relative_file_path.endswith("25-proj-mud/01/main.c") or
+                    relative_file_path.endswith("25-proj-mud/03/operations.c") or 
                     relative_file_path.endswith("06-mudshop/02/shop.cpp")
                 ):
                     show_version_count_as_warning = True 
@@ -916,7 +916,7 @@ def run_analysis(pid, sid, analyze_files, show_all_diffs, save_tar):
             show_large_message_as_warning = False 
             if len(vsc_analyze_info.get("large_message","")) > 0 :
                 if (relative_file_path.endswith("04-c-pigl/01/main.c") or
-                    relative_file_path.endswith("05-mud/01/data.c") or relative_file_path.endswith("05-mud/01/main.c") or relative_file_path.endswith("05-mud/03/operations.c") or 
+                    relative_file_path.endswith("25-proj-mud/01/data.c") or relative_file_path.endswith("25-proj-mud/01/main.c") or relative_file_path.endswith("25-proj-mud/03/operations.c") or 
                     relative_file_path.endswith("06-mudshop/01/shop.cpp") or
                     relative_file_path.endswith("06-mudshop/02/shop.cpp")
                 ):

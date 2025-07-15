@@ -23,7 +23,7 @@ def delete_directories_with_entry(base_path, target_entry):
 
 # Define the path and target entry
 history_dir = '/home/hacker/.local/share/code-server/User/History'
-target_resource_entry = ['cse240/05-mud/', 'cse240/06-mudshop','cse240/07-pokemud','cse240/09-scheme','cse240/10-prolog','cse240/44-revit-shiftit-groupit']
+target_resource_entry = ['cse240/25-proj-mud/', 'cse240/06-mudshop','cse240/07-pokemud','cse240/09-scheme','cse240/10-prolog','cse240/44-revit-shiftit-groupit']
 
 # Call the function
 for tre in target_resource_entry:

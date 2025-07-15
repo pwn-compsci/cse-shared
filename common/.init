@@ -589,7 +589,7 @@ if [ -f /challenge/system_tests/items.json ]; then
     cp /challenge/system_tests/{items.json,rooms.json} $clevel_work_dir    
 fi 
 
-if [[ $clevel_work_dir == *"05-mud"* ]]; then
+if [[ $clevel_work_dir == *"25-proj-mud"* ]]; then
     echo "@@@@@@@@@@@@@@@@@@@ Inside if" >> /challenge/startup.log 
     if [ -f $clevel_work_dir/main.c ] && ! grep -q "//pc eof" $clevel_work_dir/main.c ; then 
         echo "Inside if2 for main.c" >> /challenge/startup.log 

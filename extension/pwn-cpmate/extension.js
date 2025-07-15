@@ -758,7 +758,7 @@ async function getSortedDirectoriesByModified(historyBasePath) {
 
 async function findHistoryDirectory(filePath) {
 
-    //filePath="05-mud/01/main.c"
+    //filePath="25-proj-mud/01/main.c"
 
     if (historyMap.has(filePath)) {
         return historyMap.get(filePath);
