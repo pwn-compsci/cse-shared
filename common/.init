@@ -611,53 +611,13 @@ else
   echo "ms vscode cpptools directory not found in $new_exitdir." >> /challenge/startup.log
 fi
 
-# if [ ! -d $new_extdir/cse240.pwn-cpmate-0.0.1 ]; then 
-#     echo "Starting VSCode extension setup $(date) " >> /challenge/startup.log
-
-#     if compgen -G "/challenge/pwn-cpmate-?.?.?.vsix" > /dev/null; then
-        
-#         echo "removing files for extensions " >> /challenge/startup.log
-#         rm -rf /home/hacker/.local/share/code-server/extensions/* &>> /challenge/startup.log
-
-#         mkdir -p ${new_extdir}
-
-#         extension_dir=$( dirname $(find /nix/store/ -name 'extensions.json' | grep /share/code-service/extensions | head -1 ))
-
-#         cp $extension_dir/extensions.json ${new_extdir}
-
-#         cp /challenge/pwn-cpmate-*.vsix ${new_extdir}/pwn-cpmate-0.0.2.vsix
-
-#         find "$extension_dir" -maxdepth 1 -type d -name 'ms-*' -exec sh -c '
-#         for dir do
-#             ln -s "$dir" "/run/challenge/share/code/extensions/$(basename "$dir")"
-#         done
-#         ' sh {} +
-#         # /run/workspace/bin/code-server --auth=none --disable-telemetry \
-#         #                                 --extensions-dir ${new_extdir}  \
-#         #                                 --uninstall-extension ${new_extdir}/pwn-cpmate-0.0.2.vsix &>> /challenge/startup.log
-
-#         /run/workspace/bin/code-server -vvv --auth=none --disable-telemetry -vvv \
-#                                         --extensions-dir ${new_extdir}  \
-#                                         --install-extension ${new_extdir}/pwn-cpmate-0.0.2.vsix &>> /challenge/startup.log
-        
-#         #sed -i 's/"version": "0.0.1"/"version": "0.0.2"/' $(ls ${new_extdir}/undefined_publisher.pwn-cpmate*/package.json) &>> /challenge/startup.log 
-#         sed -i 's/"pwn-cpmate.*"/"pwn-cpmate-'$((1 + RANDOM % 32000))'"/' $(ls ${new_extdir}/undefined_publisher.pwn-cpmate*/package.json) &>> /challenge/startup.log 
-
-#         rm -f ${new_extdir}/pwn-cpmate-?.?.?.vsix
-        
-#     fi 
-#     echo "Finished VSCode extension setup $(date) " >> /challenge/startup.log
-# fi 
-
-
-
 #######################################################################
 if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then 
     hw_id=${hw_id:-0}
     lab_id=${lab_id:-0}
-
+   
     # Check if hw_id > 8 or lab_id > 10
-    if [[ $hw_id -gt 8 || $lab_id -gt 10 ]]; then
+    if [[ "$clevel_work_dir" == *"scheme"* ]]; then
         if raco pkg show racket-langserver | grep -q 'racket-langserver'; then
             echo "Starting racket-langserver in the background..." >> /challenge/startup.log
             #nohup racket -l racket-langserver > racket-langserver.log 2>&1 &
@@ -720,8 +680,6 @@ if [ -f /challenge/.bginit ]; then
 fi 
 
 # this script runs as root, make sure any new files or directories are owned by hacker
-
-
 
 # ls -la /challenge/system_tests/*.json >> /challenge/startup.log
 ##########################################################
