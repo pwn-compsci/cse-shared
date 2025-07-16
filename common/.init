@@ -479,7 +479,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
         wsname="$(realpath $task_work_dir/../admin-access-of-240coder.code-workspace)"
     else 
         if [[ -n "$hw_id" ]]; then 
-            wsname="$(realpath $clevel_work_dir/../level-$hw_id-$level.code-workspace)"
+            wsname="$(realpath $clevel_work_dir/../proj-$hw_id-$level.code-workspace)"
         else # we have lab_id b/c it must be one or the other
             wsname="$(realpath $clevel_work_dir/../lab-$lab_id-$level.code-workspace)"
         fi 
