@@ -272,7 +272,7 @@ else
         #    ln -s $(dirname "$clevel_work_dir")/01 $clevel_work_dir
         #fi
     fi 
-    mkdir -p $clevel_work_dir 
+    chown hacker:hacker -R $clevel_work_dir
 fi
 
 # END Exam Setup
