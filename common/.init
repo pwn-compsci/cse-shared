@@ -83,6 +83,8 @@ if [ ! -d /home/hacker/cse240 ]; then
     mkdir -p /home/hacker/cse240/grplab
     chown hacker:hacker -R /home/hacker/cse240
 fi 
+chown hacker:hacker -R /home/hacker/cse240/.vscode
+
 if [ ! -f /home/hacker/.bashrc ]; then 
     cp /etc/skel/.bashrc /home/hacker/.bashrc
     chmod 644 /home/hacker/.bashrc 
