@@ -57,6 +57,7 @@ if [ -f /challenge/checker ]; then
     chmod 4755 /challenge/bin/checker    
 fi 
 
+
 if [ -f /challenge/checker.py ]; then 
     mv /challenge/checker.py /challenge/bin/checker.py
     chmod 700 /challenge/bin/checker.py    
@@ -681,6 +682,8 @@ fi
 if [ -f /challenge/.bginit ]; then 
     /challenge/.bginit &
 fi 
+
+echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
 # this script runs as root, make sure any new files or directories are owned by hacker
 
