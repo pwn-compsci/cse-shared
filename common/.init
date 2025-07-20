@@ -260,11 +260,11 @@ else
         grep -iq '"createHWDir".*true' /challenge/.config/level.json 
         if grep -iq '"createHWDir".*true' /challenge/.config/level.json; then 
             mkdir -p $clevel_work_dir 
+            chown hacker:hacker -R $clevel_work_dir
             # if no main file then copy template files 
             if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
                 if [ -d /challenge/template ]; then 
                     cp -a /challenge/template/* $clevel_work_dir
-                    chown hacker:hacker -R $clevel_work_dir
                 fi 
             fi 
         fi
