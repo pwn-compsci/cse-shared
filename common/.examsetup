@@ -88,7 +88,7 @@ else
     
     json_tests=$(find /challenge/system_tests/ -type f \( -name "*.json" -o -name "*.json.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "*Makefile.j2" \) 2>/dev/null | tr '\n' ' ')
     
-    template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null  | tr '\n' ' ')
+    template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" -o -name 'README.*' \) 2>/dev/null  | tr '\n' ' ')
 
     levelinit_file=$(find /challenge/ -type f \( -name ".levelinit*" -o -name ".testprobleminit.j2"  \) 2>/dev/null  | tr '\n' ' ')
     
