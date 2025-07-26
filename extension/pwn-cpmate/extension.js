@@ -397,8 +397,8 @@ function activate(context) {
             
             if (workspaceName) {
                 let workspaceFilePath = vscode.workspace.workspaceFile.fsPath
-                const levelWorkspacePathHwid = `${cLevelWorkDir}/../level-${hwid}.code-workspace`;
-                const levelWorkspacePathLabid = `${cLevelWorkDir}/../level-${labid}.code-workspace`;
+                const levelWorkspacePathHwid = `${cLevelWorkDir}/../proj-${hwid}.code-workspace`;
+                const levelWorkspacePathLabid = `${cLevelWorkDir}/../lab-${labid}.code-workspace`;
                 console.log(`Checking if the current workspace is a covered workspace: ${cLevelWorkDir} ${levelWorkspacePathHwid} ${levelWorkspacePathLabid} ${fsa.existsSync(levelWorkspacePathHwid)} ${fsa.existsSync(levelWorkspacePathLabid)}`); 
                 if (workspaceFilePath.includes("/home/hacker/cse240") && (fsa.existsSync(levelWorkspacePathHwid) || fsa.existsSync(levelWorkspacePathLabid))) {
                     console.log(`Updating folders for current workspace: ${workspaceName}`);

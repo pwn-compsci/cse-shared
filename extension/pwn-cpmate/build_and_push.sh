@@ -10,7 +10,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-DOCKER_DIR="$SCRIPTS_DIR/../../docker"
+DOCKER_DIR="$SCRIPTS_DIR/../../docker/cse240_main"
 cp $SCRIPTS_DIR/pwn-cpmate-0.0.1.vsix $DOCKER_DIR
 
 current_version=$(grep -oP 'RUN mkdir /cse240_v\K[0-9]+' "$DOCKER_DIR/Dockerfile")
