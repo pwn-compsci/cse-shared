@@ -19,6 +19,8 @@ sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/123/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
+
+
 if [ -f /challenge/bin/session_monitor.py]; then
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" >> /challenge/startup.log
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
@@ -47,8 +49,33 @@ else
         echo "[e] /challenge/.config/info.dat not found, using pwn_college_id only" >> /challenge/startup.log
         combined="$pwn_college_id - No student info"
     fi
+    
+    # Extract module and examLevel from level.json and make API call
+    if [ -f /challenge/.config/level.json ]; then
+        echo "[e] found level.json, extracting module and examLevel" >> /challenge/startup.log
+        module=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('module', ''))" 2>/dev/null)
+        examLevel=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('examLevel', ''))" 2>/dev/null)
+        
+        if [ -n "$module" ] && [ -n "$examLevel" ]; then
+            echo "[e] extracted module='$module' examLevel='$examLevel'" >> /challenge/startup.log
+            echo "[e] making API call to attempt_exam" >> /challenge/startup.log
+            
+            # Make API call in background
+            curl -X POST http://api.cse545.com/attempt_exam \
+                -H "Content-Type: application/json" \
+                -d "{\"pwn_college_id\": \"$pwn_college_id\", \"module\": \"$module\", \"challenge\": \"$examLevel\"}" \
+                >> /challenge/startup.log 2>&1 &
+        else
+            echo "[e] failed to extract module or examLevel from level.json" >> /challenge/startup.log
+        fi
+    else
+        echo "[e] level.json not found at /challenge/.config/level.json" >> /challenge/startup.log
+    fi
+    
     echo "[e] attempting to re-write exam-badge.js" >> /challenge/startup.log
     sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
+
+    
 fi 
 
 echo "5" >> /challenge/startup.log
