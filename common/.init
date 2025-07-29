@@ -250,6 +250,10 @@ isExam=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
 echo "isExam=$isExam" >> /challenge/startup.log
 if [[ -n $isExam ]]; then 
     cs_user_data_dir="/home/hacker/.local/share/code-server-exam"
+     if [ ! -d $cs_user_data_dir ]; then 
+        mkdir -p $cs_user_data_dir
+        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+    fi 
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
         echo "[e] Completed .examsetup" >> "/challenge/startup.log"
@@ -259,6 +263,10 @@ if [[ -n $isExam ]]; then
 else
     echo "Not an exam level" >> /challenge/startup.log
     cs_user_data_dir="/home/hacker/.local/share/code-server"
+     if [ ! -d $cs_user_data_dir ]; then 
+        mkdir -p $cs_user_data_dir
+        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+    fi 
     # if level working directory is not there then create it if creeateHWDir set in level.json
     if [[ ! -d $clevel_work_dir ]] ; then 
         grep -iq '"createHWDir".*true' /challenge/.config/level.json 
@@ -561,10 +569,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
 
     
     if [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; then 
-        if [ ! -d /home/hacker/.local/share/code-server ]; then 
-            mkdir -p /home/hacker/.local/share/code-server
-            chown hacker:hacker /home/hacker/.local/share /home/hacker/.local/share/code-server 
-        fi 
+        
         printf '{
             "query": {
                 "workspace": "'$wsname'"
