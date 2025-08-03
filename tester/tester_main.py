@@ -161,7 +161,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
         # Find the source file
         source_file = None
         for file in os.listdir(source_dir):
-            if file.endswith(".c") or file.endswith(".cpp"):
+            if file.endswith(".c") or file.endswith(".cpp") or file.endswith(".java"):
                 source_file = file
                 break
 
@@ -176,7 +176,10 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
             compile_command = ["/usr/bin/gcc", source_path, "-O0", "-Wall", "-Werror", "-g", "-o", output_path]
         elif source_file.endswith(".cpp"):
             compile_command = ["/usr/bin/g++", source_path, "-O0", "-Wall", "-Werror","-g", "-o", output_path]
-        
+        elif source_file.endswith(".java"):
+            compile_command = ["/usr/bin/javac", source_path, "-d", source_dir]
+            output_path = os.path.join(source_dir, source_file.replace(".java", ".class"))
+
         if other_compile_args and len(other_compile_args) > 0:
             compile_command.extend(other_compile_args)
         # print(f"Compile Command: {BLUE}{' '.join(compile_command)}{RESET_COLOR}")
@@ -777,6 +780,12 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
 
         timeout_command = ['timeout', '-k','2', '10']
         command = timeout_command + [target_path] + args
+        if ".class" in target_path:
+            # If the target is a Java class, we need to run it with java
+            command = ['java', '-cp', working_directory] + args
+            target_path = os.path.join(working_directory, target_path)
+            command += [os.path.basename(target_path).replace('.class', '')]
+
         # print("[run_target_program] " +" ".join(command))
         # print(f"[run_target_program]  {source_dir}")
         # print(f"[run_target_program] {input_data}")
@@ -1054,6 +1063,8 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
 
     return_code = test_json.get("returnCode", 0)
     start_time = time.time()
+    
+    # primary execution of the target program with the current system test
     actual_output = run_target_program( test, working_dir, target_path, args, input_data, environmentVar=test_json.get("testEnvironmentVars",{}),
                                        return_code=return_code, expected_output=expected_output_list, hidden_test=hidden_test)
 
@@ -1417,6 +1428,7 @@ def run_tests(args, system_test_dir):
         checkForExecution = level_config.get("checkForExecution", False)
         case_sensitive = level_config.get("caseSensitive", False)
         initial_files = level_config.get("initial_files", None)
+        java_level = level_config.get("javaLevel", False)
         user_created_system_test = level_config.get("user_created_system_test", False)
         if os.path.exists(level_config.get('testdir',"")):
             system_test_dir = level_config["testdir"]
@@ -1492,6 +1504,9 @@ def run_tests(args, system_test_dir):
                 if is_stripped(source_main_bin):
                     print(f"{RED}Error: You have either attempted to treat modelGood.bin as your own program or you stripped main.bin, if cheating then stop, if stripping then stop that too.{RESET_COLOR}")
                     sys.exit(125)
+        # elif java_level:
+        #     kill_process(source_main_bin)
+
     else:
         # if we aren't doing a compile we will still want to run system tests, level-01-13
         compile_success = True

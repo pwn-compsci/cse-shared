@@ -156,6 +156,7 @@ RUN apt-get update && xargs apt-get install --no-install-recommends -yqq <<EOF \
         file
         passwd
         nginx 
+        openjdk-17-jdk
 EOF
 
 ################# Install Land Rune ############################################
