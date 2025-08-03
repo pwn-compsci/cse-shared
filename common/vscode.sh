@@ -40,13 +40,13 @@ while [ $attempts -lt $max_attempts ]; do
       --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
       --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
       --rwx /proc
-      --rox /challenge,/.admin_access,/home/hacker/.bashrc
+      --rox /challenge,/.admin_access
       --rw /run/landrun-cmd.fifo 
       --ro  $coder_workspace_file
       --rw /home/hacker/.cache,/home/hacker/.local/
       --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
       --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env 
-      --rwx $clevel_work_dir 
+      --rwx $clevel_work_dir,/home/hacker/.bashrc  
       --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
       --rwx /tmp 
       --rwx /run/dojo/var 
