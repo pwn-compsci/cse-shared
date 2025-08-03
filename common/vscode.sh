@@ -45,8 +45,8 @@ while [ $attempts -lt $max_attempts ]; do
       --ro  $coder_workspace_file
       --rw /home/hacker/.cache,/home/hacker/.local/
       --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
-      --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env 
-      --rwx $clevel_work_dir,/home/hacker/.bashrc  
+      --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env,/home/hacker/.profile,/etc/bash.bashrc
+      --rwx $clevel_work_dir
       --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
       --rwx /tmp 
       --rwx /run/dojo/var 
