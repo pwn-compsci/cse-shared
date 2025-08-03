@@ -187,6 +187,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
         subprocess.run(compile_command, check=True, capture_output=True, text=True)
         if not ED_ENV:
             chown_recursive(source_dir, 1000, 1000)
+            
         print(f"Build: {GREEN}\u2714 PASS{RESET_COLOR} - {time.time() - start_time:.2f}s")
         return True
     except subprocess.CalledProcessError as e:
@@ -780,11 +781,13 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
 
         timeout_command = ['timeout', '-k','2', '10']
         command = timeout_command + [target_path] + args
+        print(f"target_path: {target_path}")
         if ".class" in target_path:
             # If the target is a Java class, we need to run it with java
             command = ['java', '-cp', working_directory] + args
             target_path = os.path.join(working_directory, target_path)
             command += [os.path.basename(target_path).replace('.class', '')]
+            print(f"Running Java class: {command} ")
 
         # print("[run_target_program] " +" ".join(command))
         # print(f"[run_target_program]  {source_dir}")
@@ -1504,6 +1507,14 @@ def run_tests(args, system_test_dir):
                 if is_stripped(source_main_bin):
                     print(f"{RED}Error: You have either attempted to treat modelGood.bin as your own program or you stripped main.bin, if cheating then stop, if stripping then stop that too.{RESET_COLOR}")
                     sys.exit(125)
+        else:
+            # Copy all .class files to SYSTEM_TESTS_DIR
+            class_files = [f for f in os.listdir(source_dir) if f.endswith(".class")]
+            for class_file in class_files:
+                src_class_fp = os.path.join(source_dir, class_file)
+                dst_class_fp = os.path.join(SYSTEM_TESTS_DIR, class_file)
+                shutil.copy(src_class_fp, dst_class_fp)
+                                
         # elif java_level:
         #     kill_process(source_main_bin)
 
