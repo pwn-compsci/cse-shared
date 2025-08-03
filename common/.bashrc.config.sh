@@ -147,8 +147,9 @@ if [ -d /home/other/cse240 ] && [ -f /challenge/bin/checker ]; then
     echo "Skipping /bin/checker for now"
     # /challenge/bin/checker 
 fi 
-# if exam 
-if [[ "$clevel_work_dir" == *cse240/exam* ]]; then
+
+# if exam or pretest then add tester alias
+if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240/pretest* ]]; then
     alias tester="/challenge/bin/exam_tester.sh"
 fi 
 
