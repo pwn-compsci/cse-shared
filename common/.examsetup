@@ -19,8 +19,6 @@ sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/123/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
-
-
 if [ -f /challenge/bin/session_monitor.py]; then
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" >> /challenge/startup.log
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
@@ -74,7 +72,6 @@ else
     
     echo "[e] attempting to re-write exam-badge.js" >> /challenge/startup.log
     sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
-
     
 fi 
 
@@ -119,12 +116,12 @@ else
     json_tests=""
     dat_tests=""
     model_code=""
-    
-    model_code=$(find /challenge/model -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null |  tr '\n' ' ')
-    
+
+    model_code=$(find /challenge/model -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.java" -o -name "*.java.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null |  tr '\n' ' ')
+
     json_tests=$(find /challenge/system_tests/ -type f \( -name "*.json" -o -name "*.json.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "*Makefile.j2" \) 2>/dev/null | tr '\n' ' ')
     
-    template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" -o -name 'README.*' \) 2>/dev/null  | tr '\n' ' ')
+    template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.java" -o -name "*.java.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" -o -name 'README.*' \) 2>/dev/null  | tr '\n' ' ')
 
     levelinit_file=$(find /challenge/ -type f \( -name ".levelinit*" -o -name ".testprobleminit.j2"  \) 2>/dev/null  | tr '\n' ' ')
     
@@ -167,6 +164,10 @@ sleep .1
 
 # hw_id and level come from parent call .init, .examsetup is sourced
 coder_workspace_file="/home/hacker/cse240/exam/$hw_id/proj-$hw_id-$level.code-workspace"
+
+if [ ! -f "$coder_workspace_file" ]; then 
+    coder_workspace_file="/home/hacker/cse240/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
+fi 
 
 # cs_user_data_dir comes from parent call .init, .examsetup is sourced
 mkdir -p $cs_user_data_dir
