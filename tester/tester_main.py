@@ -784,9 +784,9 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
         print(f"target_path: {target_path}")
         if ".class" in target_path:
             # If the target is a Java class, we need to run it with java
-            command = ['java', '-cp', working_directory] + args
+            command = ['java', '-cp', working_directory] 
             target_path = os.path.join(working_directory, target_path)
-            command += [os.path.basename(target_path).replace('.class', '')]
+            command += [os.path.basename(target_path).replace('.class', '')] + args
             print(f"Running Java class: {command} ")
 
         # print("[run_target_program] " +" ".join(command))

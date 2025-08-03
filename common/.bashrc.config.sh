@@ -121,19 +121,7 @@ alias difflist='last="";for f in $(ls -tr ????.c); do ls -lat $f; if [ -n "$last
 alias gdb-gef='echo -e "\nsource /opt/gef/gef.py\n" > /home/hacker/.gdbinit'
 alias gdb-no-gef='echo -e "\n\n" > /home/hacker/.gdbinit'
 
-if tail -n 10 /home/hacker/.bashrc | grep -qE 'CSE240_PS1' && \
-        grep -q -v '# AUTO ADDED BY CSE240' /home/hacker/.bashrc; then
-    if [[ "$clevel_work_dir" != *cse240/exam* ]]; then
-        sed  -i '/export[[:space:]]\+PS1[[:space:]]*.[[:space:]]*\$CSE240_PS1/{
-c\
-if [ -n "$CSE240_PS1" ]; then \
-    export PS1="$CSE240_PS1"\
-fi \
-# AUTO ADDED BY CSE240
-}' "/home/hacker/.bashrc"
 
-    fi 
-fi
 
 
 if [ -f /challenge/.config/.bashrc.level.sh ]; then 
@@ -150,7 +138,21 @@ fi
 
 # if exam or pretest then add tester alias
 if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240/pretest* ]]; then
-    alias tester="/challenge/bin/exam_tester.sh"
+    alias tester="/challenge/bin/exam_tester.sh"    
+else 
+    if tail -n 10 /home/hacker/.bashrc | grep -qE 'CSE240_PS1' && \
+            grep -q -v '# AUTO ADDED BY CSE240' /home/hacker/.bashrc; then
+        if [[ "$clevel_work_dir" != *cse240/exam* ]]; then
+            sed  -i '/export[[:space:]]\+PS1[[:space:]]*.[[:space:]]*\$CSE240_PS1/{
+    c\
+    if [ -n "$CSE240_PS1" ]; then \
+        export PS1="$CSE240_PS1"\
+    fi \
+    # AUTO ADDED BY CSE240
+    }' "/home/hacker/.bashrc"
+
+        fi 
+    fi
 fi 
 
 thispwd=$(pwd)
