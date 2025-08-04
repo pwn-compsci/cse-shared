@@ -668,8 +668,10 @@ def failed_test_message(target_path, args, input_data, test_name, test_descripti
                 if len(expected_output) > 0:
                     print(f"\tRun Test yourself:{BLUE} printf {repr(input_data)} | {' '.join([local_path])} {' '.join(formmated_args)} {RESET_COLOR}\n\t\tLook for the missing output.")
             else:
-                print(f"\tRun Test yourself:{BLUE} printf {repr(input_data)} | {' '.join([local_path])} {' '.join(formmated_args)}{RESET_COLOR}")
-        print("\t                   If getting a segmentation fault try removing or simplyfying the 'printf ...' statement.")    
+                if target_path.endswith("main.bin"):
+                    print(f"\tRun Test yourself:{BLUE} printf {repr(input_data)} | {' '.join([local_path])} {' '.join(formmated_args)}{RESET_COLOR}")
+                
+        print("\t                   If getting a segmentation fault try removing or simplyfying the 'printf ...' statement.")
         print("\t                   When you run the command above, the output needs to include the expected output below.")
         print("\t                   Remember that `.*` is a wildcard that matches any character zero or more times and `\\s*` matches any space zero or more times.")
 
