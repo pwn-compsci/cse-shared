@@ -177,8 +177,10 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
         elif source_file.endswith(".cpp"):
             compile_command = ["/usr/bin/g++", source_path, "-O0", "-Wall", "-Werror","-g", "-o", output_path]
         elif source_file.endswith(".java"):
-            output_path = os.path.join(source_dir,"*.java")
-            compile_command = ["/usr/bin/javac", output_path, "-d", source_dir]
+            # Get all Java files in the source_dir
+            java_files = [os.path.join(source_dir, f) for f in os.listdir(source_dir) if f.endswith(".java")]
+            compile_command = ["/usr/bin/javac"] + java_files + ["-d", source_dir]
+            # compile_command = ["/usr/bin/javac", output_path, "-d", source_dir]
 
         if other_compile_args and len(other_compile_args) > 0:
             compile_command.extend(other_compile_args)
