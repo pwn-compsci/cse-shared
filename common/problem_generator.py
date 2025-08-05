@@ -128,7 +128,7 @@ def xor_encrypt(data, key):
 
 # Encrypt the flag and store it in the context
 context['encrypted_flag'] = xor_encrypt(flag, context['random_positive_string1'])
-
+context['encrypted_flag_length'] = len(flag) + 1
 context['word']  = random.sample(varnames, 70)
 
 # Process each file
