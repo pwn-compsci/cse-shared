@@ -163,10 +163,11 @@ sleep .1
 # # landrun secures the directories
 
 # hw_id and level come from parent call .init, .examsetup is sourced
-coder_workspace_file="/home/hacker/cse240/exam/$hw_id/proj-$hw_id-$level.code-workspace"
+coder_workspace_file="$hwdir/proj-$hw_id-$level.code-workspace"
 
 if [ ! -f "$coder_workspace_file" ]; then 
-    coder_workspace_file="/home/hacker/cse240/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
+    touch $coder_workspace_file
+    # coder_workspace_file="/home/hacker/cse240/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
 fi 
 
 # cs_user_data_dir comes from parent call .init, .examsetup is sourced
