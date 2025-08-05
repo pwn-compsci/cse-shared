@@ -162,6 +162,8 @@ sleep .1
 # # need all directories setup before 
 # # landrun secures the directories
 
+hwdir=$(jq -r '.hwdir' /challenge/.config/level.json)
+echo "[e] project directory is $hwdir, setting up coder_workspace_file"
 # hw_id and level come from parent call .init, .examsetup is sourced
 coder_workspace_file="$hwdir/proj-$hw_id-$level.code-workspace"
 
