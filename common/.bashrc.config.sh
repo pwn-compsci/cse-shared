@@ -93,7 +93,7 @@ if [ -d $clevel_work_dir ]; then
         else
             echo "DIRECT SSH ACCESS IS NOT PERMITTED BUT IS ENABLED"
             # TODO: REENABLE THIS 
-            #exec true
+            exec true
         fi
     fi 
     
