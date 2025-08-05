@@ -171,6 +171,7 @@ if [ ! -f "$coder_workspace_file" ]; then
     touch $coder_workspace_file
     # coder_workspace_file="/home/hacker/cse240/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
 fi 
+chown hacker:hacker $coder_workspace_file 
 
 # cs_user_data_dir comes from parent call .init, .examsetup is sourced
 mkdir -p $cs_user_data_dir
