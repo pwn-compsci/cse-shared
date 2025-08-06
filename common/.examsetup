@@ -81,11 +81,12 @@ else
     # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" >> /challenge/startup.log
-        cp -a /challenge/system_tests "$clevel_work_dir/"
+        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
+        ls -la "$clevel_work_dir" >> /challenge/startup.log
     elif [ -L "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" >> /challenge/startup.log
         rm "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests "$clevel_work_dir/"
+        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
     fi
     echo "[e] clevel_work_dir = $clevel_work_dir" >> /challenge/startup.log
     if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
