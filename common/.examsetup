@@ -73,6 +73,13 @@ else
     echo "[e] attempting to re-write exam-badge.js" >> /challenge/startup.log
     sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
     
+    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
+    if [ ! -e "$clevel_work_dir/system_tests" ]; then
+        cp -a /challenge/system_tests "$clevel_work_dir/"
+    elif [ -L "$clevel_work_dir/system_tests" ]; then
+        rm "$clevel_work_dir/system_tests"
+        cp -a /challenge/system_tests "$clevel_work_dir/"
+    fi
 fi 
 
 echo "5" >> /challenge/startup.log
