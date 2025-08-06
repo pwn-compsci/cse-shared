@@ -9,6 +9,7 @@ import socketserver
 import sys
 import signal
 import os
+import logging
 from urllib.parse import urlparse
 
 class RedirectHandler(http.server.BaseHTTPRequestHandler):
@@ -33,12 +34,12 @@ class RedirectHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
     
     def log_message(self, format, *args):
-        """Override to suppress default logging (can be enabled if needed)"""
-        pass  # Comment this line to enable request logging
+        """Log HTTP requests to the configured logger"""
+        logging.info(f"{self.client_address[0]} - {format % args}")
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
-    print(f"\nReceived signal {signum}, shutting down server...")
+    logging.info(f"Received signal {signum}, shutting down server...")
     sys.exit(0)
 
 def run_server(port=7681):
@@ -51,26 +52,25 @@ def run_server(port=7681):
         # Create and configure the server
         with socketserver.TCPServer(("", port), RedirectHandler) as httpd:
             httpd.allow_reuse_address = True
-            print(f"Redirect server running on port {port}")
-            print(f"All requests will be redirected to: https://pwn.college/workspace/code")
-            print("Press Ctrl+C to stop")
+            logging.info(f"Redirect server running on port {port}")
+            logging.info(f"All requests will be redirected to: https://pwn.college/workspace/code")
             
             # Serve forever (until interrupted)
             httpd.serve_forever()
             
     except PermissionError:
-        print(f"Error: Permission denied to bind to port {port}")
-        print("Try running with sudo or use a port > 1024")
+        logging.error(f"Permission denied to bind to port {port}")
+        logging.error("Try running with sudo or use a port > 1024")
         sys.exit(1)
     except OSError as e:
         if e.errno == 98:  # Address already in use
-            print(f"Error: Port {port} is already in use")
-            print("Another process may be using this port")
+            logging.error(f"Port {port} is already in use")
+            logging.error("Another process may be using this port")
         else:
-            print(f"Error: {e}")
+            logging.error(f"Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\nServer stopped by user")
+        logging.info("Server stopped by user")
         sys.exit(0)
 
 def daemonize():
@@ -82,7 +82,7 @@ def daemonize():
             # Parent process exits
             sys.exit(0)
     except OSError as e:
-        print(f"Fork failed: {e}")
+        logging.error(f"Fork failed: {e}")
         sys.exit(1)
     
     # Decouple from parent environment
@@ -97,7 +97,7 @@ def daemonize():
             # Second parent exits
             sys.exit(0)
     except OSError as e:
-        print(f"Second fork failed: {e}")
+        logging.error(f"Second fork failed: {e}")
         sys.exit(1)
     
     # Redirect standard file descriptors
@@ -111,6 +111,50 @@ def daemonize():
         os.dup2(f.fileno(), sys.stdout.fileno())
         os.dup2(f.fileno(), sys.stderr.fileno())
 
+def setup_logging(log_file='/var/log/redirector.log', is_daemon=False):
+    """Configure logging for the application"""
+    # Create log directory if it doesn't exist
+    log_dir = os.path.dirname(log_file)
+    if log_dir and not os.path.exists(log_dir):
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except PermissionError:
+            # Fall back to local directory if can't write to /var/log
+            log_file = './redirector.log'
+    
+    # Configure logging format
+    log_format = '%(asctime)s - %(levelname)s - %(message)s'
+    date_format = '%Y-%m-%d %H:%M:%S'
+    
+    # Set up handlers
+    handlers = []
+    
+    # Always add file handler
+    try:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter(log_format, date_format))
+        handlers.append(file_handler)
+    except PermissionError:
+        # Fall back to local file if can't write to specified location
+        local_log = './redirector.log'
+        file_handler = logging.FileHandler(local_log)
+        file_handler.setFormatter(logging.Formatter(log_format, date_format))
+        handlers.append(file_handler)
+    
+    # Add console handler only if not running as daemon
+    if not is_daemon:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(log_format, date_format))
+        handlers.append(console_handler)
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=handlers,
+        format=log_format,
+        datefmt=date_format
+    )
+
 def main():
     """Main function to parse arguments and start server"""
     import argparse
@@ -122,12 +166,19 @@ def main():
                        help='Run as background daemon')
     parser.add_argument('--foreground', action='store_true',
                        help='Run in foreground (default behavior)')
+    parser.add_argument('--log-file', default='/var/log/redirector.log',
+                       help='Log file path (default: /var/log/redirector.log)')
     
     args = parser.parse_args()
     
+    # Set up logging before daemonizing
+    setup_logging(args.log_file, args.daemon)
+    
     if args.daemon:
-        print(f"Starting redirect server as daemon on port {args.port}...")
+        logging.info(f"Starting redirect server as daemon on port {args.port}...")
         daemonize()
+        # Reconfigure logging after daemonizing (no console output)
+        setup_logging(args.log_file, True)
     
     run_server(args.port)
 

@@ -51,9 +51,9 @@ echo ".init Starting at $(date) in pid=$$" >> /challenge/startup.log
 mkdir -p /challenge/bin 2>> /challenge/startup.log
 
 if [ -f /challenge/bin/redirector.py ]; then 
-    chmod 755 /challenge/bin/redirector.py
-    echo "[i] Running terminal redirector " >> /challenge/startup.log
-    python3 -d -p 7681 /challenge/bin/redirector.py 
+    #chmod 700 /challenge/bin/redirector.py
+    echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " >> /challenge/startup.log
+    python3 /challenge/bin/redirector.py  -d -p 7681 
 else 
     echo "[i] No redirector.py found, not running" >> /challenge/startup.log
 fi
