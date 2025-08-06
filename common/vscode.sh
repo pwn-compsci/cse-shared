@@ -50,8 +50,8 @@ while [ $attempts -lt $max_attempts ]; do
       --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
       --rwx /tmp 
       --rwx /run/dojo/var 
-      -- /run/workspace/bin/dojo-service start code-service/code-server
-          /run/workspace/bin/code-server
+      -- /run/dojo/bin/dojo-service start code-service/code-server
+          /run/dojo/bin/code-server
           --auth=none 
           --bind-addr=127.0.0.1:4200 
           --trusted-origins='*' 
@@ -133,7 +133,7 @@ if pgrep -f "code-server"; then
   echo "[c] Waiting for code-server to start..." >> /challenge/startup.log
 
   for i in {1..10}; do
-    if /run/workspace/bin/curl -s localhost:4200 >/dev/null; then
+    if /run/dojo/bin/curl -s localhost:4200 >/dev/null; then
       echo "[c] code-server responded on port 4200 after $i attempt(s)." >> /challenge/startup.log
       echo "[c] Code-server is up and running with user data dir: $code_server_data_dir and extensions dir: $EXTENSIONS_DIR" >> /challenge/startup.log
       break

@@ -14,7 +14,7 @@ from tester_main import run_tests
 from tester_db import init_db
 1
 if os.path.exists("/run/challenge/bin") or os.path.exists("/challenge"):
-    os.environ["PATH"] = "/run/challenge/bin:/run/workspace/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/challenge:" + os.environ.get("PATH", "")
+    os.environ["PATH"] = "/run/challenge/bin:/run/dojo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/challenge:" + os.environ.get("PATH", "")
 
 def main():
 

@@ -139,7 +139,7 @@ def attempt_to_reload_extension():
                     # Copy the first matching file to the new location
                     shutil.copy(files[0], destination_path)
                     
-                    subprocess.run(["/run/workspace/bin/code-server","-vvv",
+                    subprocess.run(["/run/dojo/bin/code-server","-vvv",
                                 "--auth=none", "--disable-telemetry", 
                                 "--extensions-dir", new_extdir,
                                 "--install-extension", destination_path], check=True)
@@ -159,7 +159,7 @@ def attempt_to_reload_extension():
             for x in range(0, 3):
                 if execute_stepone:
                     try:
-                        subprocess.run(["/run/workspace/bin/code-server", "-r","/home/hacker"], check=True)
+                        subprocess.run(["/run/dojo/bin/code-server", "-r","/home/hacker"], check=True)
                         execute_stepone = False 
                     except Exception as ex:
                         logging.error(f"Attempt #{x+1} Error trying to restart code-server in /home/hacker dir\n{ex}")
@@ -170,7 +170,7 @@ def attempt_to_reload_extension():
 
                 try:
                     logging.info(f"reloading workspace at {workspace}")
-                    subprocess.run(["/run/workspace/bin/code-server", "-r",workspace], check=True)
+                    subprocess.run(["/run/dojo/bin/code-server", "-r",workspace], check=True)
                     logging.info(f"Reload of {workspace} successful")
                     success = True
                     break
