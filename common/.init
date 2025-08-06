@@ -326,7 +326,7 @@ diff_start_time=$(date +%s)
 
 # create symlink for system_tests in working directory
 if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
-    ls -la $clevel_work_dir
+    ls -la $clevel_work_dir >> /challenge/startup.log
     echo "[i] Creating symlink for system_tests in $clevel_work_dir" >> /challenge/startup.log
     ln -s /challenge/system_tests $clevel_work_dir/system_tests
 fi 
