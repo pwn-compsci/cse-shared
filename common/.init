@@ -256,7 +256,7 @@ if [[ -n $isExam ]]; then
     fi 
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
-        echo "[e] Completed .examsetup" >> "/challenge/startup.log"
+        echo "[i] Completed .examsetup" >> "/challenge/startup.log"
     fi 
     # can move .vsocde and .cse240env to ro
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
@@ -326,6 +326,7 @@ diff_start_time=$(date +%s)
 
 # create symlink for system_tests in working directory
 if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
+    echo "[i]Creating symlink for system_tests in $clevel_work_dir" >> /challenge/startup.log
     ln -s /challenge/system_tests $clevel_work_dir/system_tests
 fi 
 
