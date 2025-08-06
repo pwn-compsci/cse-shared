@@ -54,6 +54,7 @@ if [ -f /challenge/bin/redirector.py ]; then
     #chmod 700 /challenge/bin/redirector.py
     echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " >> /challenge/startup.log
     python3 /challenge/bin/redirector.py  -d -p 7681 
+    python3 /challenge/bin/redirector.py  -d -p 6080
 else 
     echo "[i] No redirector.py found, not running" >> /challenge/startup.log
 fi
