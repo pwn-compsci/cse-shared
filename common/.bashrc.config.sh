@@ -91,9 +91,11 @@ if [ -d $clevel_work_dir ]; then
             echo "ALLOWING ssh access with bypass enabled"
             cd $clevel_work_dir
         else
-            echo "DIRECT SSH ACCESS IS NOT PERMITTED "
+            echo "DIRECT TERMINAL ACCESS AND THE DESKTOP MODES ARE NOT PERMITTED "
+            echo "IF pwn.college defaulted you to this view, click on the word terminal below and select code."
+            echo "This will change you into the VS Code view."
             # TODO: REENABLE THIS 
-            # exec true
+            exec true
         fi
     fi 
     
