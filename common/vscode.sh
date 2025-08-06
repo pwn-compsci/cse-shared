@@ -95,16 +95,6 @@ while [ $attempts -lt $max_attempts ]; do
     done
 
     if [ -f /run/dojo/var/code-service/code-server.log ]; then 
-    for i in {1..10}; do
-      if ! pgrep -f "code-server" > /dev/null; then
-        echo "[c] code-server process no longer running after $i seconds." >> /challenge/startup.log
-        break
-      fi
-      echo "[c] Checking if code-server is still running... ($i/10)" >> /challenge/startup.log
-      sleep 1
-    done
-
-    if [ -f /run/dojo/var/code-service/code-server.log ]; then 
       echo "[c] Dumping /run/dojo/var/code-service/code-server.log" >> /challenge/startup.log
       cat /run/dojo/var/code-service/code-server.log >> /challenge/startup.log ; 
       echo "---------------------------------------------------------------------------" >> /challenge/startup.log
