@@ -73,20 +73,20 @@ else
     echo "[e] attempting to re-write exam-badge.js" >> /challenge/startup.log
     sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
     
-    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
-    if [ ! -e "$clevel_work_dir/system_tests" ]; then
-        cp -a /challenge/system_tests "$clevel_work_dir/"
-    elif [ -L "$clevel_work_dir/system_tests" ]; then
-        rm "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests "$clevel_work_dir/"
-    fi
 fi 
-
-echo "5" >> /challenge/startup.log
 
 if [ -d /home/me ]; then 
     echo "[e] Running as_user, not configuring problem" >> /challenge/startup.log
 else
+    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
+    if [ ! -e "$clevel_work_dir/system_tests" ]; then
+        echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" >> /challenge/startup.log
+        cp -a /challenge/system_tests "$clevel_work_dir/"
+    elif [ -L "$clevel_work_dir/system_tests" ]; then
+        echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" >> /challenge/startup.log
+        rm "$clevel_work_dir/system_tests"
+        cp -a /challenge/system_tests "$clevel_work_dir/"
+    fi
     echo "[e] clevel_work_dir = $clevel_work_dir" >> /challenge/startup.log
     if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
         mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
