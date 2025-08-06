@@ -71,7 +71,7 @@ context['random_paired_value_name'] = ["", "one", "two", "three", "four", "five"
 
 context['random_ittr_varname'] = random.choice("acitxyz")
 
-context['random_string_size'] = random.choice([200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950])
+context['random_string_size'] = random.choice([300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950])
 context['small_random_string_size'] = random.choice([100, 125, 150, 175, 200, 225, 250, 275])
 # Change a single random position in the list of random_double_quote to "'"
 random_index = random.randint(1, 6)
