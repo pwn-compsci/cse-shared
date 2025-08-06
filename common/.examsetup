@@ -104,6 +104,14 @@ else
 
     # Pick a random directory
     chosen_problem="${dirs[RANDOM % ${#dirs[@]}]}"
+    # override random if examLevel is set
+    if [ -f /home/hacker/cse240/.examproblems.json ]; then
+        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' /home/hacker/cse240/.examproblems.json)
+        if [ -n "$exam_problem" ]; then
+            chosen_problem="$exam_problem"
+            echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" >> /challenge/startup.log
+        fi
+    fi
 
     # TOD: REMOVE DEBUGGING STATEMENT BELOW FORCING PROBLEM X
     if [ "$level" -eq 11 ]; then

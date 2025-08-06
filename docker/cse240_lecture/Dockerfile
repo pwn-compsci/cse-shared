@@ -5,6 +5,8 @@ FROM python:3.13-slim
 RUN pip install --no-cache-dir flask gunicorn
 
 RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
+ADD redirector.py /opt/redirector.py
+RUN chmod +x /opt/redirector.py
 
 ADD wsgi.py /opt/lecture/
 ADD templates/ /opt/lecture/templates/
@@ -19,6 +21,9 @@ EOF
 
 COPY --chmod=755 <<EOF /challenge/.init
 #!/bin/sh
+python3 /opt/redirector.py -d -p 7681 >> /var/log/redirector.log 2>&1
+python3 /opt/redirector.py -d -p 6080 >> /var/log/redirector.log 2>&1
+
 export PYTHONDONTWRITEBYTECODE=1
 mkdir -p /var/log/gunicorn
 cd /opt/lecture
