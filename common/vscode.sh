@@ -27,9 +27,9 @@ if [ -z "$clevel_work_dir" ] || [ -z "$cs_user_data_dir" ] || [ -z "$coder_works
   exit 1
 fi
 
-if ps -ef | grep -q "code-server"; then
+if ps -ef | grep -q "/code-server/"; then
     echo "[c] Code-server is already running. Killing existing process before initial attempt" >> /challenge/startup.log
-    pkill -f code-server || true
+    pkill -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.log 
 fi
 
@@ -69,8 +69,8 @@ while [ $attempts -lt $max_attempts ]; do
   res=$?
   
   cat /run/dojo/var/code-service/code-server.log >> /challenge/startup.log
-  
-  ps -ef | grep "code-server" >> /challenge/startup.log
+
+  ps -ef | grep "/code-server/" >> /challenge/startup.log
 
   if [ -z "$output" ]; then
     echo "[c] No output from code-server command." >> /challenge/startup.log
@@ -83,10 +83,10 @@ while [ $attempts -lt $max_attempts ]; do
   if echo "$output" | grep -q "already running"; then
     echo "[c] Code-server is already running. Killing existing process and retrying..." >> /challenge/startup.log
     attempts=$((attempts + 1))
-    pkill -9 -f code-server || true
+    pkill -9 -f "/code-server/" || true
     
     for i in {1..10}; do
-      if ! pgrep -f "code-server" > /dev/null; then
+      if ! pgrep -f "/code-server/" > /dev/null; then
         echo "[c] code-server process no longer running after $i seconds." >> /challenge/startup.log
         break
       fi
@@ -108,7 +108,7 @@ while [ $attempts -lt $max_attempts ]; do
 
   success=0
   for i in {1..5}; do
-    if pgrep -f "code-server" > /dev/null; then
+    if pgrep -f "/code-server/" > /dev/null; then
       echo "[c] code-server process detected after $i attempt(s)." >> /challenge/startup.log
       success=1
       break
@@ -129,7 +129,7 @@ while [ $attempts -lt $max_attempts ]; do
 
 done # end of while loop
 
-if pgrep -f "code-server"; then
+if pgrep -f "/code-server/"; then
   echo "[c] Waiting for code-server to start..." >> /challenge/startup.log
 
   for i in {1..10}; do
