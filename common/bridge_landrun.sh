@@ -7,15 +7,19 @@ RESULT="/run/landrun-response.txt"
 [[ -p "$CMD_FIFO" ]] || mkfifo "$CMD_FIFO" && chmod 666 "$CMD_FIFO"
 [[ -p "$RESP_FIFO" ]] || mkfifo "$RESP_FIFO" && chmod 666 "$RESP_FIFO"
 touch "$RESULT" && chmod 666 "$RESULT"
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
 
-echo "[+] Privileged listener running..."
+log "[+] Privileged listener running..."
 
 while true; do
-    echo "[+] Listening for command ..."
+    log "[+] Listening for command ..."
     if read -r command < "$CMD_FIFO"; then
-        echo "[+] Received command: $command"
+        log "[+] Received command: $command"
 
         if [[ "$command" == "run" ]]; then
+            log "[+] Starting the tester script sending results to $RESULT"
             /challenge/tester > "$RESULT" 2>&1
             echo "OK" > "$RESP_FIFO"
         else
