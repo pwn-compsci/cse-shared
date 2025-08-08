@@ -61,7 +61,7 @@ for i in range(1, 20):
     context[f'varname{i}'] = chosen_varnames[i - 1]
     context[f'random_character{i}'] = chosen_chars[i - 1]
     context[f'random_integer{i}'] = chosen_ints[i - 1]
-    context[f'random_semicolon{i}'] = random.choice("; ;:;.;,")
+    context[f'random_semicolon{i}'] = random.choice("; ;;;;;;,;.")
     context[f'random_double_quote{i}'] = '"'
 
 context['random_comparator'] = random.choice(["<", "<=", ">", ">=", "==", "!="])
