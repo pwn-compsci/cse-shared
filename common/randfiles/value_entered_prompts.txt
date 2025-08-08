@@ -20,7 +20,7 @@ Entry successful: __
 Got your input of __
 We registered your input as __
 Cool, your entry was __
-You’ve given your input as __
+You've given your input as __
 Saved input of __
 Input complete: __
 We've logged your entry as __

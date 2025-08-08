@@ -15,7 +15,7 @@ log "[+] Privileged listener running..."
 
 while true; do
     log "[+] Listening for command ..."
-    if read -r command < "$CMD_FIFO"; then
+    if read -t 10 -r command < "$CMD_FIFO"; then
         log "[+] Received command: $command"
 
         if [[ "$command" == "run" ]]; then
@@ -25,5 +25,7 @@ while true; do
         else
             echo "ERR" > "$RESP_FIFO"
         fi
+    else
+        log "[!] No command received within timeout, resetting read."
     fi
 done
