@@ -91,11 +91,19 @@ if [ -d $clevel_work_dir ]; then
             echo "ALLOWING ssh access with bypass enabled"
             cd $clevel_work_dir
         else
-            echo "DIRECT TERMINAL ACCESS AND THE DESKTOP MODES ARE NOT PERMITTED "
-            echo "IF pwn.college defaulted you to this view, click on the word terminal below and select code."
-            echo "This will change you into the VS Code view."
-            # TODO: REENABLE THIS 
-            exec true
+            if grep -q "129884" /.user_info; then
+                echo "ALLOWING ssh access with bypass enabled for 129884"
+                cd $clevel_work_dir
+            else
+                echo "You do not have access to the shell in this mode. Please use the VS Code interface."
+                echo "Please use the VS Code interface to work on your code."
+                echo "If you need terminal access, please contact your instructor or system administrator."
+                echo "DIRECT TERMINAL ACCESS AND THE DESKTOP MODES ARE NOT PERMITTED "
+                echo "IF pwn.college defaulted you to this view, click on the word terminal below and select code."
+                echo "This will change you into the VS Code view."
+                # TODO: REENABLE THIS 
+                exec true
+            fi 
         fi
     fi 
     
