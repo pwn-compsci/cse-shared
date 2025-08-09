@@ -36,6 +36,38 @@ create_model_bad() {
     fi 
 }
 
+
+# Function to ensure "security.workspace.trust.enabled": false is set in $1/User/settings.json
+ensure_workspace_trust_disabled() {
+    local user_dir="$1"
+    local settings_json="$user_dir/User/settings.json"
+    local tmpfile
+
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$settings_json")"
+
+    # If file doesn't exist, create with the setting
+    if [ ! -f "$settings_json" ]; then
+        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"
+        return
+    fi
+
+    # If already set, do nothing
+    if grep -q '"security\.workspace\.trust\.enabled"\s*:\s*false' "$settings_json"; then
+        return
+    fi
+
+    # Add the setting using jq if possible, else append manually
+    if command -v jq >/dev/null 2>&1; then
+        tmpfile=$(mktemp)
+        jq '. + {"security.workspace.trust.enabled": false}' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
+    else
+        # Fallback: append before last }
+        sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
+    fi
+}
+
+
 start_time=$(date +%s)
 if [[ ! -f /challenge/startup.log ]]; then 
     echo "first time" >> /challenge/startup.log
@@ -303,8 +335,7 @@ fi
 
 # END Exam Setup
 
-
-
+ensure_workspace_trust_disabled "$cs_user_data_dir"
 
 
 #echo "clevel_work_dir=$clevel_work_dir" >> /challenge/startup.log
