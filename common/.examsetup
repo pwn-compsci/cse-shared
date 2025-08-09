@@ -36,7 +36,7 @@ else
     combined=""
     if [ -f /challenge/.config/info.dat ]; then
         echo "[e] found file /challenge/.config/info.dat using pwn_college_id=$pwn_college_id" >> /challenge/startup.log
-        student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z0-9 ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
+        student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z0-9\-_ ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
         echo "[e] found file studentinfo $student_info" >> /challenge/startup.log
         if [ -z "$student_info" ]; then
             student_info="Student not found"            
