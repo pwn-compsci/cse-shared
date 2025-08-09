@@ -48,12 +48,14 @@ ensure_workspace_trust_disabled() {
 
     # If file doesn't exist, create with the setting
     if [ ! -f "$settings_json" ]; then
+        echo "[c] Creating $settings_json with workspace trust disabled" >> /challenge/startup.log
         printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"
         return
     fi
 
     # If already set, do nothing
     if grep -q '"security\.workspace\.trust\.enabled"\s*:\s*false' "$settings_json"; then
+        echo "[c] Workspace trust is already disabled in $settings_json" >> /challenge/startup.log
         return
     fi
 
@@ -61,9 +63,11 @@ ensure_workspace_trust_disabled() {
     if command -v jq >/dev/null 2>&1; then
         tmpfile=$(mktemp)
         jq '. + {"security.workspace.trust.enabled": false}' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
+        echo "[c] Workspace trust is now disabled in $settings_json" >> /challenge/startup.log
     else
         # Fallback: append before last }
         sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
+        echo "[c] Workspace trust is now disabled in $settings_json" >> /challenge/startup.log 
     fi
 }
 
