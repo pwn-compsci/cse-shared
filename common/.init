@@ -249,6 +249,11 @@ else
     fi 
 fi 
 
+if [ ! -f /home/hacker/.cache ]; then 
+    mkdir -p /home/hacker/.cache
+    chown hacker:hacker /home/hacker/.cache
+fi
+
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 
 #if [ "$admin_access" = true ]; then
