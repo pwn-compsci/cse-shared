@@ -80,10 +80,12 @@ if [ -d /home/hacker/.cache/vscode-cpptools ]; then
 fi 
 
 if grep -q "digital god" /.admin_access; then     
+    echo "[b] Digital God Access Detected, skipping removals" >> /challenge/startup.log
     if [ -d /challenge/model ]; then 
         chmod 755 -R /challenge/model 
     fi 
 else
+    echo "[b] Regular user detected removing challenge files" >> /challenge/startup.log
     rm -rf /challenge/{model,.levelinit,.init,.bginit} #,startup.log}
     rm -f  /challenge/system_tests/main.bin
 fi 
