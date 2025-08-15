@@ -23,6 +23,16 @@ import base64
 import filecmp
 import urllib.request
 import urllib.parse
+import logging
+
+# Configure logger
+logger = logging.getLogger("tester_logger")
+logger.setLevel(logging.INFO)
+file_handler = logging.FileHandler("/tmp/tester.log", mode="a", encoding="utf-8")
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 if os.path.exists("/challenge/bin"):
     sys.path.append("/challenge/bin")
     from tester_db import save_results, init_db, save_test_results
@@ -137,7 +147,7 @@ def calculate_md5(file_path):
     return md5.hexdigest()
 
 
-def send_test_results(passed_all_tests, test_message, flag_value):
+def send_test_results(passed_all_tests, test_message, flag_value=""):
     """
     Send test results to the API endpoint https://api.cse545.com/testresult
     
@@ -147,7 +157,7 @@ def send_test_results(passed_all_tests, test_message, flag_value):
         flag_value (str): The flag value to submit
     """
     try:
-        print("Sending test results to API...")
+        logger.info("Sending test results to API...")
         # Read module and level from level.json
         level_config_path = "/challenge/.config/level.json"
         module = None
@@ -173,9 +183,11 @@ def send_test_results(passed_all_tests, test_message, flag_value):
         
         # Validate required fields
         if not all([module, level is not None, pwn_college_id, 
-                   passed_all_tests is not None, test_message, flag_value]):
-            print(f"{YELLOW}Warning: Missing required fields for API submission{RESET_COLOR}")
-            print(f"module: {module}, level: {level}, pwn_college_id: {pwn_college_id}")
+                   passed_all_tests is not None, test_message]):
+            logger.warning("Missing required fields for API submission")
+            logger.info(f"module: {module}, level: {level}, pwn_college_id: {pwn_college_id}")
+            logger.info([module, level is not None, pwn_college_id, 
+                   passed_all_tests is not None, test_message])
             return False
         
         # Prepare data for API
@@ -205,17 +217,17 @@ def send_test_results(passed_all_tests, test_message, flag_value):
         # Send request
         with urllib.request.urlopen(req, timeout=30) as response:
             response_data = response.read().decode('utf-8')
-            print(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
+            logger.info(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
             return True
             
     except urllib.error.HTTPError as e:
-        print(f"{RED}HTTP Error submitting test results: {e.code} - {e.reason}{RESET_COLOR}")
+        logger.info(f"{RED}HTTP Error submitting test results: {e.code} - {e.reason}{RESET_COLOR}")
         return False
     except urllib.error.URLError as e:
-        print(f"{RED}URL Error submitting test results: {e.reason}{RESET_COLOR}")
+        logger.info(f"{RED}URL Error submitting test results: {e.reason}{RESET_COLOR}")
         return False
     except Exception as e:
-        print(f"{RED}Error submitting test results: {e}{RESET_COLOR}")
+        logger.info(f"{RED}Error submitting test results: {e}{RESET_COLOR}")
         return False
 
 
@@ -996,6 +1008,7 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
 
         print(f"\n{test}: {YELLOW}Execution ERROR while running {os.path.basename(target_path)} {ex} {RESET_COLOR}")
         import traceback
+
         traceback.print_exc()
 
         if (model_program):
