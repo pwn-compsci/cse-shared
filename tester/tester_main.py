@@ -217,7 +217,11 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
         # Send request
         with urllib.request.urlopen(req, timeout=30) as response:
             response_data = response.read().decode('utf-8')
-            logger.info(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
+            response_json = json.loads(response_data)
+            if response_json.get("status") == "error":
+                logger.info(f"Status code is 200, but API Error: {response_json.get('message', '')} - {response_json.get('error', '')} - Test result no saved ")
+            else:
+                logger.info(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
             return True
             
     except urllib.error.HTTPError as e:
