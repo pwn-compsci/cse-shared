@@ -200,15 +200,15 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
             'flag_value': flag_value
         }
         
-        # Encode data for POST request
-        encoded_data = urllib.parse.urlencode(data).encode('utf-8')
+        # Encode data as JSON for POST request
+        json_data = json.dumps(data).encode('utf-8')
         
         # Create request
         req = urllib.request.Request(
             'https://api.cse545.com/testresult',
-            data=encoded_data,
+            data=json_data,
             headers={
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
                 'User-Agent': 'CSE-Tester/1.0'
             },
             method='POST'
