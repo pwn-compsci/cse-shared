@@ -147,6 +147,7 @@ def send_test_results(passed_all_tests, test_message, flag_value):
         flag_value (str): The flag value to submit
     """
     try:
+        print("Sending test results to API...")
         # Read module and level from level.json
         level_config_path = "/challenge/.config/level.json"
         module = None
@@ -1702,7 +1703,7 @@ def run_tests(args, system_test_dir):
         print(f"\nSummary: {total_passes} tests passed, {RED}{total_failures} {RESET_COLOR}tests failed")
         log_test_run(total_passes, total_passes+total_failures)
 
-        print(f"{RED}Too many failures{RESET_COLOR} to receive flag")
+        print(f"{RED}Too many failures{RESET_COLOR} to receive flag, recording results")
         
         # Send failure results to API
         send_test_results(
