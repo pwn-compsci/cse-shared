@@ -21,6 +21,8 @@ import hashlib
 import glob
 import base64 
 import filecmp
+import urllib.request
+import urllib.parse
 if os.path.exists("/challenge/bin"):
     sys.path.append("/challenge/bin")
     from tester_db import save_results, init_db, save_test_results
@@ -133,6 +135,87 @@ def calculate_md5(file_path):
 
     # Return the hexadecimal digest of the hash
     return md5.hexdigest()
+
+
+def send_test_results(passed_all_tests, test_message, flag_value):
+    """
+    Send test results to the API endpoint https://api.cse545.com/testresult
+    
+    Args:
+        passed_all_tests (bool): Whether all tests passed
+        test_message (str): Message about the test results
+        flag_value (str): The flag value to submit
+    """
+    try:
+        # Read module and level from level.json
+        level_config_path = "/challenge/.config/level.json"
+        module = None
+        level = None
+        
+        if os.path.exists(level_config_path):
+            with open(level_config_path, 'r') as f:
+                level_config = json.load(f)
+                module = level_config.get('hwdir', '').split('/')[-1] if level_config.get('hwdir') else None
+                level = level_config.get('level')
+        
+        # Read pwn_college_id from /.user_info
+        user_info_path = "/.user_info"
+        pwn_college_id = None
+        
+        if os.path.exists(user_info_path):
+            with open(user_info_path, 'r') as f:
+                content = f.read()
+                # Look for line like pwn_college_id='97168'
+                match = re.search(r"pwn_college_id='([^']+)'", content)
+                if match:
+                    pwn_college_id = match.group(1)
+        
+        # Validate required fields
+        if not all([module, level is not None, pwn_college_id, 
+                   passed_all_tests is not None, test_message, flag_value]):
+            print(f"{YELLOW}Warning: Missing required fields for API submission{RESET_COLOR}")
+            print(f"module: {module}, level: {level}, pwn_college_id: {pwn_college_id}")
+            return False
+        
+        # Prepare data for API
+        data = {
+            'module': module,
+            'level': str(level),
+            'pwn_college_id': pwn_college_id,
+            'passed_all_tests': str(passed_all_tests).lower(),
+            'test_message': test_message,
+            'flag_value': flag_value
+        }
+        
+        # Encode data for POST request
+        encoded_data = urllib.parse.urlencode(data).encode('utf-8')
+        
+        # Create request
+        req = urllib.request.Request(
+            'https://api.cse545.com/testresult',
+            data=encoded_data,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'CSE-Tester/1.0'
+            },
+            method='POST'
+        )
+        
+        # Send request
+        with urllib.request.urlopen(req, timeout=30) as response:
+            response_data = response.read().decode('utf-8')
+            print(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
+            return True
+            
+    except urllib.error.HTTPError as e:
+        print(f"{RED}HTTP Error submitting test results: {e.code} - {e.reason}{RESET_COLOR}")
+        return False
+    except urllib.error.URLError as e:
+        print(f"{RED}URL Error submitting test results: {e.reason}{RESET_COLOR}")
+        return False
+    except Exception as e:
+        print(f"{RED}Error submitting test results: {e}{RESET_COLOR}")
+        return False
 
 
 def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
@@ -1571,7 +1654,15 @@ def run_tests(args, system_test_dir):
                 level_config = json.load(cf)
 
             data = f"{key},{level_config['labid']},{level_config['level']}"
-            print(xor_string(data, key))
+            ed_credit_string = xor_string(data, key)
+            print(ed_credit_string)
+            
+            # Send success results to API for ED environment
+            send_test_results(
+                passed_all_tests=True,
+                test_message=f"All {total_passes} tests passed",
+                flag_value=ed_credit_string
+            )
         else:
             log_test_run(total_passes, total_passes+total_failures)
             print("Congrats, here's your flag")
@@ -1580,17 +1671,46 @@ def run_tests(args, system_test_dir):
                 with open("/flag", "r") as ff:
                     flag = ff.read()
                     print(f"{GREEN}{flag}{RESET_COLOR}")
+                    
+                    # Send success results to API with actual flag
+                    send_test_results(
+                        passed_all_tests=True,
+                        test_message=f"All {total_passes} tests passed",
+                        flag_value=flag.strip()
+                    )
             else:
                 print("pwn.college{...")
                 print("No flag, must run without using either --source-dir and --test-dir, only works when default directory under /home/hacker/cse240 is used")
+                
+                # Send success results to API without flag
+                send_test_results(
+                    passed_all_tests=True,
+                    test_message=f"All {total_passes} tests passed",
+                    flag_value="pwn.college{...}"
+                )
             save_results(source_dir, total_passes, total_failures, initial_files, module_id, level_id, flag)
     elif total_failures == 0 and total_passes == 0:
         print("Error: No failures or passes recorded, this is likely a bug, please report to course staff.")
+        
+        # Send error results to API
+        send_test_results(
+            passed_all_tests=False,
+            test_message="No failures or passes recorded, likely a bug",
+            flag_value=""
+        )
     else:
         print(f"\nSummary: {total_passes} tests passed, {RED}{total_failures} {RESET_COLOR}tests failed")
         log_test_run(total_passes, total_passes+total_failures)
 
         print(f"{RED}Too many failures{RESET_COLOR} to receive flag")
+        
+        # Send failure results to API
+        send_test_results(
+            passed_all_tests=False,
+            test_message=f"{total_passes} tests passed, {total_failures} tests failed",
+            flag_value=""
+        )
+        
         save_results(source_dir, total_passes, total_failures, initial_files, module_id, level_id, last_test_json_fp=last_test_json_fp)
         clean_up(source_dir)
 
