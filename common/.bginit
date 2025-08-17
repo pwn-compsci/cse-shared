@@ -13,17 +13,17 @@ if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then
         cd /challenge/model
         # if on of the MUD levels, use multiple threads
         if [ -f /challenge/model/operations.cpp  ]; then 
-            make -j15
+            make -j15 >> /challenge/startup.log 2>&1
         else
-            make        
+            make  >> /challenge/startup.log 2>&1      
         fi 
     else 
         COMPILER=gcc
         if [ -f /challenge/model/main.cpp ]; then 
             COMPILER=g++
-            g++ /challenge/model/main.cpp -g -o /challenge/model/main.bin    
+            g++ /challenge/model/main.cpp -g -o /challenge/model/main.bin  >> /challenge/startup.log 2>&1
         else 
-            gcc /challenge/model/main.c -g -o /challenge/model/main.bin    
+            gcc /challenge/model/main.c -g -o /challenge/model/main.bin >> /challenge/startup.log 2>&1   
         fi 
         $COMPILER 
     fi  

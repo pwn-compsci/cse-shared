@@ -219,7 +219,7 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
             response_data = response.read().decode('utf-8')
             response_json = json.loads(response_data)
             if response_json.get("status") == "error":
-                logger.info(f"Status code is 200, but API Error: {response_json.get('message', '')} - {response_json.get('error', '')} - Test result no saved ")
+                logger.info(f"Status code is 200, but API Error: {response_json.get('message', '')} - {response_json.get('error', '')} - Test result not saved ")
             else:
                 logger.info(f"{GREEN}Test results submitted successfully{RESET_COLOR}")
             return True
