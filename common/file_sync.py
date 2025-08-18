@@ -7,14 +7,15 @@ import requests
 import time
 from time import sleep
 import hashlib # for the sha256
-from zipfile import ZipFile # for zipping the files
+import zipfile # for zipping the files
+from zipfile import ZipFile
 import base64 # for hashing the zip contents
 import traceback
-import sqlite3
 
 CSE240_DIR = '/home/hacker/cse240/'
 DATABASE = f'{CSE240_DIR}/.vscode/trdb.db'
  
+import sqlite3
 
 def init_db():
     """
@@ -127,7 +128,7 @@ def setup_logging():
     """
     try:
 
-        log_handler = logging.FileHandler('/var/log/sync.log')
+        log_handler = logging.FileHandler('/tmp/sync.log')
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log_handler.setFormatter(log_formatter)
         
@@ -168,6 +169,7 @@ def ensure_api_host_entry():
         log.error("Permission denied: cannot modify /etc/hosts")
     except Exception as e:
         log.error(f"Error updating /etc/hosts: {str(e)}")
+        pass
 
 def read_level_config():
     """
@@ -205,7 +207,7 @@ def get_all_files(directory):
         if not os.path.isdir(directory):
             log.info(f"Error: Directory '{directory}' does not exist")
             return None
-            
+        
         # Get all .c, .cpp, .h, .rkt, and .pl files
         c_files = glob.glob(os.path.join(directory, "*.c"))
         cpp_files = glob.glob(os.path.join(directory, "*.cpp"))
@@ -330,6 +332,7 @@ def main():
     config = read_level_config()
     if config:
         module = config.get('module', 'module_unknown')
+        hw = config.get('hw', 'hw_unknown')
         level = config.get('level', 'level_unknown')
         hwdir = config.get('hwdir', 'hwdir_unknown')
         
@@ -343,53 +346,65 @@ def main():
         
         log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
         while True:
-            fileList = []
-            for directories in workdir:
-                lstOfFiles = get_all_files(directories)
-                if lstOfFiles is not None:
-                    fileList += lstOfFiles
-            
-            syncTheseFiles = []
+            try:
+                fileList = []
+                for directories in workdir:
+                    lstOfFiles = get_all_files(directories)
+                    if lstOfFiles is not None:
+                        fileList += lstOfFiles
+                
+                syncTheseFiles = []
+                
+                for file in fileList:
+                    fullFilePath = file
+                    baseFileName = os.path.basename(file)
+                    shaHash = computeSHA256(baseFileName)
+                    databaseSha = query_for_sha256(module, level, baseFileName)
+                    
+                    if databaseSha == shaHash:
+                        continue # goes to the next file in fileList
+                    elif databaseSha is False: # Store the file if not in database.
+                        store_file(module, level, baseFileName, shaHash) 
+                    elif databaseSha != shaHash: # Update the sha256 in the database. 
+                        update_row(module, level, baseFileName, shaHash)
+                    
+                    syncTheseFiles.append(fullFilePath)
 
-            for file in fileList:
-                fullFilePath = file
-                baseFileName = os.path.basename(file)
-                shaHash = computeSHA256(baseFileName)
-                databaseSha = query_for_sha256(module, level, baseFileName)
+                pwn_college_id = extract_pwn_college_id()
                 
-                if databaseSha == shaHash:
-                    continue # goes to the next file in fileList
-                elif databaseSha is False: # Store the file if not in database.
-                    store_file(module, level, baseFileName, shaHash) 
-                elif databaseSha != shaHash: # Update the sha256 in the database. 
-                    update_row(module, level, baseFileName, shaHash)
-                
-                syncTheseFiles.append(fullFilePath)
+                if len(syncTheseFiles) == 1:
+                    file_contents = ""
+                    with open(syncTheseFiles[0], "r") as f:
+                        file_contents = f.read()
+                    sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False)
+                    
+                elif len(syncTheseFiles) > 1:
+                    zipName = f'{pwn_college_id}_{module}_{level}.zip'
+                    with ZipFile(zipName, 'w') as zip:
+                        for file in syncTheseFiles:
+                            zip.write(os.path.basename(file))
+                    
+                    zip_contents = ""
+                    with open(zipName, 'rb') as zip:
+                        zip_contents = zip.read()
 
-            pwn_college_id = extract_pwn_college_id()
-            
-            if len(syncTheseFiles) == 1:
-                file_contents = ""
-                with open(syncTheseFiles[0], "r") as f:
-                    file_contents = f.read()
-                sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False)
-                
-            elif len(syncTheseFiles) > 1:
-                zipName = f'{pwn_college_id}_{module}_{level}.zip'
-                with ZipFile(zipName, 'w') as zip:
-                    for file in syncTheseFiles:
-                        zip.write(os.path.basename(file))
-                
-                zip_contents = ""
-                with open(zipName, 'rb') as zip:
-                    zip_contents = zip.read()
+                    zip_encoded = base64.b64encode(zip_contents).decode('utf-8')
+                    sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True)
 
-                zip_encoded = base64.b64encode(zip_contents).decode('utf-8')
-                sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True)
-
-                os.remove(f'{pwn_college_id}_{module}_{level}.zip') # deletes the zip file.
+                    os.remove(f'{pwn_college_id}_{module}_{level}.zip') # deletes the zip file.
                 
-            sleep(60)
+                individal_send = ["compile.log", "tester.log"]
+
+                for indiv_file in individal_send:
+                    if os.path.getmtime(indiv_file) >= (time.time() - 120): # If the file has been modified in the past 2 minutes, execute the if statement.
+                        file_contents = ""
+                        with open(indiv_file, "r") as f:
+                            file_contents = f.read()
+                        sync_result = sync_to_server(indiv_file.replace(".", ""), file_contents, module, level, pwn_college_id, False)
+
+                sleep(60)
+            except Exception as e:
+                log.error(f"Error during main loop: {str(e)}")
         
     else:
         log.info("No configuration data available.")
@@ -397,4 +412,4 @@ def main():
 if __name__ == "__main__":
     log = setup_logging()
     init_db()
-    main() 
+    main()
