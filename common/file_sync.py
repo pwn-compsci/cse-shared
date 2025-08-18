@@ -399,4 +399,4 @@ def main():
 if __name__ == "__main__":
     log = setup_logging()
     init_db()
-    main()
+    main() 
