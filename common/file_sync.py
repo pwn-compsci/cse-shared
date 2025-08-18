@@ -128,7 +128,7 @@ def setup_logging():
     """
     try:
 
-        log_handler = logging.FileHandler('/tmp/sync.log')
+        log_handler = logging.FileHandler('/var/log/sync.log')
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log_handler.setFormatter(log_formatter)
         
