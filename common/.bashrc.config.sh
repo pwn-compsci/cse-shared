@@ -48,8 +48,23 @@ if [ -d $clevel_work_dir ]; then
     clevel_work_dir=$(realpath $clevel_work_dir)
 
     hw_id=$(jq -r '.hw' /challenge/.config/level.json)
+    # Use only the alias for gcc to avoid function/alias conflicts and syntax errors
+    gcc() {
+        rm -f main.bi*.gc??        
+        command gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+    }
 
-    alias gcc="rm -f main.bi*.gc??; gcc -O0 -g -fdiagnostics-color=always -Wall -Werror  -ftest-coverage -fprofile-arcs "
+    g++() {
+        rm -f main.bi*.gc??
+        command g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+    }
+    make() {
+        command make "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+    }
+    tester() {
+        command tester "$@" 2>&1 | tee "$clevel_work_dir/tester.log"
+    }
+    
     alias bat='/usr/bin/batcat --pager=never'
     alias reset_mainc='cdhw && cp /challenge/template/main.c ./'
     alias reset_usertests='cdhw && cp /challenge/template/user_tests/* ./user_tests/'

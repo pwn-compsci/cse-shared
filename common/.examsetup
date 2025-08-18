@@ -10,13 +10,13 @@ if [ "$admin_access" = false ]; then
     # nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1  &
 fi
 timestamp=$(date '+%Y-%m-%d_%H%M')
-testpass="123"
+testpass="rogerroger"
 shapass=$(printf "%s%s" "$testpass" "$timestamp"| sha256sum | cut -d' ' -f1)
 echo "[e] the testpass=$testpass $timestamp" >> /challenge/startup.log
 echo "[e] shapass=$shapass" >> /challenge/startup.log
 sed -i 's/LETMEIN/'"$shapass"'/g' /challenge/web/nginx.conf
 sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
-sed -i 's/LETMEIN/123/g' /challenge/web/app.py
+sed -i 's/LETMEIN/rogerroger/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
 if [ -f /challenge/bin/session_monitor.py]; then
