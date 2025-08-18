@@ -396,7 +396,7 @@ def main():
                 individal_send = ["compile.log", "tester.log"]
 
                 for indiv_file in individal_send:
-                    if os.path.getmtime(indiv_file) >= (time.time() - 120): # If the file has been modified in the past 2 minutes, execute the if statement.
+                    if os.path.isfile(indiv_file) and os.path.getmtime(indiv_file) >= (time.time() - 120): # If the file has been modified in the past 2 minutes, execute the if statement.
                         file_contents = ""
                         with open(indiv_file, "r") as f:
                             file_contents = f.read()
