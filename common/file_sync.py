@@ -7,15 +7,14 @@ import requests
 import time
 from time import sleep
 import hashlib # for the sha256
-import zipfile # for zipping the files
-from zipfile import ZipFile
+from zipfile import ZipFile # for zipping the files
 import base64 # for hashing the zip contents
 import traceback
+import sqlite3
 
 CSE240_DIR = '/home/hacker/cse240/'
 DATABASE = f'{CSE240_DIR}/.vscode/trdb.db'
  
-import sqlite3
 
 def init_db():
     """
@@ -331,7 +330,6 @@ def main():
     config = read_level_config()
     if config:
         module = config.get('module', 'module_unknown')
-        hw = config.get('hw', 'hw_unknown')
         level = config.get('level', 'level_unknown')
         hwdir = config.get('hwdir', 'hwdir_unknown')
         
