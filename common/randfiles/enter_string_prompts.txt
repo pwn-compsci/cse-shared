@@ -11,7 +11,7 @@ Drop your text here:
 Ready to type something? Go: 
 Give me a string to work with: 
 Write your input below: 
-→ Enter a string: 
+Enter a string: 
 Type your phrase and press Enter: 
 Enter any text: 
 What would you like to say? 
