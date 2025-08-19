@@ -251,7 +251,7 @@ def extract_pwn_college_id():
         log.info(f"Error reading /.user_info file: {str(e)}")
         return None
 
-def sync_to_server(filename, content, module, level, pwn_college_id, isZipped):
+def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, compileLog, testerLog):
     """
     Sends the file content, module, level, pwn_college_id, and isZipped to the sync API
     
@@ -262,13 +262,15 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped):
         level (str): Level identifier
         pwn_college_id (str): PWN College user ID
         isZipped (bool): If the passed in filename is a zip file, this value will be true, else false.
-        
+        compileLog (str): Contents of compile.log if the file exists, a default string if not.
+        testerLog (str): COntents of tester.log if the file exists, a default string if not
+
     Returns:
         bool: True if sync was successful, False otherwise
     """
     ensure_api_host_entry()  # Ensure the API host entry is present
 
-    if not all([filename, content, module, level, pwn_college_id]):
+    if not all([filename, content, module, level, pwn_college_id, compileLog, testerLog]):
         log.error("Missing required data for sync")
         return False
         
@@ -281,7 +283,9 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped):
             'module': module,
             'level': level,
             'pwn_college_id': pwn_college_id,
-            'isZipped': isZipped
+            'isZipped': isZipped,
+            'compile_log': compileLog,
+            'tester_log': testerLog
         }
         
         log.info(f"Syncing {filename} for {module}/{level} to server...")
@@ -332,13 +336,14 @@ def main():
         level = config.get('level', 'level_unknown')
         hwdir = config.get('hwdir', 'hwdir_unknown')
         
+        currentDirectory = os.path.join(hwdir, level)
         # Adds the current directory to a list so it can look at a subdirectories (for pokemud or bfs)
         workdir = [os.path.join(hwdir, level)] 
 
         if module == "33-pokemud":
-            workdir.append(os.path.join(hwdir, level, "pokemud"))
+            workdir.append(os.path.join(currentDirectory, "pokemud"))
         if module == '33-muddydriver':
-            workdir.append(os.path.join(hwdir, level, "muddydriver"))
+            workdir.append(os.path.join(currentDirectory, "muddydriver"))
         
         log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
         while True:
@@ -368,11 +373,20 @@ def main():
 
                 pwn_college_id = extract_pwn_college_id()
                 
+                compileLog = ""
+                testerLog = ""
+                if os.path.isfile(os.path.join(currentDirectory, "compile.log")):
+                    with open(os.path.join(currentDirectory, "compile.log"), "r") as f:
+                        compileLog = f.read()
+                if os.path.isfile(os.path.join(currentDirectory, "tester.log")):
+                    with open(os.path.join(currentDirectory, "tester.log"), "r") as f:
+                        testerLog = f.read()
+
                 if len(syncTheseFiles) == 1:
                     file_contents = ""
                     with open(syncTheseFiles[0], "r") as f:
                         file_contents = f.read()
-                    sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False)
+                    sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False, compileLog, testerLog)
                 elif len(syncTheseFiles) > 1:
                     zipName = f'{pwn_college_id}_{module}_{level}.zip'
                     with ZipFile(zipName, 'w') as zip:
@@ -384,18 +398,9 @@ def main():
                         zip_contents = zip.read()
 
                     zip_encoded = base64.b64encode(zip_contents).decode('utf-8')
-                    sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True)
+                    sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True, compileLog, testerLog)
 
                     os.remove(f'{pwn_college_id}_{module}_{level}.zip') # deletes the zip file.
-                
-                individal_send = ["compile.log", "tester.log"]
-
-                for indiv_file in individal_send:
-                    if os.path.isfile(indiv_file) and os.path.getmtime(indiv_file) >= (time.time() - 120): # If the file has been modified in the past 2 minutes, execute the if statement.
-                        file_contents = ""
-                        with open(indiv_file, "r") as f:
-                            file_contents = f.read()
-                        sync_result = sync_to_server(indiv_file.replace(".", ""), file_contents, module, level, pwn_college_id, False)
 
                 sleep(60)
             except Exception as e:
