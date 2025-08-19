@@ -76,8 +76,6 @@ def store_file(module, level, filename, sha256):
         level (str): Level Identifier, will be inserted.
         filename (str): The filename that will be inserted
         sha256 (str): The sha256 hash that will be inserted.
-    
-    Returns: nothing
     """
     try:
         conn = sqlite3.connect(DATABASE)
@@ -375,7 +373,6 @@ def main():
                     with open(syncTheseFiles[0], "r") as f:
                         file_contents = f.read()
                     sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False)
-                    
                 elif len(syncTheseFiles) > 1:
                     zipName = f'{pwn_college_id}_{module}_{level}.zip'
                     with ZipFile(zipName, 'w') as zip:
