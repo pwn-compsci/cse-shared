@@ -369,7 +369,7 @@ def main():
                             # This ensures that a file that hasn't been changed over the duration of the module will not be sent to the server.
                             currentLevel = int(level)
                             previousLevelSha = query_for_sha256(module, str(f"0{currentLevel-1}"), baseFileName)
-                            while previousLevelSha is not False and currentLevel != 1:
+                            while previousLevelSha == False and currentLevel != 1:
                                 currentLevel -= 1
                                 previousLevelSha = query_for_sha256(module, str(f"0{currentLevel}"), baseFileName)
                             if previousLevelSha == shaHash:
