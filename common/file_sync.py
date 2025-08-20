@@ -365,6 +365,10 @@ def main():
                     if databaseSha == shaHash:
                         continue # goes to the next file in fileList
                     elif databaseSha is False: # Store the file if not in database.
+                        if int(level) >= 2:
+                            previousLevelSha = query_for_sha256(module, str(f"0{int(level)-1}"), baseFileName)
+                            if previousLevelSha == shaHash:
+                                continue
                         store_file(module, level, baseFileName, shaHash) 
                     elif databaseSha != shaHash: # Update the sha256 in the database. 
                         update_row(module, level, baseFileName, shaHash)
