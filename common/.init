@@ -255,6 +255,8 @@ cat /challenge/.config/level.json >> /challenge/startup.log
 clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
 
 level=$(jq -r '.level' /challenge/.config/level.json)    
+module=$(jq -r '.module' /challenge/.config/level.json)    
+
 # we either have a labid or a hw
 if grep "labid" /challenge/.config/level.json; then 
     lab_id=$(jq -r '.labid' /challenge/.config/level.json)    
@@ -291,6 +293,14 @@ if [ ! -f /home/hacker/.cache ]; then
 fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
+
+# if [ ! /home/me ] && [ "$admin_access" = true ]; then
+    api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+    curl "https://api.cse545.com/is_student" \
+        -H "Content-Type: application/json" \
+        -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
+        > /.student &            
+# fi 
 
 #if [ "$admin_access" = true ]; then
 ##########################################################################################################################
