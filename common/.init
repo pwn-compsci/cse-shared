@@ -176,6 +176,7 @@ fi
 
 touch /home/hacker/.local/share/ultima/c.dat
 chmod 666 /home/hacker/.local/share/ultima/c.dat
+chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 
 ## incorporate cse240 environment changes
 chmod 666 /challenge/startup.log
