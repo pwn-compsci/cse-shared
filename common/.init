@@ -320,6 +320,14 @@ if [[ -n $isExam ]]; then
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
         echo "[i] Completed .examsetup" >> "/challenge/startup.log"
+
+        echo "[i] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" >> /challenge/startup.log
+        while /bin/curl -fs localhost:8080 >/dev/null; do 
+            echo "[i] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting" >> /challenge/startup.log
+            sleep 0.2; 
+        done
+        echo "[i] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
+
     fi 
     # can move .vsocde and .cse240env to ro
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
