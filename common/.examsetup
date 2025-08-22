@@ -23,9 +23,9 @@ sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
 if [ -f /challenge/bin/session_monitor.py ]; then
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" >> /challenge/startup.log
-    mv /challenge/bin/session_monitor.py /opt/session_monitor.py
-    chmod 700 /opt/session_monitor.py
-    nohup python3 /opt/session_monitor.py >> /var/log/session_monitor.log 2>&1 &
+    # mv /challenge/bin/session_monitor.py /opt/session_monitor.py
+    # chmod 700 /opt/session_monitor.py
+    # nohup python3 /opt/session_monitor.py >> /var/log/session_monitor.log 2>&1 &
 else
     echo "[e] session_monitor.py not found, skipping" >> /challenge/startup.log
 fi
