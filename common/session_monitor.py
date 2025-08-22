@@ -27,7 +27,18 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("session_monitor")
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('/var/log/session_monitor.log')
+stdout_handler = logging.StreamHandler(sys.stdout)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+stdout_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(stdout_handler)
 
 # Configuration
 API_URL = "https://api.cse545.com/session_times"
