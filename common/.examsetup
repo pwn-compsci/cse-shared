@@ -213,10 +213,9 @@ nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 &
 echo "[e] Completed code-server" >> /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" >> /challenge/startup.log
-while ! /bin/curl -fs localhost:8080 >> /challenge/server.log 2>&1; do
-    echo $? >> /challenge/startup.log
-    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting" >> /challenge/startup.log
-    sleep 0.2; 
+while ! /bin/curl -fs -o /dev/null -w "%{http_code}" localhost:8080 | grep -q "^200$"; do
+    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for 200 from localhost:8080" >> /challenge/server.log
+    sleep 0.2
 done
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
 /bin/curl -Isf localhost:8080 >> /challenge/server.log 2>&1
