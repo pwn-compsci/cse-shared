@@ -16,7 +16,6 @@ shapass=$(printf "%s%s" "$testpass" "$timestamp"| sha256sum | cut -d' ' -f1)
 echo "[e] the testpass=$testpass $timestamp" >> /challenge/startup.log
 echo "[e] shapass=$shapass" >> /challenge/startup.log
 sed -i 's/LETMEIN/'"$shapass"'/g' /challenge/web/nginx.conf
-printf "$shapass" > /etc/nginx/auth_token
 
 sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/luckystar/g' /challenge/web/app.py
