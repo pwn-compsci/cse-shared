@@ -273,6 +273,7 @@ pwn_college_id=$active_pwn_college_id
 if [ -f /challenge/ed.dat ]; then
     mv  /challenge/ed.dat /challenge/.config/ed.dat
 fi 
+rm -f /challenge/ed.dat
 if [ -f /challenge/.config/ed.dat ]; then
     if [ -d /home/me ]; then 
         pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
@@ -281,7 +282,7 @@ if [ -f /challenge/.config/ed.dat ]; then
     grep -Poh ".*${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
     cat /challenge/.config/info.dat >> /challenge/startup.log
     if [ ! -d /home/me ]; then 
-        rm -f /challenge/ed.dat
+        rm -f /challenge/.config/ed.dat
     fi
 else
     if [ -d /home/me ]; then 
