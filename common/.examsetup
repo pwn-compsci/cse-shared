@@ -218,3 +218,4 @@ while /bin/curl -fs localhost:8080 >/dev/null; do
     sleep 0.2; 
 done
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
+/bin/curl -v localhost:8080 >> /challenge/server.log
