@@ -27,7 +27,7 @@ if [ -f /challenge/bin/session_monitor.py ]; then
     chmod 644 /var/log/session_monitor.log 
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
     chmod 700 /opt/session_monitor.py
-    # nohup python3 /opt/session_monitor.py >> /var/log/session_monitor.log 2>&1 &
+    nohup python3 /opt/session_monitor.py >> /var/log/session_monitor.log 2>&1 &
 else
     echo "[e] session_monitor.py not found, skipping" >> /challenge/startup.log
 fi
@@ -211,3 +211,7 @@ echo "[e] Starting flask app" >> /challenge/startup.log
 nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 & 
 
 echo "[e] Completed code-server" >> /challenge/startup.log
+
+echo "[e] waiting for nginx and app server to startup" >> /challenge/startup.log
+while /bin/curl -fs localhost:8080 >/dev/null; do sleep 0.1; done
+echo "[e] nginx and app server should be up" >> /challenge/startup.log
