@@ -71,6 +71,7 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
+echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
 start_time=$(date +%s)
 if [[ ! -f /challenge/startup.log ]]; then 
@@ -750,8 +751,11 @@ if [ -f /challenge/.bginit ]; then
     /challenge/.bginit &
 fi 
 
-echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
-
+if [ -f /challenge/bin/file_sync.py ]; then 
+    touch /var/log/sync.log
+    chmod 0666 /var/log/sync.log
+    chown hacker:hacker /var/log/
+fi 
 # this script runs as root, make sure any new files or directories are owned by hacker
 
 # ls -la /challenge/system_tests/*.json >> /challenge/startup.log
