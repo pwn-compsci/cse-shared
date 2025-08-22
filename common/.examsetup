@@ -214,10 +214,13 @@ echo "[e] Completed code-server" >> /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" >> /challenge/startup.log
 while /bin/curl -fs localhost:5000 >/dev/null; do 
+    echo $? >> /challenge/startup.log
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting" >> /challenge/startup.log
     sleep 0.2; 
 done
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
 /bin/curl -v localhost:8080 >> /challenge/server.log 2>&1
+echo $? >> /challenge/startup.log
 prtinf "\n\n\n" >> /challenge/server.log
 /bin/curl -v localhost:5000 >> /challenge/server.log 2>&1
+echo $? >> /challenge/startup.log
