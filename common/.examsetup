@@ -206,7 +206,14 @@ echo "[e] Starting vscode with $clevel_work_dir, $coder_workspace_file, and $cs_
 # background is necessary because landrun blocks waiting for ready but .init blocks ready
 /challenge/bin/vscode.sh "$clevel_work_dir" "$coder_workspace_file" "$coder_workspace_file"  >> /challenge/startup.log 2>&1 &
 
-nohup nginx -c /challenge/web/nginx.conf > /challenge/web/nginx.log 2>&1 &
+# Start nginx with error checking
+if command -v nginx >/dev/null 2>&1; then
+    nohup nginx -c /challenge/web/nginx.conf > /challenge/web/nginx.log 2>&1 &
+    echo "[e] Started nginx" >> /challenge/startup.log
+else
+    echo "[e] WARNING: nginx not found, skipping" >> /challenge/startup.log
+fi
+
 echo "[e] Starting flask app" >> /challenge/startup.log
 nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 & 
 
@@ -215,18 +222,23 @@ echo "[e] Completed code-server" >> /challenge/startup.log
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" >> /challenge/startup.log
 
 count=0
-while ! /bin/curl  --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1; do
-    echo $? >> /challenge/startup.log
-    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting" >> /challenge/startup.log
-    sleep 0.2; 
-    ((count++))
-    if [ $count -ge 20 ]; then
-        echo "[e] Reached 20 attempts, exiting wait loop" >> /challenge/startup.log
+max_attempts=20
+while [ $count -lt $max_attempts ]; do
+    if /bin/curl --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1; then
+        echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" >> /challenge/startup.log
         break
     fi
+    echo "Exit code: $?" >> /challenge/startup.log
+    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" >> /challenge/startup.log
+    sleep 0.2; 
+    ((count++))
 done
 
-echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
+if [ $count -ge $max_attempts ]; then
+    echo "[e] WARNING: Service on port 8080 did not start after $max_attempts attempts" >> /challenge/startup.log
+else
+    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
+fi
 /bin/curl  --max-time 5 -Isf localhost:8080 >> /challenge/startup.log 2>&1
 echo "Result from 8080 is $?" >> /challenge/startup.log
 printf "\n\n\n" >> /challenge/server.log

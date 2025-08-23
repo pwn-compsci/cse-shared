@@ -7,7 +7,7 @@ create_model_bad() {
     pattern='MODEL_BAD_([0-9]+)_([0-9]+)_([0-9]+)'
 
     # Check if the file exists
-    if [ -f "$file_path" ]; then  
+    if [ -f "$file_path" ] && [ -r "$file_path" ]; then  
         echo "CMD: found file $file_path" >> /challenge/startup.log
         # Read the file line by line
         while IFS= read -r line; do
@@ -25,7 +25,22 @@ create_model_bad() {
                 gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path"
 
                 if [ $? -ne 0 ]; then
-                    gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path" >> /challenge/errorlog &2>1
+                    gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path" >> /challenge/errorlog 2>&1
+                    printf "\033[31mCompilation failed for macro MODEL_BAD_${x}_${y}_${z} \033[0m\n" >> /challenge/errorlog
+                fi
+                strip $output_file 2>/dev/null || true
+                cp $output_file $clevel_work_dir 2>/dev/null || true
+            fi
+        done < "$file_path"
+                z="${BASH_REMATCH[3]}"
+                # Define the output binary file name
+                output_file="/challenge/modelBad${x}.${y}.${z}.bin"
+
+                # Compile the C program with the macro definition
+                gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path"
+
+                if [ $? -ne 0 ]; then
+                    gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path" >> /challenge/errorlog 2>&1
                     printf "\033[31mCompilation failed for macro MODEL_BAD_${x}_${y}_${z} \033[0m\n" >> /challenge/errorlog
                 fi
                 strip $output_file
@@ -299,10 +314,10 @@ echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 
 # if [ ! /home/me ] && [ "$admin_access" = true ]; then
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
-    curl --max-time 10  "https://api.cse545.com/is_student" \
+    curl --max-time 10 --retry 2 --retry-delay 1 "https://api.cse545.com/is_student" \
         -H "Content-Type: application/json" \
         -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
-        > /.student &            
+        > /.student 2>/dev/null &            
 # fi 
 
 #if [ "$admin_access" = true ]; then
