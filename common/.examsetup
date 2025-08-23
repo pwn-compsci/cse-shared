@@ -229,6 +229,6 @@ done
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
 /bin/curl  --max-time 5 -Isf localhost:8080 >> /challenge/startup.log 2>&1
 echo "Result from 8080 is $?" >> /challenge/startup.log
-prtinf "\n\n\n" >> /challenge/server.log
+printf "\n\n\n" >> /challenge/server.log
 /bin/curl  --max-time 5 -Isf localhost:5000 >> /challenge/startup.log 2>&1
 echo "Result from 5000 is $?" >> /challenge/startup.log
