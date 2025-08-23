@@ -63,7 +63,7 @@ else
             echo "[e] making API call to attempt_exam" >> /challenge/startup.log
             
             # Make API call in background
-            curl -X POST http://api.cse545.com/attempt_exam \
+            curl  --max-time 10 -X POST http://api.cse545.com/attempt_exam \
                 -H "Content-Type: application/json" \
                 -d "{\"pwn_college_id\": \"$pwn_college_id\", \"module\": \"$module\", \"challenge\": \"$examLevel\"}" \
                 >> /challenge/startup.log 2>&1 &
@@ -213,14 +213,22 @@ nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 &
 echo "[e] Completed code-server" >> /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" >> /challenge/startup.log
-while ! /bin/curl -fs localhost:8080 >> /challenge/server.log 2>&1; do
+
+count=0
+while ! /bin/curl  --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1; do
     echo $? >> /challenge/startup.log
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting" >> /challenge/startup.log
     sleep 0.2; 
+    ((count++))
+    if [ $count -ge 20 ]; then
+        echo "[e] Reached 20 attempts, exiting wait loop" >> /challenge/startup.log
+        break
+    fi
 done
+
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" >> /challenge/startup.log
-/bin/curl -Isf localhost:8080 >> /challenge/startup.log 2>&1
+/bin/curl  --max-time 5 -Isf localhost:8080 >> /challenge/startup.log 2>&1
 echo "Result from 8080 is $?" >> /challenge/startup.log
 prtinf "\n\n\n" >> /challenge/server.log
-/bin/curl -Isf localhost:5000 >> /challenge/startup.log 2>&1
+/bin/curl  --max-time 5 -Isf localhost:5000 >> /challenge/startup.log 2>&1
 echo "Result from 5000 is $?" >> /challenge/startup.log
