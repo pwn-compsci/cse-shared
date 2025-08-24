@@ -23,7 +23,7 @@ def main():
     args = parser.parse_args()
 
     user_info = open("/.user_info", "r").read()
-    if "pwn_college_id=132329" in user_info or "pwn_college_id=97168" in user_info:
+    if "pwn_college_id" in user_info and ("132329" in user_info or "97168" in user_info):
         privileged = 1
     else:
         privileged = int(open("/run/dojo/sys/workspace/privileged", "r").read())
