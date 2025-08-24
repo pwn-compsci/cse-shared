@@ -71,6 +71,17 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
+start_time=$(date +%s)
+if [[ ! -f /challenge/startup.log ]]; then 
+    echo "first time" | tee -a /challenge/startup.log
+else 
+    echo "SECOND time" | tee -a /challenge/startup.log
+    exit 0    
+fi 
+
+echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log 
+
+
 # check for admin access 
 # 97169 io1
 admin_ids=(95033 97168 42906 70537 44199 67665 57598 57891)
@@ -104,18 +115,11 @@ if [ -z "$1" ] && [ "$active_pwn_college_id" -eq "132329" ];then
     exit 0
 fi
 
-start_time=$(date +%s)
-if [[ ! -f /challenge/startup.log ]]; then 
-    echo "first time" | tee -a /challenge/startup.log
-else 
-    echo "SECOND time" | tee -a /challenge/startup.log
-    exit 0    
-fi 
 if [ -f /usr/bin/exec-suid ]; then 
-    chmod 6755 /usr/bin/exec-suid
+    chmod 6755 /usr/bin/exec-suid || true
 fi 
-echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log 
 
+echo "[i] Creating /challenge/bin directory" | tee -a /challenge/startup.log
 mkdir -p /challenge/bin 2| tee -a /challenge/startup.log
 
 if [ -f /challenge/bin/redirector.py ]; then 
