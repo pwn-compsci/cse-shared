@@ -157,6 +157,10 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
         flag_value (str): The flag value to submit
     """
     try:
+        if os.path.exists("/home/me"):
+            logger.info("Running in as_user mode (/home/me exists), results will not be reported.")
+            return True
+        
         logger.info("Sending test results to API...")
         # Read module and level from level.json
         level_config_path = "/challenge/.config/level.json"
@@ -208,11 +212,13 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
             'https://api.cse545.com/testresult',
             data=json_data,
             headers={
-                'Content-Type': 'application/json',
-                'User-Agent': 'CSE-Tester/1.0'
+            'Content-Type': 'application/json',
+            'User-Agent': 'CSE-Tester/1.0'
             },
             method='POST'
         )
+        # Set a 5 second timeout for the request
+        response = urllib.request.urlopen(req, timeout=10)
         
         # Send request
         with urllib.request.urlopen(req, timeout=30) as response:
