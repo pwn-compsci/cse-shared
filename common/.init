@@ -73,6 +73,11 @@ ensure_workspace_trust_disabled() {
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
+if [ -z "$1" ];then 
+    echo "No argument supplied" >> /challenge/startup.log
+    exit 0
+fi
+
 start_time=$(date +%s)
 if [[ ! -f /challenge/startup.log ]]; then 
     echo "first time" >> /challenge/startup.log
