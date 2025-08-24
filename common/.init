@@ -127,7 +127,16 @@ else
     echo "[i] No redirector.py found, not running" | tee -a /challenge/startup.log
 fi
 
-ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make} /challenge/bin 2| tee -a /challenge/startup.log
+echo "[i] Generating symbolic links for common compilers and tools" | tee -a /challenge/startup.log
+
+ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make} /challenge/bin >> /challenge/startup.log 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "[i] Symbolic links created successfully" | tee -a /challenge/startup.log
+else
+    echo "[i] Failed to create symbolic links" | tee -a /challenge/startup.log
+fi
+
 
 if [ -f /challenge/checker ]; then 
     mv /challenge/checker /challenge/bin/checker    
