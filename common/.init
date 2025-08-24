@@ -304,10 +304,10 @@ echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 
 # if [ ! /home/me ] && [ "$admin_access" = true ]; then
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
-    curl --max-time 10  "https://api.cse545.com/is_student" \
-        -H "Content-Type: application/json" \
-        -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
-        > /.student &            
+    # curl --max-time 10  "https://api.cse545.com/is_student" \
+    #     -H "Content-Type: application/json" \
+    #     -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
+    #     > /.student &            
 # fi 
 
 #if [ "$admin_access" = true ]; then
@@ -325,7 +325,6 @@ if [[ -n $isExam ]]; then
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
         echo "[i] Completed .examsetup" >> "/challenge/startup.log"
-
     fi 
     # can move .vsocde and .cse240env to ro
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
