@@ -22,13 +22,14 @@ sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/luckystar/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
+# /home/me means we are doing an as_user
 if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a /challenge/startup.log
     touch /var/log/session_monitor.log 
     chmod 644 /var/log/session_monitor.log 
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
     chmod 700 /opt/session_monitor.py
-    nohup (sleep 1m; python3 /opt/session_monitor.py || true) &
+    nohup python3 /opt/session_monitor.py || true &
 else
     echo "[e] session_monitor.py not found, skipping" | tee -a /challenge/startup.log
 fi
