@@ -143,17 +143,19 @@ else
     python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a /challenge/startup.log 2>&1
 
     echo "[e] generated problem files" | tee -a /challenge/startup.log
-    
+
     # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a /challenge/startup.log
         ls -la /challenge | tee -a /challenge/challenge.log
-        cp -a /challenge/system_tests $clevel_work_dir/ || true 
+        mkdir -p "$clevel_work_dir/system_tests"
+        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
         ls -la "$clevel_work_dir" | tee -a /challenge/startup.log
     elif [ -L "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a /challenge/startup.log
         rm "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
+        mkdir -p "$clevel_work_dir/system_tests"
+        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
     fi
 
 fi 
