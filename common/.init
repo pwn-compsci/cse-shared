@@ -71,12 +71,36 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
+# check for admin access 
+# 97169 io1
+admin_ids=(95033 97168 42906 70537 44199 67665 57598 57891)
+
+# TEST outside of .init ::> grep -q "digital god" /.admin_access
 active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
+
+admin_access=false
+touch /.admin_access
+if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an admin id
+    for id in "${admin_ids[@]}"; do
+        if [[ "$active_pwn_college_id" == "$id" ]]; then
+            admin_access=true
+            echo "$active_pwn_college_id you are now a digital god" > /.admin_access
+            echo "active_pwn_college_id='$pwn_college_id'" >> /.user_info
+            echo "admin access granted" | tee -a /challenge/startup.log
+            break
+        fi    
+    done
+fi
+
+if [ ! -f /.admin_access ]; then 
+    echo "denied" > /.admin_access
+fi 
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
 if [ -z "$1" ] && [ "$active_pwn_college_id" -eq "132329" ];then 
-    echo "No argument supplied" | tee -a /challenge/startup.log
+    echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
+    echo "No argument supplied" | tee -a /challenge/startup.log    
     exit 0
 fi
 
@@ -236,28 +260,6 @@ else
 fi 
 
 mkdir -p /challenge/.config
-
-
-# check for admin access 
-# 97169 io1
-admin_ids=(95033 97168 42906 70537 44199 67665 57598 57891)
-
-# TEST outside of .init ::> grep -q "digital god" /.admin_access
-active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
-
-admin_access=false
-touch /.admin_access
-if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an admin id
-    for id in "${admin_ids[@]}"; do
-        if [[ "$active_pwn_college_id" == "$id" ]]; then
-            admin_access=true
-            echo "$active_pwn_college_id you are now a digital god" > /.admin_access
-            echo "active_pwn_college_id='$pwn_college_id'" >> /.user_info
-            echo "admin access granted" | tee -a /challenge/startup.log
-            break
-        fi    
-    done
-fi
 
 cat /challenge/.config/level.json | tee -a /challenge/startup.log 
 # use level config to define variables 
