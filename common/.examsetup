@@ -3,9 +3,10 @@
 echo "[e] Exam level found" | tee -a /challenge/startup.log
 if [ "$admin_access" = false ]; then
     # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
-    if grep "practice" /flag; then 
-        pkill -9 -f /run/dojo/bin/sleep 
-    fi
+    # if grep "practice" /flag; then 
+    #     echo "[e] No non-admin access to exam in practice mode" | tee -a /challenge/startup.log
+    #     pkill -9 -f /run/dojo/bin/sleep 
+    # fi
     # TODO: REENBLE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
     nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1  &
 fi
