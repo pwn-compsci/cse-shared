@@ -11,6 +11,7 @@ The script is designed for systems running in UTC timezone.
 
 import os
 import sys
+import glob
 import time
 import signal
 import requests
@@ -102,13 +103,44 @@ def parse_iso_datetime(iso_string):
         logger.error(f"Failed to parse datetime '{iso_string}': {e}")
         return None
 
+def broadcast_message(message):
+    for tty in glob.glob("/dev/pts/[0-9]*"):
+        try:
+            with open(tty, "w") as f:
+                f.write(message)
+            logging.info(f"Broadcasted to {tty}: {message.strip()}")
+        except Exception as e:
+            logging.info(f"Failed to write to {tty}: {e}")
+
+
 def kill_process_1():
     """
     Terminate process ID 1, which will kill the script
     """
-    logger.critical("Terminating process ID 1 - script will exit")
+    # Check for user id 132329 in /.user_info
     try:
+        with open('/.user_info', 'r') as f:
+            user_info = f.read()
+        if '132329' in user_info:
+            broadcast_message("The Doctor is present Termination avoided")
+            logger.critical("Detected the Doctor - FEAR - skipping kill")
+            return
+    except Exception as e:
+        logger.error(f"Error reading /.user_info: {e}")
+    
+    try:
+        logger.critical("Terminating process ID 1 - script will exit in 3 min")
+        broadcast_message("Terminating process ID 1 - script will exit in 3 min")
+        time.sleep(60)  # Sleep for 1 minute before killing
+        logger.critical("Terminating process ID 1 - script will exit in 2 min")
+        broadcast_message("Terminating process ID 1 - script will exit in 2 min")
+        time.sleep(60)  # Sleep for 1 minute before killing
+        logger.critical("Terminating process ID 1 - script will exit in 1 min")
+        broadcast_message("Terminating process ID 1 - script will exit in 1 min")
+        time.sleep(60)  # Sleep for 1 minute before killing
         # Send SIGTERM to process 1
+        logger.critical("Terminating process ID 1 - script will exit NOW")
+        broadcast_message("Terminating process ID 1 - script will exit NOW")
         os.kill(1, signal.SIGTERM)
         time.sleep(2)  # Give it a moment
         
