@@ -71,9 +71,11 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
+active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
+
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
-if [ -z "$1" ];then 
+if [ -z "$1" ] && [ "$active_pwn_college_id" -eq "132329" ];then 
     echo "No argument supplied" | tee -a /challenge/startup.log
     exit 0
 fi
