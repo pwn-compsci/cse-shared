@@ -286,7 +286,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
             compile_command.extend(other_compile_args)
         # print(f"Compile Command: {BLUE}{' '.join(compile_command)}{RESET_COLOR}")
     try:        
-        subprocess.run(compile_command, check=True, capture_output=True, text=True)
+        subprocess.run(compile_command, check=True, capture_output=True, text=True, env=os.environ.copy())
         if not ED_ENV:
             chown_recursive(source_dir, 1000, 1000)
             
@@ -295,6 +295,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
     except subprocess.CalledProcessError as e:
         print(f"Compilation failed: {e.returncode}\n{e.stdout}\n{e.stderr}")
         print(f"Compile Command:    {BLUE}{' '.join(compile_command)} {RESET_COLOR}")
+        print(f"PATH: {os.environ.get('PATH', '')}")
         sys.exit(102)
 
 
