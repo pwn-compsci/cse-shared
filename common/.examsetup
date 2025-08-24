@@ -84,22 +84,13 @@ fi
 if [ -d /home/me ]; then 
     echo "[e] Running as_user, not configuring problem" | tee -a /challenge/startup.log
 else
-    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
-    if [ ! -e "$clevel_work_dir/system_tests" ]; then
-        echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a /challenge/startup.log
-        ls -la /challenge | tee -a /challenge/challenge.log
-        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
-        ls -la "$clevel_work_dir" | tee -a /challenge/startup.log
-    elif [ -L "$clevel_work_dir/system_tests" ]; then
-        echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a /challenge/startup.log
-        rm "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
-    fi
-    echo "[e] clevel_work_dir = $clevel_work_dir" | tee -a /challenge/startup.log
+    
+    echo "[e] Using clevel_work_dir = $clevel_work_dir for exam base directory" | tee -a /challenge/startup.log
     if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
         mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
         echo "[e] created backup of old answer attempt" | tee -a /challenge/startup.log
     fi 
+
     # List only directories in /challenge/problems
     dirs=($(find /challenge/problems -mindepth 1 -maxdepth 1 -type d -printf '%f\n'))
 
@@ -152,6 +143,18 @@ else
     python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a /challenge/startup.log 2>&1
 
     echo "[e] generated problem files" | tee -a /challenge/startup.log
+    
+    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
+    if [ ! -e "$clevel_work_dir/system_tests" ]; then
+        echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a /challenge/startup.log
+        ls -la /challenge | tee -a /challenge/challenge.log
+        cp -a /challenge/system_tests $clevel_work_dir/ || true 
+        ls -la "$clevel_work_dir" | tee -a /challenge/startup.log
+    elif [ -L "$clevel_work_dir/system_tests" ]; then
+        echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a /challenge/startup.log
+        rm "$clevel_work_dir/system_tests"
+        cp -a /challenge/system_tests "$clevel_work_dir/" || true 
+    fi
 
 fi 
 
