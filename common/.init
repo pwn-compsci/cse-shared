@@ -44,12 +44,14 @@ ensure_workspace_trust_disabled() {
     local tmpfile
 
     # Create directory if it doesn't exist
-    mkdir -p "$(dirname "$settings_json")"
+    local settings_dir="$(dirname "$settings_json")"
+    mkdir -p "$settings_dir"
+    chown hacker:hacker -R "$user_dir" "$settings_dir"
 
     # If file doesn't exist, create with the setting
     if [ ! -f "$settings_json" ]; then
         echo "[c] Creating $settings_json with workspace trust disabled" | tee -a /challenge/startup.log
-        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"
+        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"        
         return
     fi
 
@@ -728,6 +730,14 @@ if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then
         echo "Not starting racket server b/c $hw_id <= 8 or $lab_id <= 10 " | tee -a /challenge/startup.log
     fi 
 fi 
+
+# Create .bash_history
+if [ ! -f "/home/hacker/.bash_history" ]; then
+    touch "/home/hacker/.bash_history"      
+    echo "[i] Created .bash_history and chowned to hacker:hacker"
+fi
+chown hacker:hacker "/home/hacker/.bash_history"   
+
 ########################################################################
 
 logfile="/home/hacker/.local/share/ultima/pexs.log"
@@ -748,10 +758,13 @@ if [ -f "$logfile" ]; then
         tail -c +$((skip_bytes + 1)) "$file" > /tmp/tempfile && mv /tmp/tempfile "$file"
     fi
 fi
-echo  $(printf "%s" "=====================<[ Session Starting @ $(date --iso-8601=seconds) ]>====================="| base64 -w 0 )>> /home/hacker/cse240/.vscode/cp.dat
+
+touch /home/hacker/cse240/.vscode/cp.dat
+chown hacker:hacker -R /home/hacker/cse240/.vscode
 
 echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240/.vscode/cp.dat ' >> /etc/bash.bashrc
 
+echo  $(printf "%s" "=====================<[ Session Starting @ $(date --iso-8601=seconds) ]>====================="| base64 -w 0 )>> /home/hacker/cse240/.vscode/cp.dat
 ############################################################################################
 
 echo "Wrapup stuff $(date) in pid=$$" | tee -a /challenge/startup.log 

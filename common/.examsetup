@@ -84,7 +84,7 @@ fi
 if [ -d /home/me ]; then 
     echo "[e] Running as_user, not configuring problem" | tee -a /challenge/startup.log
 else
-    
+        
     echo "[e] Using clevel_work_dir = $clevel_work_dir for exam base directory" | tee -a /challenge/startup.log
     if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
         mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
