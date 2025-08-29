@@ -778,10 +778,12 @@ else
         chown root:root /challenge/model
         chmod 700 /challenge/model
     fi 
-    chown root:root /challenge/system_tests
-    chmod 744 /challenge/system_tests/*.json
-    find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} \;
-    find /challenge/system_tests -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
+    if [ -d /challenge/system_tests ]; then
+        chown root:root -R /challenge/system_tests
+        find /challenge/system_tests -type f -name '*.json' -exec chmod 744 {} \;
+        find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} \;
+        find /challenge/system_tests -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
+    fi    
 fi
 
 if [ -f /challenge/.bginit ]; then 
