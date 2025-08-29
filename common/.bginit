@@ -122,7 +122,7 @@ fi
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " >> "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " | tee -a "/challenge/startup.log"
 diff_start_time=$(date +%s)
 
 # clean up ownership under cse240 if needed
@@ -134,7 +134,7 @@ find /home/hacker/cse240 ! -user hacker ! -type l -not -path "/home/hacker/cse24
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, completed chowns " >> "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, completed chowns " | tee -a "/challenge/startup.log"
 diff_start_time=$(date +%s)
 
 chown root:root /flag
