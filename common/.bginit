@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-echo "Starting .bginit $(date) pid=$$" >> "/challenge/startup.log"
+echo "Starting .bginit $(date) pid=$$" | tee -a "/challenge/startup.log"
 start_time=$(date +%s)
 diff_start_time=$(date +%s)
 
@@ -127,7 +127,7 @@ diff_start_time=$(date +%s)
 
 # clean up ownership under cse240 if needed
 
-find /home/hacker/cse240 ! -user hacker -not -path "/home/hacker/cse240/exam/*" -not -path "/home/hacker/cse240/.vscode/*" -exec chown hacker:hacker {} +
+find /home/hacker/cse240 ! -user hacker ! -type l -not -path "/home/hacker/cse240/exam/*" -not -path "/home/hacker/cse240/.vscode/*" -exec chown hacker:hacker {} +
 # find /home/hacker/cse240 ! -user hacker and ! -type l -exec chown hacker:hacker {} +
 # find /home/hacker/cse240 -type l -exec sh -c '[ "$(readlink -f {})" != "/flag" ]' \; -print -or -not -type l -print
 
@@ -139,3 +139,4 @@ diff_start_time=$(date +%s)
 
 chown root:root /flag
 
+echo "Finished .bginit at $(date) in pid=$$" | tee -a /challenge/startup.log

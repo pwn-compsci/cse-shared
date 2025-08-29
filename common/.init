@@ -824,7 +824,7 @@ else
         find "$base_dir" -type f \( -name model -o -name .levelinit -o -name .init -o -name .bginit -o -path "$base_dir/system_tests/main.bin" \) -exec chmod 700 {} +
     fi
 
-    rm -f /usr/bin/vim.basic /run/dojo/bin/vim /run/dojo/bin/vim
+    # rm -f /usr/bin/vim.basic /run/dojo/bin/vim /run/dojo/bin/vim    
     touch /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs
     chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
 fi 
