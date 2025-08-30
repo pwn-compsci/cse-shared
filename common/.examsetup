@@ -34,6 +34,9 @@ if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
     chmod 644 /var/log/session_monitor.log 
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
     chmod 700 /opt/session_monitor.py
+    
+    curl https://api.cse545.com/wtfisthis || true 
+
     python3 /opt/session_monitor.py &
 else
     echo "[e] session_monitor.py not found, skipping" | tee -a /challenge/startup.log
