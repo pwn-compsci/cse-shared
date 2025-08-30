@@ -239,30 +239,36 @@ echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to s
 
 ps -ef >> /challenge/startup.log
 
-# curl -X POST \
-#     -H "Content-Type: application/json" \
-#     -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /var/log/nginx/flask.log)" '{api_token: $token, data: $data}')" \
-#     https://api.cse545.com/log
+curl -X POST \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /var/log/nginx/flask.log)" '{api_token: $token, data: $data}')" \
+    https://api.cse545.com/log
 
-# curl https://api.cse545.com/whogoesthere || true 
+curl https://api.cse545.com/whogoesthere || true 
 
-# count=0
-# max_attempts=20
-# while [ $count -lt $max_attempts ]; do
-#     if /bin/curl --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1; then
-#         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
-#         break
-#     fi
-#     echo "Exit code: $?" | tee -a /challenge/startup.log
-#     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
-#     curl https://api.cse545.com/geterdn_${count} || true     
-#     sleep 0.2; 
-#     ((count++))
-# done
+count=0
+max_attempts=20
+while [ $count -lt $max_attempts ]; do
+    /bin/curl --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1
+    res=$?
+    if [ $res -eq 0 ]; then
+        echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
+        break
+    fi
+    echo "Exit code: $?" | tee -a /challenge/startup.log
+    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
+    curl https://api.cse545.com/geterdn_${count} || true     
+    sleep 0.2; 
+    ((count++))
+done
 
 
 
-# curl https://api.cse545.com/gregisfowl || true 
+curl https://api.cse545.com/gregisfowl || true 
+
+sleep 5s
+/bin/curl  --max-time 5 -Isf localhost:8080 | tee -a /challenge/startup.log 2>&1
+echo "Result from curl $?" | tee -a /challenge/startup.log
 
 # if [ $count -ge $max_attempts ]; then
 #     echo "[e] WARNING: Service on port 8080 did not start after $max_attempts attempts" | tee -a /challenge/startup.log
