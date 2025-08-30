@@ -240,7 +240,7 @@ echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to s
 # ps -ef >> /challenge/startup.log
 
 
-count=0
+count=0 qq
 max_attempts=20
 sleep 5s
 echo "--------------------------------" >> /challenge/startup.log
@@ -250,7 +250,7 @@ cat /var/log/nginx/flask.log >> /challenge/startup.log
 echo "--------------------------------" >> /challenge/startup.log
 
 while [ $count -lt $max_attempts ]; do
-    /bin/curl --max-time 1  localhost:8080 >> /challenge/startup.log 2>&1
+    /bin/curl --max-time 1  localhost:8080/hb >> /challenge/startup.log 2>&1
     res=$?
     if [ $res -eq 0 ]; then
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
@@ -260,7 +260,7 @@ while [ $count -lt $max_attempts ]; do
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
     curl https://api.cse545.com/geterdn_${count} || true     
     
-    /bin/curl -v --max-time 1 localhost:8080 >> /challenge/startup.log 2>&1
+    /bin/curl -v --max-time 1 localhost:8080/hb >> /challenge/startup.log 2>&1
 
     
 
