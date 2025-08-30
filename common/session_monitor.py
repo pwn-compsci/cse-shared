@@ -135,6 +135,9 @@ def check_exam_attendance():
         
         try:
             response = requests.post(api_url, json=payload, timeout=30)
+            if response.status_code == 404:
+                logger.warning("Exam attendance API returned 404 - not attending")
+                return False
             response.raise_for_status()
             
             data = response.json()
@@ -300,7 +303,6 @@ def main():
     try:
         while True:
             time.sleep(CHECK_INTERVAL)
-            
             current_time = get_current_utc_time()
             logger.info(f"Checking session status at {current_time.isoformat()}")
             
