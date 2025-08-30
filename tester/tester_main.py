@@ -1524,7 +1524,10 @@ def check_if_session_active():
         if os.path.exists(SESSION_FILE):
             with open(SESSION_FILE, 'r') as f:
                 status = f.read().strip()
-            return status == "active"
+            if status == "active":
+                return True
+            else:
+                print(f"Session is not active: {status}")
         else:
             return True 
     except Exception as e:
