@@ -171,7 +171,7 @@ def broadcast_message(message):
             logging.info(f"Failed to write to {tty}: {e}")
 
 
-def mark_session_terminated():
+def mark_session_terminated(message=None):
     """
     Terminate process ID 1, which will kill the script
     """
@@ -183,11 +183,25 @@ def mark_session_terminated():
         logger.error(f"Error reading /.user_info: {e}")
     
     try:
+        if os.path.exists(SESSION_FILE):
+            try:
+                with open(SESSION_FILE, 'r') as f:
+                    content = f.read().strip()
+                if content == "terminated":
+                    logger.info("Session already marked as terminated, skipping termination.")
+                    return
+            except Exception as e:
+                logger.error(f"Error reading {SESSION_FILE}: {e}")
+        
         with open(SESSION_FILE, 'w') as f:
             f.write("terminated\n")
         os.chown(SESSION_FILE, 0, 0)
         os.chmod(SESSION_FILE, 0o600)
-        broadcast_message("Session marked inactive, tester will no longer return the flag once all tests are passed. If currently in a testing session, check with staff person to restart the session.")
+        if message:
+            broadcast_message(message)
+        else:
+            broadcast_message("Session marked inactive, tester will no longer return the flag once all tests are passed. If currently in a testing session, check with staff person to restart the session.")
+    
     except Exception as e:
         logger.error(f"Error reading {SESSION_FILE}: {e}")
 
@@ -310,18 +324,17 @@ def main():
             check_results = check_exam_attendance()
             if check_results is None :
                 missing_attendance += 1
-                if missing_attendance >= 3:
+                if missing_attendance == 3:
                     logger.critical("Multiple attempts to detect attendance failed, terminating session")
-                    broadcast_message("Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running\n")
-                    mark_session_terminated()
+                    mark_session_terminated(message="Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running")
                     continue
             elif check_results == True:
                 mark_session_active()
                 missing_attendance = 0
-            else:
+            elif missing_attendance < 5:
                 logger.critical("Exam attendance check failed - terminating")
-                broadcast_message("You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester")
-                mark_session_terminated()
+                mark_session_terminated(message="You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester.")
+                missing_attendance += 5
                 continue
 
     except KeyboardInterrupt:
