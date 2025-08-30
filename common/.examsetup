@@ -237,14 +237,11 @@ echo "[e] Completed code-server" | tee -a /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" | tee -a /challenge/startup.log
 
-# ps -ef >> /challenge/startup.log
-
-
 count=0 
 max_attempts=20
 
 while [ $count -lt $max_attempts ]; do
-    /bin/curl --max-time 1 -f localhost:8080/hb >> /challenge/startup.log 2>&1
+    /bin/curl --max-time 1 -fs localhost:8080/ >> /challenge/startup.log 2>&1
     res=$?
     if [ $res -eq 0 ]; then
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
@@ -252,30 +249,14 @@ while [ $count -lt $max_attempts ]; do
     fi
     echo "Exit code: $res" | tee -a /challenge/startup.log
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
-    
-    # curl -X POST \
-    #     -H "Content-Type: application/json" \
-    #     -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /challenge/startup.log)" '{api_token: $token, data: $data}')" \
-    #     https://api.cse545.com/log
 
-    sleep 0.2; 
     ((count++))
 done
 
-/bin/curl  --max-time 5 -Isf localhost:8080/hb | tee -a /challenge/startup.log 2>&1
-echo "Result from curl $?" | tee -a /challenge/startup.log
+if [ $count -ge $max_attempts ]; then
+    echo "[e] WARNING: Service on port 8080 did not start after $max_attempts attempts" | tee -a /challenge/startup.log
+else
+    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" | tee -a /challenge/startup.log
 
-# if [ $count -ge $max_attempts ]; then
-#     echo "[e] WARNING: Service on port 8080 did not start after $max_attempts attempts" | tee -a /challenge/startup.log
-# else
-#     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') nginx and app server should be up" | tee -a /challenge/startup.log
-#     /bin/curl  --max-time 5 -Isf localhost:8080 | tee -a /challenge/startup.log 2>&1
-#     echo "Result from 8080 is $?" | tee -a /challenge/startup.log
-#     printf "\n\n\n" >> /challenge/server.log
+fi
 
-#     # /bin/curl  --max-time 5 -Isf localhost:5000 | tee -a /challenge/startup.log 2>&1
-#     # echo "Result from 5000 is $?" | tee -a /challenge/startup.log
-# fi
-
-
-curl https://api.cse545.com/iambadguy || true 
