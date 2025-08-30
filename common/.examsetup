@@ -243,7 +243,7 @@ echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to s
 count=0
 max_attempts=20
 while [ $count -lt $max_attempts ]; do
-    /bin/curl -v --max-time 1 localhost:8080 >> /challenge/server.log 2>&1
+    /bin/curl -v --max-time 1 localhost:8080 >> /challenge/startup.log 2>&1
     res=$?
     if [ $res -eq 0 ]; then
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
