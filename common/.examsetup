@@ -237,6 +237,12 @@ echo "[e] Completed code-server" | tee -a /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" | tee -a /challenge/startup.log
 
+
+curl -X POST \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /challenge/startup.log)" '{api_token: $token, data: $data}')" \
+    https://api.cse545.com/log
+
 curl https://api.cse545.com/whogoesthere || true 
 
 count=0
