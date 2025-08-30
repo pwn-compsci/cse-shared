@@ -252,6 +252,10 @@ while [ $count -lt $max_attempts ]; do
     ((count++))
 done
 
+
+
+curl https://api.cse545.com/gregisfowl || true 
+
 if [ $count -ge $max_attempts ]; then
     echo "[e] WARNING: Service on port 8080 did not start after $max_attempts attempts" | tee -a /challenge/startup.log
 else
