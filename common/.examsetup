@@ -41,7 +41,7 @@ fi
 
 echo "[e] pwn.college id is $pwn_college_id" | tee -a /challenge/startup.log
 
-curl https://api.cse545.com/areweherenow || true 
+
 
 if [ -z "$pwn_college_id" ]; then 
     echo "[e] pwn.colege id not found" | tee -a /challenge/startup.log
@@ -126,6 +126,8 @@ else
     #chosen_problem="d"
 
     echo "[e] Randomly chosen problem: $chosen_problem" >> /challenge/startup.log
+    
+    curl https://api.cse545.com/Ithinkwereallherenow || true 
 
     cp -a /challenge/problems/$chosen_problem/. /challenge/
 
