@@ -243,19 +243,18 @@ echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to s
 count=0
 max_attempts=20
 while [ $count -lt $max_attempts ]; do
-    /bin/curl -v --max-time 1 localhost:8080 >> /challenge/startup.log 2>&1
+    /bin/curl -v --max-time 1 -f localhost:8080 >> /challenge/startup.log 2>&1
     res=$?
     if [ $res -eq 0 ]; then
-        curl -X POST \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /challenge/startup.log)" '{api_token: $token, data: $data}')" \
-            https://api.cse545.com/log
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
         break
     fi
     echo "Exit code: $res" | tee -a /challenge/startup.log
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
     curl https://api.cse545.com/geterdn_${count} || true     
+    
+    /bin/curl -v --max-time 1 localhost:8080 >> /challenge/startup.log 2>&1
+
     curl -X POST \
         -H "Content-Type: application/json" \
         -d "$(jq -n --arg token "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" --arg data "$(cat /challenge/startup.log)" '{api_token: $token, data: $data}')" \
