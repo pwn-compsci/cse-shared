@@ -127,8 +127,6 @@ else
 
     echo "[e] Randomly chosen problem: $chosen_problem" >> /challenge/startup.log
     
-    curl https://api.cse545.com/Ithinkwereallherenow || true 
-
     cp -a /challenge/problems/$chosen_problem/. /challenge/
 
     # removed /challenge/system_tests/*.json
@@ -239,6 +237,8 @@ echo "[e] Completed code-server" | tee -a /challenge/startup.log
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" | tee -a /challenge/startup.log
 
+curl https://api.cse545.com/whogoesthere || true 
+
 count=0
 max_attempts=20
 while [ $count -lt $max_attempts ]; do
@@ -262,3 +262,5 @@ echo "Result from 8080 is $?" | tee -a /challenge/startup.log
 printf "\n\n\n" >> /challenge/server.log
 /bin/curl  --max-time 5 -Isf localhost:5000 | tee -a /challenge/startup.log 2>&1
 echo "Result from 5000 is $?" | tee -a /challenge/startup.log
+
+curl https://api.cse545.com/iambadguy || true 
