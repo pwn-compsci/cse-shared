@@ -101,7 +101,7 @@ else
 
     # Check if the list is not empty
     if [ ${#dirs[@]} -eq 0 ]; then
-        echo "[e] No problem directories found in /challenge/problems" >> challenge/startup.log
+        echo "[e] No problem directories found in /challenge/problems" >> /challenge/startup.log
         exit 1
     fi
 
@@ -122,7 +122,7 @@ else
     fi
     #chosen_problem="d"
 
-    echo "[e] Randomly chosen problem: $chosen_problem" >> challenge/startup.log
+    echo "[e] Randomly chosen problem: $chosen_problem" >> /challenge/startup.log
 
     cp -a /challenge/problems/$chosen_problem/. /challenge/
 
