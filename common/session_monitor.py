@@ -196,7 +196,7 @@ def mark_session_terminated(message=None):
         with open(SESSION_FILE, 'w') as f:
             f.write("terminated\n")
         os.chown(SESSION_FILE, 0, 0)
-        os.chmod(SESSION_FILE, 0o600)
+        os.chmod(SESSION_FILE, 0o644)
         if message:
             broadcast_message(message)
         else:
@@ -213,7 +213,7 @@ def mark_session_active():
         with open(SESSION_FILE, 'w') as f:
             f.write("active\n")
         os.chown(SESSION_FILE, 0, 0)
-        os.chmod(SESSION_FILE, 0o600)
+        os.chmod(SESSION_FILE, 0o644)
     except Exception as e:
         logger.error(f"Error reading {SESSION_FILE}: {e}")
     except Exception as e:
