@@ -249,7 +249,7 @@ while [ $count -lt $max_attempts ]; do
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
         break
     fi
-    echo "Exit code: $?" | tee -a /challenge/startup.log
+    echo "Exit code: $res" | tee -a /challenge/startup.log
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
     curl https://api.cse545.com/geterdn_${count} || true     
     curl -X POST \
