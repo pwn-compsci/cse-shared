@@ -22,6 +22,11 @@ sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/luckystar/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
+if [ -f /challenge/.config/.extra_cfg ]; then 
+    chown root:root /challenge/.config/.extra_cfg
+    chmod 600 /challenge/.config/.extra_cfg
+fi 
+
 # /home/me means we are doing an as_user
 if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a /challenge/startup.log

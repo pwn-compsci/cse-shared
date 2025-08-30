@@ -1517,6 +1517,20 @@ def is_stripped(binary_path):
         print(f"An error occurred while checking if the binary is stripped: {e}")
         return False
 
+def check_if_session_active():
+    SESSION_FILE = "/challenge/.config/session.dat"
+    try:
+        # if no session file then we aren't worried about session
+        if os.path.exists(SESSION_FILE):
+            with open(SESSION_FILE, 'r') as f:
+                status = f.read().strip()
+            return status == "active"
+        else:
+            return True 
+    except Exception as e:
+        print(f"Error checking session status: {e}")
+        return False
+
 def run_tests(args, system_test_dir):
 
     show_flag = True
@@ -1693,16 +1707,19 @@ def run_tests(args, system_test_dir):
             print("Congrats, here's your flag")
             flag = None
             if show_flag:
-                with open("/flag", "r") as ff:
-                    flag = ff.read()
-                    print(f"{GREEN}{flag}{RESET_COLOR}")
+                if check_if_session_active():
+                    with open("/flag", "r") as ff:
+                        flag = ff.read()
+                        print(f"{GREEN}{flag}{RESET_COLOR}")
                     
-                    # Send success results to API with actual flag
-                    send_test_results(
-                        passed_all_tests=True,
-                        test_message=f"All {total_passes} tests passed",
-                        flag_value=flag.strip()
-                    )
+                        # Send success results to API with actual flag
+                        send_test_results(
+                            passed_all_tests=True,
+                            test_message=f"All {total_passes} tests passed",
+                            flag_value=flag.strip()
+                        )
+                else:
+                    print("No flag, you are not currently marked as attending this testing session, please contact the course staff person running the test session")
             else:
                 print("pwn.college{...")
                 print("No flag, must run without using either --source-dir and --test-dir, only works when default directory under /home/hacker/cse240 is used")

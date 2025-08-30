@@ -16,8 +16,11 @@ import time
 import signal
 import requests
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, timedelta
 import logging
+
+SESSION_FILE = "/challenge/.config/session.dat"
 
 # Configure logging
 logging.basicConfig(
@@ -51,7 +54,7 @@ def fetch_session_times():
         try:
             logger.info(f"Fetching session times from {API_URL} (attempt {attempt + 1}/{MAX_RETRIES})")
             
-            response = requests.get(API_URL, timeout=10)
+            response = requests.get(API_URL, timeout=60)
             response.raise_for_status()
             
             data = response.json()
@@ -103,6 +106,59 @@ def parse_iso_datetime(iso_string):
         logger.error(f"Failed to parse datetime '{iso_string}': {e}")
         return None
 
+def check_exam_attendance():
+    """
+    Extract pwn_college_id from /.user_info and check exam attendance status
+    
+    Returns:
+        bool: True if attending exam, False otherwise, None if error
+    """
+    try:
+        # Read the user_info file
+        with open('/.user_info', 'r') as f:
+            user_info_content = f.read()
+        
+        # Extract pwn_college_id using regex
+        # Looking for pattern like pwn_college_id='130143'
+        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+        
+        if not match:
+            logger.error("Could not find pwn_college_id in /.user_info")
+            return None
+        
+        pwn_college_id = match.group(1)
+        logger.info(f"Extracted pwn_college_id: {pwn_college_id}")
+        
+        # Make API request to check exam attendance
+        api_url = "https://api.cse545.com/session_attendance"
+        payload = {"pwn_college_id": pwn_college_id}
+        
+        try:
+            response = requests.post(api_url, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"Exam attendance API response: {json.dumps(data, indent=2)}")
+            
+            # Return the attending status
+            attending = data.get('attending', False)
+            logger.info(f"Exam attendance status: {attending}")
+            return attending
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to check exam attendance: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse exam attendance response: {e}")
+            return None
+            
+    except FileNotFoundError:
+        logger.error("/.user_info file not found")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error checking exam attendance: {e}")
+        return None
+
 def broadcast_message(message):
     for tty in glob.glob("/dev/pts/[0-9]*"):
         try:
@@ -113,7 +169,7 @@ def broadcast_message(message):
             logging.info(f"Failed to write to {tty}: {e}")
 
 
-def kill_process_1():
+def mark_session_terminated():
     """
     Terminate process ID 1, which will kill the script
     """
@@ -129,33 +185,29 @@ def kill_process_1():
         logger.error(f"Error reading /.user_info: {e}")
     
     try:
-        logger.critical("Terminating process ID 1 - script will exit in 3 min")
-        broadcast_message("Terminating process ID 1 - script will exit in 3 min")
-        time.sleep(60)  # Sleep for 1 minute before killing
-        logger.critical("Terminating process ID 1 - script will exit in 2 min")
-        broadcast_message("Terminating process ID 1 - script will exit in 2 min")
-        time.sleep(60)  # Sleep for 1 minute before killing
-        logger.critical("Terminating process ID 1 - script will exit in 1 min")
-        broadcast_message("Terminating process ID 1 - script will exit in 1 min")
-        time.sleep(60)  # Sleep for 1 minute before killing
-        # Send SIGTERM to process 1
-        logger.critical("Terminating process ID 1 - script will exit NOW")
-        broadcast_message("Terminating process ID 1 - script will exit NOW")
-        os.kill(1, signal.SIGTERM)
-        time.sleep(2)  # Give it a moment
-        
-        # If still running, send SIGKILL
-        os.kill(1, signal.SIGKILL)
-    except ProcessLookupError:
-        logger.info("Process 1 already terminated")
-    except PermissionError:
-        logger.error("Permission denied - cannot kill process 1")
-        # Fallback: exit the script
-        sys.exit(1)
+        broadcast_message("Session marked inactive, tester will no longer return the flag once all tests are passed. If currently in a testing session, check with staff person to restart the session.")
+
+        with open(SESSION_FILE, 'w') as f:
+            f.write("terminated\n")
+        os.chown(SESSION_FILE, 0, 0)
+        os.chmod(SESSION_FILE, 0o600)
     except Exception as e:
-        logger.error(f"Failed to kill process 1: {e}")
-        # Fallback: exit the script
-        sys.exit(1)
+        logger.error(f"Error reading {SESSION_FILE}: {e}")
+
+def mark_session_active():
+    """
+    Mark the session as active
+    """
+    try:
+        with open(SESSION_FILE, 'w') as f:
+            f.write("active\n")
+        os.chown(SESSION_FILE, 0, 0)
+        os.chmod(SESSION_FILE, 0o600)
+    except Exception as e:
+        logger.error(f"Error reading {SESSION_FILE}: {e}")
+    except Exception as e:
+        logger.error(f"Error reading {SESSION_FILE}: {e}")
+        return False
 
 def is_time_in_session(current_time, start_time, end_time):
     """
@@ -202,27 +254,21 @@ def main():
     # Initial session check
     session_data = fetch_session_times()
     
-    if not session_data:
-        logger.critical("No valid session found at startup - terminating")
-        kill_process_1()
-        return
-    
-    # Parse session times
-    start_time_str = session_data.get('start_time_utc')
-    end_time_str = session_data.get('end_time_utc')
-    
-    if not start_time_str or not end_time_str:
-        logger.critical("Missing session time data - terminating")
-        kill_process_1()
-        return
-    
-    start_time = parse_iso_datetime(start_time_str)
-    end_time = parse_iso_datetime(end_time_str)
-    
-    if not start_time or not end_time:
-        logger.critical("Failed to parse session times - terminating")
-        kill_process_1()
-        return
+    if session_data:
+        start_time_str = session_data.get('start_time_utc')
+        end_time_str = session_data.get('end_time_utc')
+        start_time = parse_iso_datetime(start_time_str)
+        end_time = parse_iso_datetime(end_time_str)
+        if not start_time or not end_time:
+            logger.critical("Failed to parse session times - terminating")
+            mark_session_terminated()
+            return
+    else:
+        default_minutes = 120
+        logger.info(f"Using default_session_time: {default_minutes} minutes")
+        start_time = get_current_utc_time()
+        end_time = start_time + timedelta(minutes=default_minutes)            
+
     
     logger.info(f"Session found: {session_data['type']}")
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
@@ -232,11 +278,13 @@ def main():
     current_time = get_current_utc_time()
     if not is_time_in_session(current_time, start_time, end_time):
         logger.critical("Current time is outside session window - terminating")
-        kill_process_1()
+        mark_session_terminated()
         return
     
     logger.info("Session is active - entering monitoring loop")
-    
+    mark_session_active()
+
+    missing_attendance = 0
     # Main monitoring loop
     try:
         while True:
@@ -248,20 +296,37 @@ def main():
             # Check if session has ended
             if current_time > end_time:
                 logger.critical("Session has ended - terminating")
-                kill_process_1()
-                break
+                mark_session_terminated()
+                continue 
             
             # Check if we're still within the session window
             if not is_time_in_session(current_time, start_time, end_time):
                 logger.critical("Current time is outside session window - terminating")
-                kill_process_1()
-                break
+                mark_session_terminated()
+                continue 
             
             # Calculate time remaining
             time_remaining = end_time - current_time
             minutes_remaining = int(time_remaining.total_seconds() / 60)
             logger.info(f"Session is active - {minutes_remaining} minutes remaining")
-            
+
+            check_results = check_exam_attendance()
+            if check_results is None :
+                missing_attendance += 1
+                if missing_attendance >= 3:
+                    logger.critical("Multiple attempts to detect attendance failed, terminating session")
+                    broadcast_message("Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running\n")
+                    mark_session_terminated()
+                    continue
+            elif check_results == True:
+                mark_session_active()
+                missing_attendance = 0
+            else:
+                logger.critical("Exam attendance check failed - terminating")
+                broadcast_message("You are no longer showed logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester")
+                mark_session_terminated()
+                continue
+
     except KeyboardInterrupt:
         logger.info("Received interrupt signal - exiting gracefully")
     except Exception as e:
