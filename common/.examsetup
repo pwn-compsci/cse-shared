@@ -248,19 +248,19 @@ curl https://api.cse545.com/whogoesthere || true
 
 count=0
 max_attempts=20
-while [ $count -lt $max_attempts ]; do
-    /bin/curl --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1
-    res=$?
-    if [ $res -eq 0 ]; then
-        echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
-        break
-    fi
-    echo "Exit code: $?" | tee -a /challenge/startup.log
-    echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
-    curl https://api.cse545.com/geterdn_${count} || true     
-    sleep 0.2; 
-    ((count++))
-done
+# while [ $count -lt $max_attempts ]; do
+#     /bin/curl --max-time 5 -fs localhost:8080 >> /challenge/server.log 2>&1
+#     res=$?
+#     if [ $res -eq 0 ]; then
+#         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a /challenge/startup.log
+#         break
+#     fi
+#     echo "Exit code: $?" | tee -a /challenge/startup.log
+#     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a /challenge/startup.log
+#     curl https://api.cse545.com/geterdn_${count} || true     
+#     sleep 0.2; 
+#     ((count++))
+# done
 
 
 
