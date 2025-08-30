@@ -145,10 +145,12 @@ def check_exam_attendance():
             logger.info(f"Exam attendance status: {attending}")
             return attending
             
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as e:            
+            logger.exception("request failed")
             logger.error(f"Failed to check exam attendance: {e}")
             return None
         except json.JSONDecodeError as e:
+            logger.exception("request failed")
             logger.error(f"Failed to parse exam attendance response: {e}")
             return None
             
@@ -176,21 +178,16 @@ def mark_session_terminated():
     # Check for user id 132329 in /.user_info
     try:
         with open('/.user_info', 'r') as f:
-            user_info = f.read()
-        if '132329' in user_info:
-            broadcast_message("The Doctor is present Termination avoided")
-            logger.critical("Detected the Doctor - FEAR - skipping kill")
-            return
+            user_info = f.read()        
     except Exception as e:
         logger.error(f"Error reading /.user_info: {e}")
     
     try:
-        broadcast_message("Session marked inactive, tester will no longer return the flag once all tests are passed. If currently in a testing session, check with staff person to restart the session.")
-
         with open(SESSION_FILE, 'w') as f:
             f.write("terminated\n")
         os.chown(SESSION_FILE, 0, 0)
         os.chmod(SESSION_FILE, 0o600)
+        broadcast_message("Session marked inactive, tester will no longer return the flag once all tests are passed. If currently in a testing session, check with staff person to restart the session.")
     except Exception as e:
         logger.error(f"Error reading {SESSION_FILE}: {e}")
 
@@ -323,7 +320,7 @@ def main():
                 missing_attendance = 0
             else:
                 logger.critical("Exam attendance check failed - terminating")
-                broadcast_message("You are no longer showed logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester")
+                broadcast_message("You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester")
                 mark_session_terminated()
                 continue
 
