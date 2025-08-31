@@ -139,6 +139,7 @@ else
         mkdir -p "$clevel_work_dir/system_tests"
         cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
     fi
+    find $clevel_work_dir -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
 
 fi 
 
