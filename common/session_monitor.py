@@ -263,32 +263,32 @@ def main():
     logger.info("Session Monitor starting...")
     logger.info(f"Process ID: {os.getpid()}")
     logger.info(f"Parent Process ID: {os.getppid()}")
-    current_utc = get_current_utc_time()
-    logger.info(f"Current UTC time: {current_utc.isoformat()}")
+    current_time = get_current_utc_time()
+    logger.info(f"Current UTC time: {current_time.isoformat()}")
 
     # Initial session check
     session_data = fetch_session_times()
-    
-    if session_data:
+
+    if session_data and session_data.get('session_found', False):
+        logger.info("Valid session found, using provided session times")
         start_time_str = session_data.get('start_time_utc')
         end_time_str = session_data.get('end_time_utc')
-        start_time = parse_iso_datetime(start_time_str)
-        end_time = parse_iso_datetime(end_time_str)
+        start_time = parse_iso_datetime(start_time_str) - timedelta(minutes=5)
+        end_time = parse_iso_datetime(end_time_str) 
         logger.info(f"Session found: {session_data['type']}")
     
     if not start_time or not end_time:
         logger.info("No valid session times found, using defaults")
         default_minutes = 60
         logger.info(f"Using default_session_time: {default_minutes} minutes")
-        start_time = current_utc
+        # to make sure current_time is inside session
+        start_time = get_current_utc_time() - timedelta(seconds=5)
         end_time = start_time + timedelta(minutes=default_minutes)            
-        logger.info(f"{start_time=} {end_time=}")
-    
+            
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
     logger.info(f"Session end (UTC): {end_time.isoformat()}")
     
-    # Check if we're currently within the session
-    current_time = get_current_utc_time()
+    # Check if we're currently within the session    
     if not is_time_in_session(current_time, start_time, end_time):
         logger.critical("Current time is outside session window - terminating")
         mark_session_terminated()
