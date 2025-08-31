@@ -30,9 +30,11 @@ def main():
     )
 
     args = parser.parse_args()
-
+    test_dir_provided = False 
     if args.test_dir:
         test_dir = args.test_dir
+        test_dir_provided = True
+        print(f"Test dir is being provided {test_dir=}")
     elif os.path.exists("/challenge/system_tests"):
         test_dir = os.path.join("/challenge", "system_tests")
     else:
@@ -40,7 +42,7 @@ def main():
 
     init_db()
 
-    if not run_tests(args, test_dir):
+    if not run_tests(args, test_dir, test_dir_provided):
         print(
             "For the tester to run there must be a level config file located under /challenge/.config or the --source-dir and --test-dir options must be added "
         )

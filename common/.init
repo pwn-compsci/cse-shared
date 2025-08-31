@@ -782,7 +782,7 @@ else
         chown root:root -R /challenge/system_tests
         find /challenge/system_tests -type f -name '*.json' -exec chmod 744 {} \;
         find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} \;
-        find /challenge/system_tests -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
+        find /challenge/system_tests -type f -name 'stest*hidden*' -exec chmod 400 {} \;
     fi    
 fi
 
