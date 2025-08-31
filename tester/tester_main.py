@@ -1575,6 +1575,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             if not os.path.exists(system_test_dir):
                 print(f"Error: Provided system test directory does not exist: {system_test_dir}")
                 sys.exit(99)
+            print(f"System test dir is {system_test_dir=}")
         else:
             if os.path.exists(level_config.get('testdir',"")):
                 system_test_dir = level_config["testdir"]
@@ -1821,6 +1822,7 @@ def main():
     if  args.test_dir:
         test_dir = args.test_dir
         test_dir_provided = True
+        print(f"Test dir is being provided {test_dir=}")
     elif os.path.exists(SYSTEM_TESTS_DIR):
         test_dir = os.path.join(SYSTEM_TESTS_DIR)
     else:
