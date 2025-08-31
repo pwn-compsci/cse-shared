@@ -54,15 +54,15 @@ def fetch_session_times():
         try:
             logger.info(f"Fetching session times from {API_URL} (attempt {attempt + 1}/{MAX_RETRIES})")
             
-            response = requests.get(API_URL, timeout=60)
+            response = requests.get(API_URL, timeout=10)
             response.raise_for_status()
             
             data = response.json()
             logger.info(f"API Response: {json.dumps(data, indent=2)}")
             
-            if data.get('status') == 'success' and data.get('session_found'):
+            if data.get('status') == 'success' and data.get('session_found', False):
                 return data
-            elif data.get('status') == 'success' and not data.get('session_found'):
+            elif data.get('status') == 'success' and not data.get('session_found', False):
                 logger.warning("No current session found")
                 return None
             else:
@@ -268,16 +268,17 @@ def main():
 
     # Initial session check
     session_data = fetch_session_times()
-
-    if session_data and session_data.get('session_found', False):
+    start_time = None
+    end_time = None 
+    if session_data is not None and session_data.get('session_found', False):
         logger.info("Valid session found, using provided session times")
         start_time_str = session_data.get('start_time_utc')
         end_time_str = session_data.get('end_time_utc')
         start_time = parse_iso_datetime(start_time_str) - timedelta(minutes=5)
         end_time = parse_iso_datetime(end_time_str) 
         logger.info(f"Session found: {session_data['type']}")
-    
-    if not start_time or not end_time:
+
+    if start_time is None or end_time is None:
         logger.info("No valid session times found, using defaults")
         default_minutes = 60
         logger.info(f"Using default_session_time: {default_minutes} minutes")
