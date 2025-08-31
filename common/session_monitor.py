@@ -289,20 +289,22 @@ def main():
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
     logger.info(f"Session end (UTC): {end_time.isoformat()}")
     
-    # Check if we're currently within the session    
-    if not is_time_in_session(current_time, start_time, end_time):
-        logger.critical("Current time is outside session window - terminating")
-        mark_session_terminated()
-        return
-    
-    logger.info("Session is active - entering monitoring loop")
-    mark_session_active()
+    first_time = True 
+    if not os.path.exists(SESSION_FILE):
+        with open(SESSION_FILE, 'w') as f:
+            f.write("inactive\n")
+        os.chown(SESSION_FILE, 0, 0)
+        os.chmod(SESSION_FILE, 0o644)
 
     missing_attendance = 0
     # Main monitoring loop
     while True:
         try:
-            time.sleep(CHECK_INTERVAL)
+            if first_time:
+                # no sleep on first entry
+                first_time = False
+            else:
+                time.sleep(CHECK_INTERVAL)
             current_time = get_current_utc_time()
             logger.info(f"Checking session status at {current_time.isoformat()}")
             
