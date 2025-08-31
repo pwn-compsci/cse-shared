@@ -73,10 +73,16 @@ else
             echo "[e] making API call to attempt_exam" | tee -a /challenge/startup.log
             
             # Make API call in background
-            curl  --max-time 10 -X POST http://api.cse545.com/attempt_exam \
+            curl  --retry 5 --max-time 10 -X POST https://api.cse545.com/attempt_exam \
                 -H "Content-Type: application/json" \
                 -d "{\"pwn_college_id\": \"$pwn_college_id\", \"module\": \"$module\", \"challenge\": \"$examLevel\"}" \
                 | tee -a /challenge/startup.log 2>&1 &
+            res=$?
+            if [ $res -eq 0 ]; then
+                echo "[e] API call successful" | tee -a /challenge/startup.log
+            else
+                echo "[e] API call failed with status $res" | tee -a /challenge/startup.log
+            fi
         else
             echo "[e] failed to extract module or examLevel from level.json" | tee -a /challenge/startup.log
         fi
