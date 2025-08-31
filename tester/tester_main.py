@@ -1632,7 +1632,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             compile_success = True
         if os.path.exists(os.path.join(source_dir, "main.bin")):
             source_main_bin = os.path.join(source_dir, "main.bin")
-            system_test_main_bin = os.path.join(SYSTEM_TESTS_DIR, "main.bin")
+            system_test_main_bin = os.path.join(system_test_dir, "main.bin")
             if (os.path.exists(source_main_bin)):
                 kill_process(system_test_main_bin)
                 kill_process(source_main_bin)
