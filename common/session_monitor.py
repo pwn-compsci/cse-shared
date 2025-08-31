@@ -263,8 +263,9 @@ def main():
     logger.info("Session Monitor starting...")
     logger.info(f"Process ID: {os.getpid()}")
     logger.info(f"Parent Process ID: {os.getppid()}")
-    logger.info(f"Current UTC time: {get_current_utc_time().isoformat()}")
-    
+    current_utc = get_current_utc_time()
+    logger.info(f"Current UTC time: {current_utc.isoformat()}")
+
     # Initial session check
     session_data = fetch_session_times()
     
@@ -273,18 +274,16 @@ def main():
         end_time_str = session_data.get('end_time_utc')
         start_time = parse_iso_datetime(start_time_str)
         end_time = parse_iso_datetime(end_time_str)
-        if not start_time or not end_time:
-            logger.critical("Failed to parse session times - terminating")
-            mark_session_terminated()
-            return
-    else:
-        default_minutes = 120
-        logger.info(f"Using default_session_time: {default_minutes} minutes")
-        start_time = get_current_utc_time()
-        end_time = start_time + timedelta(minutes=default_minutes)            
-
+        logger.info(f"Session found: {session_data['type']}")
     
-    logger.info(f"Session found: {session_data['type']}")
+    if not start_time or not end_time:
+        logger.info("No valid session times found, using defaults")
+        default_minutes = 60
+        logger.info(f"Using default_session_time: {default_minutes} minutes")
+        start_time = current_utc
+        end_time = start_time + timedelta(minutes=default_minutes)            
+        logger.info(f"{start_time=} {end_time=}")
+    
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
     logger.info(f"Session end (UTC): {end_time.isoformat()}")
     
@@ -300,8 +299,8 @@ def main():
 
     missing_attendance = 0
     # Main monitoring loop
-    try:
-        while True:
+    while True:
+        try:
             time.sleep(CHECK_INTERVAL)
             current_time = get_current_utc_time()
             logger.info(f"Checking session status at {current_time.isoformat()}")
@@ -339,11 +338,13 @@ def main():
                 missing_attendance += 5
                 continue
 
-    except KeyboardInterrupt:
-        logger.info("Received interrupt signal - exiting gracefully")
-    except Exception as e:
-        logger.error(f"Unexpected error in monitoring loop: {e}")
-        #kill_process_1()
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal - exiting gracefully")
+        except Exception as e:
+            logger.error(f"Unexpected error in monitoring loop: {e}")
+            #kill_process_1()
+    
+    # end while 
 
 if __name__ == "__main__":
     try:
