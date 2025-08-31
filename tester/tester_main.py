@@ -705,7 +705,7 @@ def output_failed_test_information(target_path, test, args, input_data, expected
         # Unexpected output found, let's grep the output file to show the user
         env_vars = os.environ.copy()          # Start with a copy of the current environment
         env_vars['GREP_COLORS'] = 'mt=01;33'  # Change grep color to bold yellow
-
+        skipped_lable = ""
         print(f"--------<[ {test} Unexpected token found in output ]>--------")
         if (len(actual_output_list) > OUTPUT_FILE_LINE_LIMIT):
             cmd=["grep","--color=always", "-n", "-A10", "-B10", "-P", f".*{out_match_report['unexpectedToken'][0]}.*", preprocessed_actual_filename]            
@@ -1722,7 +1722,8 @@ def run_tests(args, system_test_dir):
                             flag_value=flag.strip()
                         )
                 else:
-                    print("No flag, you are not currently marked as attending this testing session, please contact the course staff person running the test session")
+                    print("No flag, you are not currently marked as attending a testing session.")
+                    print("If you are currently attending a testing session, please ask the proctor for help")
             else:
                 print("pwn.college{...")
                 print("No flag, must run without using either --source-dir and --test-dir, only works when default directory under /home/hacker/cse240 is used")
