@@ -1542,7 +1542,7 @@ def check_if_session_active():
         print(f"Error checking session status: {e}")
         return False
 
-def run_tests(args, system_test_dir):
+def run_tests(args, system_test_dir, test_dir_provided=False):
 
     show_flag = True
     user_created_system_test = False
@@ -1570,8 +1570,13 @@ def run_tests(args, system_test_dir):
         initial_files = level_config.get("initial_files", None)
         java_level = level_config.get("javaLevel", False)
         user_created_system_test = level_config.get("user_created_system_test", False)
-        if os.path.exists(level_config.get('testdir',"")):
-            system_test_dir = level_config["testdir"]
+        if test_dir_provided:
+            if not os.path.exists(system_test_dir):
+                print(f"Error: Provided system test directory does not exist: {system_test_dir}")
+                sys.exit(99)
+        else:
+            if os.path.exists(level_config.get('testdir',"")):
+                system_test_dir = level_config["testdir"]
 
 
         # if source_dir is provided in level.json then use it otherwise use hwdir + level
@@ -1811,9 +1816,10 @@ def main():
     parser.add_argument("--test_dir", "--test-dir", "-t", help="Directory containing the test files")
 
     args = parser.parse_args()
-
+    test_dir_provided = False
     if  args.test_dir:
         test_dir = args.test_dir
+        test_dir_provided = True
     elif os.path.exists(SYSTEM_TESTS_DIR):
         test_dir = os.path.join(SYSTEM_TESTS_DIR)
     else:
@@ -1821,7 +1827,7 @@ def main():
 
     init_db()
     
-    if not run_tests(args, test_dir):
+    if not run_tests(args, test_dir, test_dir_provided):
         print(f"For the tester to run there must be a level config file located under {LEVEL_CONFIG_FP} or the --source-dir and --test-dir options must be added ")
         parser.print_usage()
         sys.exit(10)
