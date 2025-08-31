@@ -139,9 +139,7 @@ else
         mkdir -p "$clevel_work_dir/system_tests"
         cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
     fi
-    find $clevel_work_dir -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
-    find $clevel_work_dir -type f -name 'stest*hidden.json' -exec chown root:root {} \;
-
+    find $clevel_work_dir -type f -name 'stest*hidden*' -exec rm -f {} \;    
 fi 
 
 if [ -f /challenge/.testprobleminit ]; then

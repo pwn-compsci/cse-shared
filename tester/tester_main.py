@@ -1571,6 +1571,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         java_level = level_config.get("javaLevel", False)
         user_created_system_test = level_config.get("user_created_system_test", False)
         if test_dir_provided:
+            show_flag = False
             if not os.path.exists(system_test_dir):
                 print(f"Error: Provided system test directory does not exist: {system_test_dir}")
                 sys.exit(99)
