@@ -1210,6 +1210,14 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output)}b, the maximum allowed is {test_json['max_size']}b. Please remove extra prints and resubmit.")
             return False
+    elif test_type == "output_lines":
+        if len(actual_output.splitlines()) < test_json["max_lines"]:
+            print(f"{GREEN}\u2714 PASS{RESET_COLOR} {test_name} ran in {time.time()-start_time:.2f}s")
+            return True
+        else:
+            failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
+            print(f"Output was too large {len(actual_output.splitlines())} lines, the maximum allowed is {test_json['max_lines']} lines. Please remove extra prints and resubmit.")
+            return False
     else:
         actual_output_list = actual_output.splitlines()
         check_file = test_json.get("checkFile", {})

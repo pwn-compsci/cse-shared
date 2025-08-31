@@ -140,6 +140,7 @@ else
         cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
     fi
     find $clevel_work_dir -type f -name 'stest*hidden.json' -exec chmod 400 {} \;
+    find $clevel_work_dir -type f -name 'stest*hidden.json' -exec chown root:root {} \;
 
 fi 
 
