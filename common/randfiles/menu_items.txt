@@ -2,49 +2,50 @@ a pizza
 a burger
 a sandwich
 a salad
-a pasta dish
+a pasta
 a soup
 a steak
-a chicken dish
-a fish plate
+a chicken
+a fish
 a dessert
-a breakfast item
-a lunch special
-a dinner entree
-a side dish
+a breakfast
+a lunch
+a dinner
+a side
 a beverage
 an appetizer
 a wrap
 a taco
 a quesadilla
 a panini
-a club sandwich
-a caesar salad
-a grilled chicken
-a fried fish
-a baked potato
-a rice bowl
-a noodle dish
+a club
+a caesar
+a grill
+a fry
+a potato
+a rice
+a noodle
 a curry
-a stir fry
+a stirfry
 a casserole
 a lasagna
-a pizza slice
-a hot dog
+a slice
+a hotdog
 a cheeseburger
-a veggie burger
-a chicken sandwich
-a fish sandwich
-a turkey sandwich
-a ham sandwich
-a roast beef sandwich
-a tuna sandwich
-a grilled cheese
-a french toast
-a pancake stack
-a waffle
-an omelet
-a breakfast burrito
+a veggie
+a special
+a platter
+a combo
+a meal
+a entree
 a smoothie
 a milkshake
 a coffee
+a tea
+a soda
+a juice
+a water
+a snack
+a treat
+a plate
+a bowl
