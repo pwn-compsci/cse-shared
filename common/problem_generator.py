@@ -102,6 +102,10 @@ for var_name in global_vars_added:
 
 context['menu_confirmation_replaced'] = escape_for_regex(context['menu_confirmation']).replace('__', "[0-9]+")
 
+# Add order_confirmation_replaced if order_confirmation exists
+if 'order_confirmation' in context:
+    context['order_confirmation_replaced'] = escape_for_regex(context['order_confirmation']).replace('__', "[0-9]+")
+
 # Add 'menu_target_name' by stripping 'a ' or 'an ' from the start of 'menu_target'
 if context['menu_target'].startswith('an '):
     context['menu_target_name'] = context['menu_target'][3:].strip()
@@ -109,6 +113,15 @@ elif context['menu_target'].startswith('a '):
     context['menu_target_name'] = context['menu_target'][2:].strip()
 else:
     context['menu_target_name'] = context['menu_target'].strip()
+
+# Add 'menu_item_name' by stripping 'a ' or 'an ' from the start of 'menu_item'
+if 'menu_item' in context:
+    if context['menu_item'].startswith('an '):
+        context['menu_item_name'] = context['menu_item'][3:].strip()
+    elif context['menu_item'].startswith('a '):
+        context['menu_item_name'] = context['menu_item'][2:].strip()
+    else:
+        context['menu_item_name'] = context['menu_item'].strip()
 
 context['value_entered_prompt_replaced_num'] = escape_for_regex(context['value_entered_prompt']).replace('__', "[0-9]+")
 context['value_entered_prompt_replaced_str'] = escape_for_regex(context['value_entered_prompt']).replace('__', "\\\\w+")

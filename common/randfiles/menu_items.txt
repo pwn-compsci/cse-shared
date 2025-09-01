@@ -1,0 +1,50 @@
+a pizza
+a burger
+a sandwich
+a salad
+a pasta dish
+a soup
+a steak
+a chicken dish
+a fish plate
+a dessert
+a breakfast item
+a lunch special
+a dinner entree
+a side dish
+a beverage
+an appetizer
+a wrap
+a taco
+a quesadilla
+a panini
+a club sandwich
+a caesar salad
+a grilled chicken
+a fried fish
+a baked potato
+a rice bowl
+a noodle dish
+a curry
+a stir fry
+a casserole
+a lasagna
+a pizza slice
+a hot dog
+a cheeseburger
+a veggie burger
+a chicken sandwich
+a fish sandwich
+a turkey sandwich
+a ham sandwich
+a roast beef sandwich
+a tuna sandwich
+a grilled cheese
+a french toast
+a pancake stack
+a waffle
+an omelet
+a breakfast burrito
+a smoothie
+a milkshake
+a coffee

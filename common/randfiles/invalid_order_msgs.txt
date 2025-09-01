@@ -1,0 +1,50 @@
+Invalid order option. Please try again.
+That's not a valid menu option.
+Invalid selection. Please choose again.
+Sorry, that option is not available.
+Invalid choice. Try selecting again.
+That option doesn't exist on our menu.
+Invalid order. Please select a valid option.
+Not a valid selection. Please retry.
+Invalid menu choice. Choose again.
+That's not on our menu. Try again.
+Invalid option selected. Please retry.
+Sorry, invalid selection. Choose again.
+That choice is not available. Try again.
+Invalid order choice. Please reselect.
+Not a valid menu item. Try again.
+Invalid selection made. Choose again.
+That option is invalid. Please retry.
+Invalid menu selection. Try again.
+Sorry, that's not valid. Choose again.
+Invalid choice entered. Please retry.
+That selection is invalid. Try again.
+Invalid order entry. Please choose again.
+Not a valid option. Please retry.
+Invalid menu choice made. Try again.
+That's an invalid selection. Retry.
+Invalid order placed. Choose again.
+Sorry, invalid option. Please retry.
+That choice is invalid. Try again.
+Invalid selection given. Choose again.
+Not available. Please choose again.
+Invalid menu option. Please retry.
+That's not valid. Try selecting again.
+Invalid order request. Choose again.
+Sorry, invalid choice. Please retry.
+That option is not valid. Try again.
+Invalid selection attempted. Retry.
+Not a menu option. Please choose again.
+Invalid order made. Please retry.
+That's invalid. Please choose again.
+Invalid choice provided. Try again.
+Sorry, not valid. Please retry.
+That selection is wrong. Try again.
+Invalid order option entered. Retry.
+Not available on menu. Choose again.
+Invalid choice submitted. Please retry.
+That's not right. Please try again.
+Invalid menu selection made. Retry.
+Sorry, invalid entry. Choose again.
+That option is wrong. Please retry.
+Invalid selection process. Try again.

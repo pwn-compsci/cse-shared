@@ -1,0 +1,50 @@
+You ordered option __
+Your selection is __
+Order confirmed: __
+You chose option __
+Selection recorded: __
+Your order: option __
+Confirmed selection: __
+You picked option __
+Order placed: __
+Your choice: option __
+Selection confirmed: __
+Order number __
+You selected __
+Choice confirmed: __
+Your order choice: __
+Selection made: __
+Order received: __
+You have chosen __
+Selection registered: __
+Your pick: option __
+Order confirmed for __
+You went with option __
+Selection saved: __
+Your decision: __
+Order logged: __
+You decided on __
+Selection complete: __
+Your final choice: __
+Order processed: __
+You opted for __
+Selection validated: __
+Your preference: __
+Order accepted: __
+You settled on __
+Selection approved: __
+Your order is __
+Order documented: __
+You committed to __
+Selection finalized: __
+Your request: option __
+Order established: __
+You determined __
+Selection verified: __
+Your input: __
+Order captured: __
+You specified __
+Selection acknowledged: __
+Your designation: __
+Order noted: __
+You indicated __
