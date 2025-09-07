@@ -380,7 +380,7 @@ def main():
                     
                     syncTheseFiles.append(fullFilePath)
 
-                pwn_college_id = extract_pwn_college_id()
+                pwn_college_id = extract_pwn_college_id() 
                 
                 compileLog = ""
                 testerLog = ""
