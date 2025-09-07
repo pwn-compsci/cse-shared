@@ -366,7 +366,12 @@ def main():
                         continue # goes to the next file in fileList
                     elif databaseSha is False: # Store the file if not in database.
                         if int(level) >= 2:
-                            previousLevelSha = query_for_sha256(module, str(f"0{int(level)-1}"), baseFileName)
+                            # This ensures that a file that hasn't been changed over the duration of the module will not be sent to the server.
+                            currentLevel = int(level)
+                            previousLevelSha = query_for_sha256(module, str(f"0{currentLevel-1}"), baseFileName)
+                            while previousLevelSha == False and currentLevel != 1:
+                                currentLevel -= 1
+                                previousLevelSha = query_for_sha256(module, str(f"0{currentLevel}"), baseFileName)
                             if previousLevelSha == shaHash:
                                 continue
                         store_file(module, level, baseFileName, shaHash) 
