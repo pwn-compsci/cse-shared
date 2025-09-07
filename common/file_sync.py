@@ -409,6 +409,7 @@ def main():
                 sleep(60)
             except Exception as e:
                 log.error(f"Error during main loop: {str(e)}")
+                sleep(60)
         
     else:
         log.info("No configuration data available.")
