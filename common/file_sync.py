@@ -328,7 +328,7 @@ def main():
     """
     Main function that reads the level configuration and controls the flow of the file sync.
     """
-    sleep(5)
+    sleep(180)
 
     config = read_level_config()
     if config:
