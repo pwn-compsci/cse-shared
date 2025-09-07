@@ -108,20 +108,28 @@ if 'order_confirmation' in context:
 
 # Add 'menu_target_name' by stripping 'a ' or 'an ' from the start of 'menu_target'
 if context['menu_target'].startswith('an '):
-    context['menu_target_name'] = context['menu_target'][3:].strip()
+    menu_target_base = context['menu_target'][3:].strip()
 elif context['menu_target'].startswith('a '):
-    context['menu_target_name'] = context['menu_target'][2:].strip()
+    menu_target_base = context['menu_target'][2:].strip()
 else:
-    context['menu_target_name'] = context['menu_target'].strip()
+    menu_target_base = context['menu_target'].strip()
+
+# Convert to valid C function name: replace spaces and special chars with underscores, remove non-alphanumeric
+import re
+context['menu_target_name'] = re.sub(r'[^a-zA-Z0-9_]', '_', menu_target_base).strip('_')
 
 # Add 'menu_item_name' by stripping 'a ' or 'an ' from the start of 'menu_item'
 if 'menu_item' in context:
     if context['menu_item'].startswith('an '):
-        context['menu_item_name'] = context['menu_item'][3:].strip()
+        menu_item_base = context['menu_item'][3:].strip()
     elif context['menu_item'].startswith('a '):
-        context['menu_item_name'] = context['menu_item'][2:].strip()
+        menu_item_base = context['menu_item'][2:].strip()
     else:
-        context['menu_item_name'] = context['menu_item'].strip()
+        menu_item_base = context['menu_item'].strip()
+    
+    # Convert to valid C function name: replace spaces and special chars with underscores, remove non-alphanumeric
+    import re
+    context['menu_item_name'] = re.sub(r'[^a-zA-Z0-9_]', '_', menu_item_base).strip('_')
 
 context['value_entered_prompt_replaced_num'] = escape_for_regex(context['value_entered_prompt']).replace('__', "[0-9]+")
 context['value_entered_prompt_replaced_str'] = escape_for_regex(context['value_entered_prompt']).replace('__', "\\\\w+")
