@@ -358,8 +358,8 @@ def main():
                 
                 for file in fileList:
                     fullFilePath = file
+                    shaHash = computeSHA256(file)
                     baseFileName = os.path.basename(file)
-                    shaHash = computeSHA256(baseFileName)
                     databaseSha = query_for_sha256(module, level, baseFileName)
                     
                     if databaseSha == shaHash:
