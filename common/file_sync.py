@@ -271,7 +271,7 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, c
     """
     ensure_api_host_entry()  # Ensure the API host entry is present
 
-    if not all([filename, content, module, level, pwn_college_id, compileLog, testerLog]):
+    if not all([filename, content, module, level, pwn_college_id]):
         log.error(f"Missing required data for syn {filename=}, {module=}, {level=}, {pwn_college_id=} {compileLog=} {testerLog=}")
         return False
         
