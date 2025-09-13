@@ -21,6 +21,7 @@ def init_db():
     Initializes the database
     """
     try:
+        log.info("Initializing database...")
         conn = sqlite3.connect(DATABASE)
         executor = conn.cursor()
         executor.execute('''CREATE TABLE IF NOT EXISTS latestFiles (id INTEGER PRIMARY KEY, module TEXT, level TEXT, filename TEXT, sha256 TEXT);''')
@@ -328,7 +329,8 @@ def main():
     """
     Main function that reads the level configuration and controls the flow of the file sync.
     """
-    sleep(180)
+    log.info("Sleeping for 3 minutes to allow workspace to initialize...")
+    # sleep(180)
 
     config = read_level_config()
     if config:
@@ -422,5 +424,6 @@ def main():
 
 if __name__ == "__main__":
     log = setup_logging()
+    
     init_db()
     main()
