@@ -111,7 +111,7 @@ def check_exam_attendance():
     Extract pwn_college_id from /.user_info and check exam attendance status
     
     Returns:
-        bool: True if attending exam, False otherwise, None if error
+        dict: Dictionary with 'attending' status and optional 'container_action', or None if error
     """
     try:
         # Read the user_info file
@@ -137,16 +137,21 @@ def check_exam_attendance():
             response = requests.post(api_url, json=payload, timeout=30)
             if response.status_code == 404:
                 logger.warning("Exam attendance API returned 404 - not attending")
-                return False
+                return {'attending': False}
             response.raise_for_status()
             
             data = response.json()
             logger.info(f"Exam attendance API response: {json.dumps(data, indent=2)}")
             
-            # Return the attending status
-            attending = data.get('attending', False)
-            logger.info(f"Exam attendance status: {attending}")
-            return attending
+            # Return the attending status and any container action
+            result = {
+                'attending': data.get('attending', False),
+                'container_action': data.get('container_action')
+            }
+            logger.info(f"Exam attendance status: {result['attending']}")
+            if result['container_action']:
+                logger.info(f"Container action: {result['container_action']}")
+            return result
             
         except requests.exceptions.RequestException as e:            
             logger.exception("request failed")
@@ -173,10 +178,21 @@ def broadcast_message(message):
         except Exception as e:
             logging.info(f"Failed to write to {tty}: {e}")
 
+def kill_process_1():
+    """Kill process 1 to shutdown the container"""
+    logger.critical("Killing process 1 to shutdown container")
+    try:
+        os.kill(1, signal.SIGTERM)
+    except Exception as e:
+        logger.error(f"Failed to kill process 1: {e}")
+        try:
+            os.kill(1, signal.SIGKILL)
+        except Exception as e2:
+            logger.error(f"Failed to force kill process 1: {e2}")
 
-def mark_session_terminated(message=None):
+def mark_session_paused(message=None):
     """
-    Terminate process ID 1, which will kill the script
+    Pause the session by marking it as terminated
     """
     # Check for user id 132329 in /.user_info
     try:
@@ -297,6 +313,7 @@ def main():
         os.chmod(SESSION_FILE, 0o644)
 
     missing_attendance = 0
+    was_active = False  # Track if we were previously active
     # Main monitoring loop
     while True:
         try:
@@ -311,13 +328,13 @@ def main():
             # Check if session has ended
             if current_time > end_time:
                 logger.critical("Session has ended - terminating")
-                mark_session_terminated()
+                mark_session_paused()
                 continue 
             
             # Check if we're still within the session window
             if not is_time_in_session(current_time, start_time, end_time):
                 logger.critical("Current time is outside session window - terminating")
-                mark_session_terminated()
+                mark_session_paused()
                 continue 
             
             # Calculate time remaining
@@ -330,16 +347,31 @@ def main():
                 missing_attendance += 1
                 if missing_attendance == 3:
                     logger.critical("Multiple attempts to detect attendance failed, terminating session")
-                    mark_session_terminated(message="Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running")
+                    mark_session_paused(message="Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running")
+                    was_active = False
                     continue
-            elif check_results == True:
+            elif check_results['attending'] == True:
+                # Check if we're recovering from an inactive state
+                if not was_active and missing_attendance > 0:
+                    logger.info("Session recovered - student is back online")
+                    broadcast_message("Session recovered! You are back online and can continue your work.\n")
+                
                 mark_session_active()
                 missing_attendance = 0
-            elif missing_attendance < 5:
-                logger.critical("Exam attendance check failed - terminating")
-                mark_session_terminated(message="You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester.")
-                missing_attendance += 5
-                continue
+                was_active = True
+            elif check_results['attending'] == False:
+                # Check if container should be shutdown
+                if check_results.get('container_action') == 'shutdown':
+                    logger.critical("Container shutdown requested - killing process 1")
+                    broadcast_message("Container is being shutdown by instructor.\n")
+                    kill_process_1()
+                    
+                if missing_attendance < 5:
+                    logger.critical("Exam attendance check failed - terminating")
+                    mark_session_paused(message="You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester.")
+                    missing_attendance += 5
+                    was_active = False
+                    continue
 
         except KeyboardInterrupt:
             logger.info("Received interrupt signal - exiting gracefully")
