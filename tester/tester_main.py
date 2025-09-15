@@ -1555,7 +1555,8 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
     if args.source_dir and system_test_dir is not None:
         source_dir = args.source_dir
         show_flag = False
-    elif os.path.exists(LEVEL_CONFIG_FP):
+        
+    if os.path.exists(LEVEL_CONFIG_FP):
 
         with open(LEVEL_CONFIG_FP) as cf:
             level_config = json.load(cf)
@@ -1583,6 +1584,11 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
         # if source_dir is provided in level.json then use it otherwise use hwdir + level
         source_dir = level_config.get("source_dir", "")
+        if args.source_dir and system_test_dir is not None:
+            source_dir = args.source_dir
+            show_flag = False
+        else:
+            source_dir = level_config.get("source_dir", "")
         if len(source_dir) == 0:
             source_dir = os.path.join(level_config["hwdir"], level_config.get("level", "01"))
             if not os.path.exists(source_dir):
@@ -1590,7 +1596,6 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 if not os.path.exists(source_dir):
                     if os.path.exists("/home/system_tests"):
                         source_dir = "/home"
-                    
 
         if level_config.get("requireUsersMain", False):
             if not verify_users_main(source_dir):
