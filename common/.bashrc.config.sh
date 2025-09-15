@@ -207,7 +207,7 @@ thispwd=$(pwd)
 # fi
 
 # Function to open recent code files in code-server
-open_recent_code() {
+open_recent_exam_code() {
     local exam_dir="/home/hacker/cse240/exam"
     
     # Check if exam directory exists
