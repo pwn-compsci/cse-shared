@@ -206,6 +206,60 @@ thispwd=$(pwd)
 #     fi
 # fi
 
+# Function to open recent code files in code-server
+open_recent_code() {
+    local exam_dir="/home/hacker/cse240/exam"
+    
+    # Check if exam directory exists
+    if [ ! -d "$exam_dir" ]; then
+        echo "Error: Directory $exam_dir does not exist"
+        return 1
+    fi
+    
+    # Find all code files and get the most recent modification time
+    local most_recent_file=""
+    local most_recent_time=0
+    
+    # Find the most recently modified file
+    while IFS= read -r -d '' file; do
+        local file_time=$(stat -c %Y "$file" 2>/dev/null)
+        if [ "$file_time" -gt "$most_recent_time" ]; then
+            most_recent_time="$file_time"
+            most_recent_file="$file"
+        fi
+    done < <(find "$exam_dir" -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.rkt" -o -name "*.pl" \) -print0 2>/dev/null)
+    
+    if [ -z "$most_recent_file" ]; then
+        echo "No code files found in $exam_dir"
+        return 1
+    fi
+    
+    # Get the modification date of the most recent file (YYYY-MM-DD format)
+    local most_recent_date=$(stat -c %y "$most_recent_file" | cut -d' ' -f1)
+    
+    echo "Most recent file: $most_recent_file (modified on $most_recent_date)"
+    
+    # Find all code files modified on the same date
+    local files_to_open=()
+    while IFS= read -r -d '' file; do
+        local file_date=$(stat -c %y "$file" | cut -d' ' -f1)
+        if [ "$file_date" = "$most_recent_date" ]; then
+            files_to_open+=("$file")
+        fi
+    done < <(find "$exam_dir" -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.rkt" -o -name "*.pl" \) -print0 2>/dev/null)
+    
+    if [ ${#files_to_open[@]} -eq 0 ]; then
+        echo "No files found modified on $most_recent_date"
+        return 1
+    fi
+    
+    echo "Opening ${#files_to_open[@]} files modified on $most_recent_date:"
+    printf '%s\n' "${files_to_open[@]}"
+    
+    # Open all files in code-server
+    code "${files_to_open[@]}"
+}
+
 
 
 
