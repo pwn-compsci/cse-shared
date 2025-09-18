@@ -41,8 +41,6 @@ fi
 
 echo "[e] pwn.college id is $pwn_college_id" | tee -a /challenge/startup.log
 
-
-
 if [ -z "$pwn_college_id" ]; then 
     echo "[e] pwn.colege id not found" | tee -a /challenge/startup.log
     sed -i "s/LEVEL_ID/Level $level/g" /challenge/web/js/exam-badge.js
@@ -188,6 +186,16 @@ mkdir -p $cs_user_data_dir
 # eventually make && with chown
 chown hacker:hacker $cs_user_data_dir
 # mkdir -p $(dirname $coder_workspace_file)
+
+if [ -f /challenge/bin/cserver.py ]; then 
+    echo "[e] starting command server" | tee -a /challenge/startup.log
+    touch /var/log/cserver.log
+    chmod 644 /var/log/cserver.log
+    chmod 700 /challenge/bin/cserver.py
+    /challenge/bin/start_server.sh 1040 > /var/log/cserver.log 2>&1 &
+else
+    echo "[e] WARNING: /challenge/bin/cserver.py not found, skipping command server startup" | tee -a /challenge/startup.log
+fi
 
 history_dir="$cs_user_data_dir/User/History"
 # Setup FIFOs if missing
