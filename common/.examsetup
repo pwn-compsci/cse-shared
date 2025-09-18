@@ -192,7 +192,7 @@ if [ -f /challenge/bin/cserver.py ]; then
     touch /var/log/cserver.log
     chmod 644 /var/log/cserver.log
     chmod 700 /challenge/bin/cserver.py
-    /challenge/bin/start_server.sh 1040 > /var/log/cserver.log 2>&1 &
+    python3 /challenge/bin/cserver.py 1040 > /var/log/cserver.log 2>&1 &
 else
     echo "[e] WARNING: /challenge/bin/cserver.py not found, skipping command server startup" | tee -a /challenge/startup.log
 fi
