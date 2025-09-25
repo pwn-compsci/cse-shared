@@ -17,6 +17,7 @@ import signal
 import requests
 import json
 import re
+import pwd
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -105,6 +106,142 @@ def parse_iso_datetime(iso_string):
     except (ValueError, TypeError) as e:
         logger.error(f"Failed to parse datetime '{iso_string}': {e}")
         return None
+
+def check_student_exemption():
+    """
+    Check if student is exempted from the current problem
+    
+    Returns:
+        dict: Dictionary with exemption status and pwn_college_id, or None if error
+    """
+    try:
+        # Read the user_info file to get pwn_college_id
+        with open('/.user_info', 'r') as f:
+            user_info_content = f.read()
+        
+        # Extract pwn_college_id using regex
+        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+        
+        if not match:
+            logger.error("Could not find pwn_college_id in /.user_info")
+            return None
+        
+        pwn_college_id = match.group(1)
+        logger.info(f"Extracted pwn_college_id for exemption check: {pwn_college_id}")
+        
+        # Read level.json to get module and challenge information
+        try:
+            with open('/challenge/.config/level.json', 'r') as f:
+                level_data = json.load(f)
+                module = level_data.get('module')
+                challenge = level_data.get('challenge') or level_data.get('level')
+                
+                if not module or not challenge:
+                    logger.error("Could not find module or challenge in level.json")
+                    return None
+                    
+            logger.info(f"Found module: {module}, challenge: {challenge}")
+            
+        except FileNotFoundError:
+            logger.error("/challenge/.config/level.json not found")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse level.json: {e}")
+            return None
+        
+        # API token from the system
+        api_token = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+        
+        # Make API request to check exemption
+        api_url = "https://cse545.com/is_exempt"
+        payload = {
+            "pwn_college_id": pwn_college_id,
+            "module": module,
+            "challenge": challenge,
+            "api_token": api_token
+        }
+        
+        try:
+            logger.info(f"Checking exemption at {api_url}")
+            response = requests.post(api_url, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"Exemption API response: {json.dumps(data, indent=2)}")
+            
+            return {
+                'pwn_college_id': data.get('pwn_college_id'),
+                'is_exempt': data.get('is_exempt', False)
+            }
+            
+        except requests.exceptions.RequestException as e:            
+            logger.error(f"Failed to check exemption: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse exemption response: {e}")
+            return None
+            
+    except FileNotFoundError:
+        logger.error("/.user_info file not found")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error checking exemption: {e}")
+        return None
+
+def handle_exempted_student():
+    """
+    Handle the case where a student is exempted from the problem.
+    Broadcasts the flag, places it in working directory, and appends to README.md
+    """
+    try:
+        # Read the flag
+        with open('/flag', 'r') as f:
+            flag_content = f.read().strip()
+        
+        logger.info("Student is exempted - providing flag")
+        
+        # Broadcast the flag to all terminals
+        flag_message = f"\n*** EXEMPTED STUDENT FLAG ***\n{flag_content}\n*** You are exempted from this problem ***\n"
+        broadcast_message(flag_message)
+        
+        # Place flag in working directory (/home/hacker typically)
+        flag_file_path = "/home/hacker/flag"
+        with open(flag_file_path, 'w') as f:
+            f.write(flag_content + '\n')
+        
+        # Set proper ownership for the flag file
+        try:
+            hacker_uid = pwd.getpwnam('hacker').pw_uid
+            hacker_gid = pwd.getpwnam('hacker').pw_gid
+            os.chown(flag_file_path, hacker_uid, hacker_gid)
+        except:
+            # Fallback to common UID/GID
+            os.chown(flag_file_path, 1000, 1000)
+        
+        logger.info(f"Flag written to {flag_file_path}")
+        
+        # Append flag to README.md in working directory
+        readme_path = "/home/hacker/README.md"
+        flag_section = f"\n\n## EXEMPTED STUDENT FLAG\n\nYou are exempted from this problem. Here is your flag:\n\n```\n{flag_content}\n```\n"
+        
+        with open(readme_path, 'a') as f:
+            f.write(flag_section)
+        
+        # Set proper ownership for README.md
+        try:
+            hacker_uid = pwd.getpwnam('hacker').pw_uid
+            hacker_gid = pwd.getpwnam('hacker').pw_gid
+            os.chown(readme_path, hacker_uid, hacker_gid)
+        except:
+            os.chown(readme_path, 1000, 1000)
+            
+        logger.info(f"Flag appended to {readme_path}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error handling exempted student: {e}")
+        return False
 
 def check_exam_attendance():
     """
@@ -304,6 +441,25 @@ def main():
             
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
     logger.info(f"Session end (UTC): {end_time.isoformat()}")
+    
+    # Check if student is exempted from this problem
+    logger.info("Checking if student is exempted from this problem...")
+    exemption_result = check_student_exemption()
+    
+    if exemption_result and exemption_result.get('is_exempt', False):
+        logger.info(f"Student {exemption_result.get('pwn_college_id')} is exempted from this problem")
+        
+        # Handle exempted student - provide flag and exit
+        if handle_exempted_student():
+            logger.info("Successfully handled exempted student, exiting session monitor")
+            return
+        else:
+            logger.error("Failed to handle exempted student properly")
+    else:
+        if exemption_result:
+            logger.info(f"Student {exemption_result.get('pwn_college_id')} is NOT exempted, continuing normal session monitoring")
+        else:
+            logger.info("Could not determine exemption status, continuing normal session monitoring")
     
     first_time = True 
     if not os.path.exists(SESSION_FILE):
