@@ -191,7 +191,7 @@ def check_student_exemption():
 def handle_exempted_student():
     """
     Handle the case where a student is exempted from the problem.
-    Broadcasts the flag, places it in working directory, and appends to README.md
+    Broadcasts the flag, writes to /flag_exempted, and adds to bash.bashrc
     """
     try:
         # Read the flag
@@ -204,38 +204,21 @@ def handle_exempted_student():
         flag_message = f"\n*** EXEMPTED STUDENT FLAG ***\n{flag_content}\n*** You are exempted from this problem ***\n"
         broadcast_message(flag_message)
         
-        # Place flag in working directory (/home/hacker typically)
-        flag_file_path = "/home/hacker/flag"
-        with open(flag_file_path, 'w') as f:
+        # Write flag to /flag_exempted
+        with open('/flag_exempted', 'w') as f:
             f.write(flag_content + '\n')
+        os.chmod('/flag_exempted', 0o644)
+        logger.info("Flag written to /flag_exempted")
         
-        # Set proper ownership for the flag file
+        # Add statement to /etc/bash.bashrc to print the flag with color coding
+        bashrc_statement = f'\n# Exempted student flag display\necho -e "\\033[1;32m\\n{flag_content}\\n\\033[0m"\n'
+        
         try:
-            hacker_uid = pwd.getpwnam('hacker').pw_uid
-            hacker_gid = pwd.getpwnam('hacker').pw_gid
-            os.chown(flag_file_path, hacker_uid, hacker_gid)
-        except:
-            # Fallback to common UID/GID
-            os.chown(flag_file_path, 1000, 1000)
-        
-        logger.info(f"Flag written to {flag_file_path}")
-        
-        # Append flag to README.md in working directory
-        readme_path = "/home/hacker/README.md"
-        flag_section = f"\n\n## EXEMPTED STUDENT FLAG\n\nYou are exempted from this problem. Here is your flag:\n\n```\n{flag_content}\n```\n"
-        
-        with open(readme_path, 'a') as f:
-            f.write(flag_section)
-        
-        # Set proper ownership for README.md
-        try:
-            hacker_uid = pwd.getpwnam('hacker').pw_uid
-            hacker_gid = pwd.getpwnam('hacker').pw_gid
-            os.chown(readme_path, hacker_uid, hacker_gid)
-        except:
-            os.chown(readme_path, 1000, 1000)
-            
-        logger.info(f"Flag appended to {readme_path}")
+            with open('/etc/bash.bashrc', 'a') as f:
+                f.write(bashrc_statement)
+            logger.info("Flag display statement added to /etc/bash.bashrc")
+        except Exception as e:
+            logger.error(f"Failed to write to /etc/bash.bashrc: {e}")
         
         return True
         
