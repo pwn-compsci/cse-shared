@@ -153,7 +153,7 @@ def check_student_exemption():
         api_token = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
         
         # Make API request to check exemption
-        api_url = "https://cse545.com/is_exempt"
+        api_url = "https://api.cse545.com/is_exempt"
         payload = {
             "pwn_college_id": pwn_college_id,
             "module": module,
