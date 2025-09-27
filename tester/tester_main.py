@@ -1828,10 +1828,21 @@ def main():
     parser.add_argument("--source_dir", "--source-dir", "-s", help="Directory containing the source files")
     parser.add_argument("--test_dir", "--test-dir", "-t", help="Directory containing the test files")
     parser.add_argument("--disable-user-tests", action="store_true", help="Disable user tests and prevent flag giving")
-    parser.add_argument("--use-current-dir", action="store_true", help="Use current directory as source_dir and ./system_tests as test_dir")
+    parser.add_argument("--use-current-dir", "-u", action="store_true", help="Use current directory as source_dir and ./system_tests as test_dir (auto-disables user tests)")
+    parser.add_argument("-d", action="store_true", help="Shortcut for --disable-user-tests")
 
     args = parser.parse_args()
     test_dir_provided = False
+    
+    # Handle -d shortcut for disable user tests
+    if args.d:
+        args.disable_user_tests = True
+    
+    # Handle -u option (use current dir + auto-disable user tests)
+    if args.use_current_dir:
+        # Auto-disable user tests when using -u
+        args.disable_user_tests = True
+        print("\033[33m⚠️  Warning: -u option automatically disables user tests (no flag will be given)\033[0m")
     
     # Handle --use-current-dir option
     if args.use_current_dir:

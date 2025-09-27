@@ -1,4 +1,8 @@
-#!/usr/bin/exec-suid -- /usr/bin/python3
+#!/usr/bin/exec-suid -- /usr/bin/py    parser.add_argument(
+        "--use-current-dir", "-u",
+        action="store_true", 
+        help="Use current directory as source_dir and ./system_tests as test_dir (auto-disables user tests)"
+    )
 """"
 #!/usr/bin/exec-suid -- /usr/bin/python3 -I
 #!/usr/bin/exec-suid --real -- /usr/bin/python3
@@ -34,13 +38,28 @@ def main():
         help="Disable user tests and prevent flag giving"
     )
     parser.add_argument(
-        "--use-current-dir", 
+        "--use-current-dir", "-u",
         action="store_true", 
-        help="Use current directory as source_dir and ./system_tests as test_dir"
+        help="Use current directory as source_dir and ./system_tests as test_dir (auto-disables user tests)"
+    )
+    parser.add_argument(
+        "-d",
+        action="store_true", 
+        help="Shortcut for --disable-user-tests"
     )
 
     args = parser.parse_args()
     test_dir_provided = False 
+    
+    # Handle -d shortcut for disable user tests
+    if args.d:
+        args.disable_user_tests = True
+    
+    # Handle -u option (use current dir + auto-disable user tests)
+    if args.use_current_dir:
+        # Auto-disable user tests when using -u
+        args.disable_user_tests = True
+        print("\033[33m⚠️  Warning: -u option automatically disables user tests (no flag will be given)\033[0m")
     
     # Handle --use-current-dir option
     if args.use_current_dir:
