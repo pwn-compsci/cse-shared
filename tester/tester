@@ -28,10 +28,28 @@ def main():
     parser.add_argument(
         "--test_dir", "--test-dir", "-t", help="Directory containing the test files"
     )
+    parser.add_argument(
+        "--disable-user-tests", 
+        action="store_true", 
+        help="Disable user tests and prevent flag giving"
+    )
+    parser.add_argument(
+        "--use-current-dir", 
+        action="store_true", 
+        help="Use current directory as source_dir and ./system_tests as test_dir"
+    )
 
     args = parser.parse_args()
     test_dir_provided = False 
-    if args.test_dir:
+    
+    # Handle --use-current-dir option
+    if args.use_current_dir:
+        current_dir = os.getcwd()
+        args.source_dir = current_dir
+        test_dir = os.path.join(current_dir, "system_tests")
+        test_dir_provided = True
+        print(f"Using current directory mode: source_dir={current_dir}, test_dir={test_dir}")
+    elif args.test_dir:
         test_dir = args.test_dir
         test_dir_provided = True
         print(f"Test dir is being provided {test_dir=}")
