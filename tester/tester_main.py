@@ -1674,27 +1674,31 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
 
     if level_config is not None:
-        usertests = level_config.get("requiredUserTests",[])
-        for utest_id, ut_path in enumerate(usertests):
-            if "<hwdir>" in ut_path:
-                ut_path = ut_path.replace("<hwdir>", source_dir + "/")
-                usertests[utest_id] = ut_path
+        # Check if user tests are disabled via command line
+        if args.disable_user_tests:
+            print("User tests are disabled via --disable-user-tests option")
+        else:
+            usertests = level_config.get("requiredUserTests",[])
+            for utest_id, ut_path in enumerate(usertests):
+                if "<hwdir>" in ut_path:
+                    ut_path = ut_path.replace("<hwdir>", source_dir + "/")
+                    usertests[utest_id] = ut_path
 
-        print(f"{usertests}")
-        if not verify_user_tests_unique(usertests, system_test_dir):
-            print("Please fix user test case")
-            save_results(source_dir, -1, -1, initial_files, module_id, level_id, "")
-            sys.exit(192)
+            print(f"{usertests}")
+            if not verify_user_tests_unique(usertests, system_test_dir):
+                print("Please fix user test case")
+                save_results(source_dir, -1, -1, initial_files, module_id, level_id, "")
+                sys.exit(192)
 
-        if len(usertests) > 0:
-            print("---------------[  User Tests  ]---------------")
+            if len(usertests) > 0:
+                print("---------------[  User Tests  ]---------------")
 
-        for ut in usertests:
-            resfail, respass = run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_sensitive=case_sensitive)
-            total_failures += resfail
-            total_passes += respass
-        if len(usertests) > 0:
-            print("")
+            for ut in usertests:
+                resfail, respass = run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_sensitive=case_sensitive)
+                total_failures += resfail
+                total_passes += respass
+            if len(usertests) > 0:
+                print("")
 
     last_test_json_fp = ""
     if compile_success and os.path.exists(SYSTEM_TESTS_DIR):
@@ -1705,6 +1709,8 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
     if user_created_system_test:
         print('Flag will be in output of program, test case must include `"print_output": true`')
+    elif args.disable_user_tests:
+        print(f"\nAll {total_passes} Tests Passed (User tests disabled - no flag provided)")
     elif total_failures == 0 and total_passes > 0:
         print(f"\nAll {total_passes} Tests Passed ")
         if ED_ENV:
@@ -1821,10 +1827,20 @@ def main():
     parser = argparse.ArgumentParser(description="C/C++ Program Tester")
     parser.add_argument("--source_dir", "--source-dir", "-s", help="Directory containing the source files")
     parser.add_argument("--test_dir", "--test-dir", "-t", help="Directory containing the test files")
+    parser.add_argument("--disable-user-tests", action="store_true", help="Disable user tests and prevent flag giving")
+    parser.add_argument("--use-current-dir", action="store_true", help="Use current directory as source_dir and ./system_tests as test_dir")
 
     args = parser.parse_args()
     test_dir_provided = False
-    if  args.test_dir:
+    
+    # Handle --use-current-dir option
+    if args.use_current_dir:
+        current_dir = os.getcwd()
+        args.source_dir = current_dir
+        test_dir = os.path.join(current_dir, "system_tests")
+        test_dir_provided = True
+        print(f"Using current directory mode: source_dir={current_dir}, test_dir={test_dir}")
+    elif args.test_dir:
         test_dir = args.test_dir
         test_dir_provided = True
         print(f"Test dir is being provided {test_dir=}")
