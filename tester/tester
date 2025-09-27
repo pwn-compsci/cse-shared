@@ -1,8 +1,4 @@
-#!/usr/bin/exec-suid -- /usr/bin/py    parser.add_argument(
-        "--use-current-dir", "-u",
-        action="store_true", 
-        help="Use current directory as source_dir and ./system_tests as test_dir (auto-disables user tests)"
-    )
+#!/usr/bin/exec-suid -- /usr/bin/python3
 """"
 #!/usr/bin/exec-suid -- /usr/bin/python3 -I
 #!/usr/bin/exec-suid --real -- /usr/bin/python3
@@ -16,7 +12,7 @@ import sys
 sys.path.append("/challenge/bin")
 from tester_main import run_tests
 from tester_db import init_db
-1
+
 if os.path.exists("/run/challenge/bin") or os.path.exists("/challenge"):
     os.environ["PATH"] = "/run/challenge/bin:/run/dojo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/challenge:" + os.environ.get("PATH", "")
 
