@@ -187,6 +187,8 @@ mkdir -p $cs_user_data_dir
 chown hacker:hacker $cs_user_data_dir
 # mkdir -p $(dirname $coder_workspace_file)
 
+echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
+
 if [ -f /challenge/bin/cserver.py ]; then 
     echo "[e] starting command server" | tee -a /challenge/startup.log
     touch /var/log/cserver.log
