@@ -531,7 +531,13 @@ def main():
                     missing_attendance += 5
                     was_active = False
                     continue
+                elif missing_attendance > 5 and ((missing_attendance % 5) == 0):
+                    # Every 5th time after the initial marking, remind the student
+                    logger.info("Student still not attending, reminding them")
+                    broadcast_message("Reminder: You are still not logged into the exam. Please contact course staff if you believe this is an error.\nYou will no longer be able to get the flag from the tester.\n")
+                    missing_attendance += 1
                 else:
+                    missing_attendance += 1
                     logger.info("Student still not attending, already marked session as terminated inactive")
 
         except KeyboardInterrupt:
