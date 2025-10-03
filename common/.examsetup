@@ -245,3 +245,18 @@ else
 
 fi
 
+# Add session status check to bash.bashrc
+echo "[e] Adding session status check to /etc/bash.bashrc" | tee -a /challenge/startup.log
+cat >> /etc/bash.bashrc << 'EOF'
+
+# Session status check
+if [ -f /challenge/.config/session.dat ]; then
+    session_status=$(cat /challenge/.config/session.dat 2>/dev/null | tr -d '\n')
+    if [ "$session_status" != "active" ]; then
+        echo -e "\033[31m⚠️  WARNING: Session is not active (status: $session_status)\033[0m"
+        echo -e "\033[31m   You cannot currently get the flag from the tester.\033[0m"
+        echo -e "\033[31m   Please contact course staff if you believe this is an error.\033[0m"
+    fi
+fi
+EOF
+
