@@ -302,6 +302,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
         print(f"Compilation failed: {e.returncode}\n{e.stdout}\n{e.stderr}")
         print(f"Compile Command:    {BLUE}{' '.join(compile_command)} {RESET_COLOR}")
         print(f"PATH: {os.environ.get('PATH', '')}")
+        send_test_results(passed_all_tests=False, test_message=f"failed to compile: {e.stdout} {e.stderr}")
         sys.exit(102)
 
 
@@ -1650,11 +1651,21 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                         print(f"ModelGood.bin and main.bin are the same, stop trying to find ways to cheat and just work on the assignment. This attempt will be reported to the professor.")
                         (source_dir, -1, -1, initial_files, module_id, level_id, "")
                         save_test_results(source_dir, -1, -1, module_id, level_id, "", error_message = "Attmpted to use modelGood.bin as main.bin")
+                        send_test_results(
+                            passed_all_tests=False,
+                            test_message=f"ModelGood.bin and main.bin are the same - cheating attempt",
+                            flag_value=""
+                        )
                         sys.exit(124)
                 
                 # Check if the binary is stripped
                 if is_stripped(source_main_bin):
                     print(f"{RED}Error: You have either attempted to treat modelGood.bin as your own program or you stripped main.bin, if cheating then stop, if stripping then stop that too.{RESET_COLOR}")
+                    send_test_results(
+                            passed_all_tests=False,
+                            test_message=f"main.bin is stripped - possible cheating attempt",
+                            flag_value=""
+                        )
                     sys.exit(125)
         else:
             # Copy all .class files to SYSTEM_TESTS_DIR
@@ -1750,6 +1761,11 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 else:
                     print("No flag, you are not currently marked as attending a testing session.")
                     print("If you are currently attending a testing session, please ask the proctor for help")
+                    send_test_results(
+                            passed_all_tests=True,
+                            test_message=f"All {total_passes} tests passed, no flag session not active",
+                            flag_value=""
+                        )
             else:
                 print("pwn.college{...")
                 print("No flag, must run without using either --source-dir and --test-dir, only works when default directory under /home/hacker/cse240 is used")
