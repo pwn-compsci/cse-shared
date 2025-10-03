@@ -394,18 +394,18 @@ def is_time_in_session(current_time, start_time, end_time):
     
     return is_within
 
-def main():
-    """Main monitoring loop"""
-    logger.info("Session Monitor starting...")
-    logger.info(f"Process ID: {os.getpid()}")
-    logger.info(f"Parent Process ID: {os.getppid()}")
-    current_time = get_current_utc_time()
-    logger.info(f"Current UTC time: {current_time.isoformat()}")
-
+def get_session_times():
+    """
+    Get session start and end times, either from API or using defaults
+    
+    Returns:
+        tuple: (start_time, end_time) as datetime objects
+    """
     # Initial session check
     session_data = fetch_session_times()
     start_time = None
     end_time = None 
+    
     if session_data is not None and session_data.get('session_found', False):
         logger.info("Valid session found, using provided session times")
         start_time_str = session_data.get('start_time_utc')
@@ -424,6 +424,19 @@ def main():
             
     logger.info(f"Session start (UTC): {start_time.isoformat()}")
     logger.info(f"Session end (UTC): {end_time.isoformat()}")
+    
+    return start_time, end_time
+
+def main():
+    """Main monitoring loop"""
+    logger.info("Session Monitor starting...")
+    logger.info(f"Process ID: {os.getpid()}")
+    logger.info(f"Parent Process ID: {os.getppid()}")
+    current_time = get_current_utc_time()
+    logger.info(f"Current UTC time: {current_time.isoformat()}")
+
+    # Get session times
+    start_time, end_time = get_session_times()
     
     # Check if student is exempted from this problem
     logger.info("Checking if student is exempted from this problem...")
@@ -444,6 +457,8 @@ def main():
         else:
             logger.info("Could not determine exemption status, continuing normal session monitoring")
     
+    ############################################
+
     first_time = True 
     if not os.path.exists(SESSION_FILE):
         with open(SESSION_FILE, 'w') as f:
@@ -465,16 +480,20 @@ def main():
             logger.info(f"Checking session status at {current_time.isoformat()}")
             
             # Check if session has ended
-            if current_time > end_time:
-                logger.critical("Session has ended - terminating")
-                mark_session_paused()
-                continue 
+            if current_time > end_time or not is_time_in_session(current_time, start_time, end_time):
+                start_time, end_time = get_session_times()
             
-            # Check if we're still within the session window
-            if not is_time_in_session(current_time, start_time, end_time):
-                logger.critical("Current time is outside session window - terminating")
-                mark_session_paused()
-                continue 
+                if current_time > end_time:
+                    logger.critical("Session has ended - terminating")
+                    mark_session_paused()
+                    continue 
+            
+                if not is_time_in_session(current_time, start_time, end_time):
+                    logger.critical("Current time is outside session window - terminating")
+                    mark_session_paused()
+                    continue 
+                else:
+                    logger.info("Session times updated, current time is now within session window")
             
             # Calculate time remaining
             time_remaining = end_time - current_time
@@ -483,9 +502,10 @@ def main():
 
             check_results = check_exam_attendance()
             if check_results is None :
+                # nothing returned, hopefully just a communication error that will resolve soon
                 missing_attendance += 1
                 if missing_attendance == 3:
-                    logger.critical("Multiple attempts to detect attendance failed, terminating session")
+                    logger.critical(f"Multiple attempts to detect attendance failed, terminating session after {missing_attendance} attempts")
                     mark_session_paused(message="Multiple attempts to detect attendance failed, you will no longer be able to get the flag from running")
                     was_active = False
                     continue
@@ -506,11 +526,13 @@ def main():
                     kill_process_1()
                     
                 if missing_attendance < 5:
-                    logger.critical("Exam attendance check failed - terminating")
+                    logger.critical("Exam attendance check failed")
                     mark_session_paused(message="You are no longer shown as logged into the exam, please contact course staff.\nYou will no longer be able to get the flag from the tester.")
                     missing_attendance += 5
                     was_active = False
                     continue
+                else:
+                    logger.info("Student still not attending, already marked session as terminated inactive")
 
         except KeyboardInterrupt:
             logger.info("Received interrupt signal - exiting gracefully")
