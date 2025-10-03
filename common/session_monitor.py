@@ -35,7 +35,6 @@ logging.basicConfig(
 logger = logging.getLogger("session_monitor")
 
 # Configuration
-API_URL = "https://api.cse545.com/session_times"
 CHECK_INTERVAL = 60  # Check every 60 seconds
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # Seconds between retries
@@ -43,49 +42,6 @@ RETRY_DELAY = 5  # Seconds between retries
 def get_current_utc_time():
     """Get current time in UTC"""
     return datetime.now(timezone.utc)
-
-def fetch_session_times():
-    """
-    Fetch session times from the API
-    
-    Returns:
-        dict: Session data or None if failed
-    """
-    for attempt in range(MAX_RETRIES):
-        try:
-            logger.info(f"Fetching session times from {API_URL} (attempt {attempt + 1}/{MAX_RETRIES})")
-            
-            response = requests.get(API_URL, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            logger.info(f"API Response: {json.dumps(data, indent=2)}")
-            
-            if data.get('status') == 'success' and data.get('session_found', False):
-                return data
-            elif data.get('status') == 'success' and not data.get('session_found', False):
-                logger.warning("No current session found")
-                return None
-            else:
-                logger.error(f"API returned error: {data.get('message', 'Unknown error')}")
-                return None
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-            if attempt < MAX_RETRIES - 1:
-                logger.info(f"Retrying in {RETRY_DELAY} seconds...")
-                time.sleep(RETRY_DELAY)
-            else:
-                logger.error("All retry attempts failed")
-                return None
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            return None
-    
-    return None
 
 def parse_iso_datetime(iso_string):
     """
@@ -231,7 +187,7 @@ def check_exam_attendance():
     Extract pwn_college_id from /.user_info and check exam attendance status
     
     Returns:
-        dict: Dictionary with 'attending' status and optional 'container_action', or None if error
+        dict: Dictionary with 'attending' status, optional 'container_action', and 'session_info', or None if error
     """
     try:
         # Read the user_info file
@@ -263,14 +219,17 @@ def check_exam_attendance():
             data = response.json()
             logger.info(f"Exam attendance API response: {json.dumps(data, indent=2)}")
             
-            # Return the attending status and any container action
+            # Return the attending status, container action, and session info
             result = {
                 'attending': data.get('attending', False),
-                'container_action': data.get('container_action')
+                'container_action': data.get('container_action'),
+                'session_info': data.get('session_info')
             }
             logger.info(f"Exam attendance status: {result['attending']}")
             if result['container_action']:
                 logger.info(f"Container action: {result['container_action']}")
+            if result['session_info']:
+                logger.info(f"Session info received: {result['session_info']}")
             return result
             
         except requests.exceptions.RequestException as e:            
@@ -396,26 +355,34 @@ def is_time_in_session(current_time, start_time, end_time):
 
 def get_session_times():
     """
-    Get session start and end times, either from API or using defaults
+    Get session start and end times from attendance check, or use defaults
     
     Returns:
         tuple: (start_time, end_time) as datetime objects
     """
-    # Initial session check
-    session_data = fetch_session_times()
+    # Get session times from attendance check
+    attendance_result = check_exam_attendance()
     start_time = None
     end_time = None 
     
-    if session_data is not None and session_data.get('session_found', False):
-        logger.info("Valid session found, using provided session times")
-        start_time_str = session_data.get('start_time_utc')
-        end_time_str = session_data.get('end_time_utc')
-        start_time = parse_iso_datetime(start_time_str) - timedelta(minutes=5)
-        end_time = parse_iso_datetime(end_time_str) 
-        logger.info(f"Session found: {session_data['type']}")
+    if attendance_result and attendance_result.get('session_info'):
+        session_info = attendance_result['session_info']
+        logger.info("Valid session found from attendance check, using provided session times")
+        start_time_str = session_info.get('start_time_utc')
+        end_time_str = session_info.get('end_time_utc')
+        
+        # Parse the datetime strings (they may already be ISO format)
+        if isinstance(start_time_str, str):
+            start_time = parse_iso_datetime(start_time_str)
+        if isinstance(end_time_str, str):
+            end_time = parse_iso_datetime(end_time_str)
+        
+        if start_time and end_time:
+            start_time = start_time - timedelta(minutes=5)  # 5-minute buffer
+            logger.info(f"Session found: {session_info.get('type', 'unknown')}")
 
     if start_time is None or end_time is None:
-        logger.info("No valid session times found, using defaults")
+        logger.info("No valid session times found from attendance check, using defaults")
         default_minutes = 60
         logger.info(f"Using default_session_time: {default_minutes} minutes")
         # to make sure current_time is inside session
@@ -481,26 +448,52 @@ def main():
             
             # Check if session has ended
             if current_time > end_time or not is_time_in_session(current_time, start_time, end_time):
-                start_time, end_time = get_session_times()
+                logger.info("Session time check failed, will refresh times from next attendance check")
             
-                if current_time > end_time:
-                    logger.critical("Session has ended - terminating")
-                    mark_session_paused()
-                    continue 
+            # Check attendance and get updated session info
+            check_results = check_exam_attendance()
             
-                if not is_time_in_session(current_time, start_time, end_time):
-                    logger.critical("Current time is outside session window - terminating")
-                    mark_session_paused()
-                    continue 
-                else:
-                    logger.info("Session times updated, current time is now within session window")
+            # Update session times if we received session_info
+            if check_results and check_results.get('session_info'):
+                session_info = check_results['session_info']
+                start_time_str = session_info.get('start_time_utc')
+                end_time_str = session_info.get('end_time_utc')
+                
+                # Parse and update session times
+                if isinstance(start_time_str, str):
+                    new_start_time = parse_iso_datetime(start_time_str)
+                    if new_start_time:
+                        new_start_time = new_start_time - timedelta(minutes=15)  # 15-minute buffer
+                        if new_start_time != start_time:
+                            logger.info(f"Updated session start time: {new_start_time.isoformat()}")
+                            start_time = new_start_time
+                
+                if isinstance(end_time_str, str):
+                    new_end_time = parse_iso_datetime(end_time_str)
+                    if new_end_time and new_end_time != end_time:
+                        logger.info(f"Updated session end time: {new_end_time.isoformat()}")
+                        new_start_time = new_start_time + timedelta(minutes=10)  # 15-minute buffer
+                        end_time = new_end_time
+            
+            # Now check if current time is within the (possibly updated) session window
+            current_time = get_current_utc_time()  # Refresh current time
+            
+            if current_time > end_time:
+                logger.critical("Session has paused, current time is past end time")
+                mark_session_paused()
+                continue 
+            
+            if not is_time_in_session(current_time, start_time, end_time):
+                logger.critical("Current time is outside session window - terminating")
+                mark_session_paused()
+                continue 
             
             # Calculate time remaining
             time_remaining = end_time - current_time
             minutes_remaining = int(time_remaining.total_seconds() / 60)
             logger.info(f"Session is active - {minutes_remaining} minutes remaining")
 
-            check_results = check_exam_attendance()
+            # Handle attendance results
             if check_results is None :
                 # nothing returned, hopefully just a communication error that will resolve soon
                 missing_attendance += 1
