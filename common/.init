@@ -88,7 +88,7 @@ echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log
 # 97169 io1
 # 68880 is Weiyu
 # 129911 vishal
-admin_ids=(95033 97168 42906 70537 44199 67665 57598 57891 94686 68880 129911)
+admin_ids=(95033 97168 42906 70537 44199 67665 57598 57891 94686 68880 129911 128254 )
 
 # TEST outside of .init ::> grep -q "digital god" /.admin_access
 active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
