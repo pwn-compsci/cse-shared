@@ -98,8 +98,50 @@ else
             echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" | tee -a /challenge/startup.log
         fi
     fi
+    
+    # Add problem override, when last start of exam was within 15 minutes 
+    if [ -f /home/hacker/cse240/.vscode/starts.log ]; then
+        # Get the module and level from the current environment
+        current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
+        current_level=$(jq -r '.level // empty' /challenge/.config/level.json)
+        
+        # Find the most recent entry for this module and level
+        last_entry=$(grep "module=$current_module.*level=$current_level" /home/hacker/cse240/.vscode/starts.log | tail -1)
+        
+        if [ -n "$last_entry" ]; then
+            # Extract the previous chosen_problem and starttime
+            prev_chosen_problem=$(echo "$last_entry" | sed -n 's/.*chosen_problem=\([^|]*\).*/\1/p')
+            prev_starttime=$(echo "$last_entry" | sed -n 's/.*starttime=\([^|]*\).*/\1/p')
+            
+            if [ -n "$prev_starttime" ] && [ -n "$prev_chosen_problem" ]; then
+                # Convert timestamps to seconds since epoch for comparison
+                current_timestamp=$(date +%s)
+                prev_timestamp=$(date -d "$prev_starttime" +%s 2>/dev/null)
+                
+                if [ $? -eq 0 ]; then
+                    # Calculate time difference in minutes
+                    time_diff=$(( (current_timestamp - prev_timestamp) / 60 ))
+                    
+                    # If last start was 15 minutes or less ago, keep the same chosen_problem
+                    if [ $time_diff -le 15 ] && [ -d "/challenge/problems/$prev_chosen_problem" ]; then
+                        chosen_problem="$prev_chosen_problem"
+                        echo "[e] Using previous problem (within 15 min): $chosen_problem (${time_diff}m ago)" | tee -a /challenge/startup.log
+                    else
+                        echo "[e] Previous start was ${time_diff}m ago, selecting new problem" | tee -a /challenge/startup.log
+                    fi
+                fi
+            fi
+        fi
+    fi 
+
 
     cp -a /challenge/problems/$chosen_problem/. /challenge/
+
+    # Record module, level, and starttime to starts.log for .examsetup
+    starttime=$(date '+%Y-%m-%d %H:%M:%S')
+    mkdir -p /home/hacker/cse240/.vscode
+    echo "module=$module|level=$level|chosen_problem=$chosen_problem|starttime=$starttime" >> /home/hacker/cse240/.vscode/starts.log
+
 
     # removed /challenge/system_tests/*.json
     if [ "$admin_access" = false ]; then

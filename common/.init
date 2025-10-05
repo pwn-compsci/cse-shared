@@ -772,6 +772,7 @@ echo  $(printf "%s" "=====================<[ Session Starting @ $(date --iso-860
 echo "Wrapup stuff $(date) in pid=$$" | tee -a /challenge/startup.log 
 
 
+
 if [ "$admin_access" = true ]; then
     #chmod 700 /challenge/model
     true
