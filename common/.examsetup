@@ -100,7 +100,7 @@ else
     fi
     
     # Add problem override, when last start of exam was within 15 minutes 
-    if [ -f /home/hacker/cse240/.vscode/starts.log ]; then
+    if [ -f /home/hacker/cse240/.vscode/starts.log ] && [ ${#dirs[@]} -gt 1 ]; then
         # Get the module and level from the current environment
         current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
         current_level=$(jq -r '.level // empty' /challenge/.config/level.json)
@@ -127,14 +127,28 @@ else
                         chosen_problem="$prev_chosen_problem"
                         echo "[e] Using previous problem (within 15 min): $chosen_problem (${time_diff}m ago)" | tee -a /challenge/startup.log
                     else
-                        echo "[e] Previous start was ${time_diff}m ago, selecting new problem" | tee -a /challenge/startup.log
+                        # If more than 15 minutes, ensure we don't pick the same problem
+                        if [ "$chosen_problem" = "$prev_chosen_problem" ]; then
+                            # Re-pick a different problem from the available options
+                            available_dirs=($(find /challenge/problems -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -v "^$prev_chosen_problem$"))
+                            if [ ${#available_dirs[@]} -gt 0 ]; then
+                                chosen_problem="${available_dirs[RANDOM % ${#available_dirs[@]}]}"
+                                echo "[e] Previous start was ${time_diff}m ago, selecting different problem: $chosen_problem (was: $prev_chosen_problem)" | tee -a /challenge/startup.log
+                            else
+                                echo "[e] Previous start was ${time_diff}m ago, but no other problems available, keeping: $chosen_problem" | tee -a /challenge/startup.log
+                            fi
+                        else
+                            echo "[e] Previous start was ${time_diff}m ago, already selected different problem: $chosen_problem (was: $prev_chosen_problem)" | tee -a /challenge/startup.log
+                        fi
                     fi
                 fi
             fi
         fi
     fi 
 
-
+    echo "[e] Setting up problem $chosen_problem in $clevel_work_dir" | tee -a /challenge/startup.log
+    echo "chosen_problem=$chosen_problem" >> /challenge/.config/chosen_problem.dat
+    
     cp -a /challenge/problems/$chosen_problem/. /challenge/
 
     # Record module, level, and starttime to starts.log for .examsetup
