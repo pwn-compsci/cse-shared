@@ -63,6 +63,7 @@ if [ -d $clevel_work_dir ]; then
         if [ "${PIPESTATUS[0]}" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
+    }
     make() {
         command make "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
