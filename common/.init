@@ -146,8 +146,10 @@ fi
 
 # setup tldr link
 if [ -d /usr/share/tldr ]; then     
+    ls -la | tee -a /challenge/startup.log
     if [ -f /home/hacker/.local/share/tldr ]; then 
         rm -f /home/hacker/.local/share/tldr
+        echo "[i] Removed existing symbolic link for tldr" | tee -a /challenge/startup.log
     fi
     ln -s /usr/share/tldr /home/hacker/.local/share/
     echo "[i] Created symbolic link for tldr $? " | tee -a /challenge/startup.log
