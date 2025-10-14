@@ -333,6 +333,7 @@ fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 
+
 # if [ ! /home/me ] && [ "$admin_access" = true ]; then
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
     # curl --max-time 10  "https://api.cse545.com/is_student" \
@@ -357,6 +358,13 @@ if [[ -n $isExam ]]; then
         source /challenge/bin/.examsetup
         echo "[i] Completed .examsetup" >> "/challenge/startup.log"
     fi 
+
+    # setup EXAM_REFERENCE if it exists
+    if [ -f /challenge/EXAM_REFERENCE.md ]; then     
+        cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
+        echo "[i] Found EXAM_REFERENCE, including in user's directory $clevel_work_dir" | tee -a /challenge/startup.log
+    fi
+
     # can move .vsocde and .cse240env to ro
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
 else
