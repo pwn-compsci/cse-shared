@@ -145,8 +145,9 @@ else
 fi
 
 # setup tldr link
-if [ -d /usr/share/tldr ]; then 
+if [ -d /usr/share/tldr ]; then     
     ln -s /usr/share/tldr /home/hacker/.local/share/
+    echo "[i] Created symbolic link for tldr" | tee -a /challenge/startup.log
     chown -h hacker:hacker /home/hacker/.local/share/tldr
 fi
 
