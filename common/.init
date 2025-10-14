@@ -83,7 +83,6 @@ fi
 
 echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log 
 
-
 # check for admin access 
 # 97169 io1
 # 68880 is Weiyu
@@ -145,6 +144,11 @@ else
     echo "[i] Failed to create symbolic links" | tee -a /challenge/startup.log
 fi
 
+# setup tldr link
+if [ -d /usr/share/tldr ]; then 
+    ln -s /usr/share/tldr /home/hacker/.local/share/tldr
+    chown -h hacker:hacker /home/hacker/.local/share/tldr
+fi
 
 if [ -f /challenge/checker ]; then 
     mv /challenge/checker /challenge/bin/checker    

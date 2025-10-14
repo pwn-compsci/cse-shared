@@ -8,7 +8,7 @@
     RUN go install github.com/zouuup/landrun/cmd/landrun@latest
 
 ######################## Build base cse240 container ##############################################
-FROM ubuntu:24.04 as essentials
+FROM ubuntu:24.04 AS essentials
 
 # SHELL ["/bin/bash", "-ceov", "pipefail"]
 
@@ -30,7 +30,7 @@ EOF
 RUN rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED
 
 
-FROM essentials as vscoder
+FROM essentials AS vscoder
 
 RUN mkdir -p /run/challenge/share/code/extensions
 
@@ -56,7 +56,7 @@ EOF
 
 ################################################################################
 
-FROM essentials as builder
+FROM essentials AS builder
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -75,6 +75,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libini-config-dev
         man-db
         manpages-dev
+        manpages
+        tldr
+        tzdata 
+        unminimize 
         nasm
         python-is-python3
         python3-dev
@@ -156,7 +160,7 @@ RUN apt-get update && xargs apt-get install --no-install-recommends -yqq <<EOF \
         file
         passwd
         nginx 
-        openjdk-17-jdk
+        openjdk-17-jdk        
 EOF
 
 ################# Install Land Rune ############################################
@@ -196,6 +200,9 @@ RUN pip install --user flask requests gevent gevent-websocket
 
 # RUN python3 -c "import gevent; print(gevent.__version__)" 
 
+# run unminimize for man pages and tldr
+RUN printf 'y\n' | /usr/local/sbin/unminimize || printf 'y\n' | unminimize || true
+
 ENV LC_CTYPE=C.UTF-8
 
 RUN <<EOF
@@ -204,7 +211,14 @@ RUN <<EOF
     passwd -d hacker 
 EOF
 
-RUN mkdir /cse240_v5
+RUN mkdir -p /root/.local/share/tldr \
+ && tldr --update && tldr --update \
+ && mkdir -p /usr/share/tldr \
+ && cp -r /root/.local/share/tldr/* /usr/share/tldr/ \
+ && chown -R root:root /usr/share/tldr
+ENV TLDR_CACHE_DIR=/usr/share/tldr
+
+RUN mkdir /cse240_v7
 
 
 
