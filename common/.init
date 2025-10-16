@@ -172,11 +172,11 @@ if [ ! -d /home/hacker/.local/share/ultima/skipped ]; then
     mkdir -p /home/hacker/.local/share/ultima/skipped
     chown hacker:hacker /home/hacker/.local 
     chown hacker:hacker /home/hacker/.local/share
-    chown hacker:hacker -R /home/hacker/.local/share/ultima
 fi 
 # TODO: remove after first few weeks
 chown hacker:hacker /home/hacker/.local
 chown hacker:hacker /home/hacker/.local/share
+chown hacker:hacker -R /home/hacker/.local/share/ultima
 
 if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then 
     echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
