@@ -21,7 +21,6 @@ tango
 umbrella
 vector
 whisker
-xray
 yonder
 zebra
 atom
