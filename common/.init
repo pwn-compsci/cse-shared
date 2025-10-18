@@ -28,8 +28,21 @@ create_model_bad() {
                     gcc -D "MODEL_BAD_${x}_${y}_${z}" -o "$output_file" "$file_path" >> /challenge/errorlog 2>&1
                     printf "\033[31mCompilation failed for macro MODEL_BAD_${x}_${y}_${z} \033[0m\n" >> /challenge/errorlog
                 fi
-                strip $output_file
-                cp $output_file $clevel_work_dir
+                if [ -f "$output_file" ]; then
+                    echo "Compiled binary created: $output_file" | tee -a /challenge/startup.log
+                    strip $output_file
+                    cp $output_file $clevel_work_dir    
+                    chmod 0755 "$output_file" 2>/dev/null || true
+                    # ensure ownership if working dir is present
+                    if [ -n "$clevel_work_dir" ] && [ -d "$clevel_work_dir" ]; then
+                        chown hacker:hacker "$output_file" 2>/dev/null || true
+                    fi
+                else
+                    echo "No binary produced for MODEL_BAD_${x}_${y}_${z}" | tee -a /challenge/errorlog
+                    # skip strip/cp for this iteration
+                    continue
+                fi
+                
             fi
         done < "$file_path"
         
@@ -113,7 +126,7 @@ fi
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
-if [ -z "$1" ] && [ "$active_pwn_college_id" -eq "132329" ];then 
+if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "97168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
     echo "No argument supplied" | tee -a /challenge/startup.log    
     exit 0
@@ -334,14 +347,6 @@ fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 
-
-# if [ ! /home/me ] && [ "$admin_access" = true ]; then
-    api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
-    # curl --max-time 10  "https://api.cse545.com/is_student" \
-    #     -H "Content-Type: application/json" \
-    #     -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
-    #     > /.student &            
-# fi 
 
 #if [ "$admin_access" = true ]; then
 ##########################################################################################################################
@@ -785,7 +790,7 @@ chown hacker:hacker -R /home/hacker/cse240/.vscode
 
 echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240/.vscode/cp.dat ' >> /etc/bash.bashrc
 
-echo  $(printf "%s" "=====================<[ Session Starting @ $(date --iso-8601=seconds) ]>====================="| base64 -w 0 )>> /home/hacker/cse240/.vscode/cp.dat
+echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> /home/hacker/cse240/.vscode/cp.dat
 ############################################################################################
 
 echo "Wrapup stuff $(date) in pid=$$" | tee -a /challenge/startup.log 
