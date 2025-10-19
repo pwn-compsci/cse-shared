@@ -248,10 +248,8 @@ def check_for_required_files(clevel_work_dir):
     files_found_list = []
     for root, dirs, files in os.walk(clevel_work_dir):
         for file in files:
-            fname_lower = file.lower()
-            # Accept required extensions case-insensitively and treat README (any case) as valid,
-            # also accept .md and .json files which are expected by the script.
-            if any(fname_lower.endswith(ext) for ext in required_extensions) or fname_lower == 'readme.md' or fname_lower.endswith('.md') or fname_lower.endswith('.json'):
+            # Check if file matches required extensions (case-insensitive) or is README.md
+            if any(file.lower().endswith(ext) for ext in required_extensions) or file.lower() == 'readme.md':
                 full_path = os.path.join(root, file)
                 files_found_list.append(full_path)
                 logger.info(f"Found required file: {full_path}")
