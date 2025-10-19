@@ -326,11 +326,12 @@ else
     echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a /challenge/startup.log
 fi
 
-rm -rf $clevel_work_dir/*
-
 # /home/me means we are doing an as_user
 # this should be run the first time after all the encryption stuff and removal 
 if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
+    
+    rm -rf $clevel_work_dir/*
+
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a /challenge/startup.log
     touch /var/log/session_monitor.log 
     chmod 644 /var/log/session_monitor.log 

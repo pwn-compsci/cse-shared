@@ -225,7 +225,7 @@ def check_for_required_files(clevel_work_dir):
         bool: True if required files are found, False otherwise
     """
     # Define file extensions to search for
-    required_extensions = ['.md', '.json', '.c', '.cpp', '.rkt', '.pl']
+    required_extensions = ['.c', '.cpp', '.rkt', '.pl']
     
     # First check if the directory exists
     if not os.path.exists(clevel_work_dir):
@@ -248,7 +248,10 @@ def check_for_required_files(clevel_work_dir):
     files_found_list = []
     for root, dirs, files in os.walk(clevel_work_dir):
         for file in files:
-            if any(file.endswith(ext) for ext in required_extensions):
+            fname_lower = file.lower()
+            # Accept required extensions case-insensitively and treat README (any case) as valid,
+            # also accept .md and .json files which are expected by the script.
+            if any(fname_lower.endswith(ext) for ext in required_extensions) or fname_lower == 'readme.md' or fname_lower.endswith('.md') or fname_lower.endswith('.json'):
                 full_path = os.path.join(root, file)
                 files_found_list.append(full_path)
                 logger.info(f"Found required file: {full_path}")
