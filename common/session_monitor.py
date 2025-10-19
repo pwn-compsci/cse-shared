@@ -342,6 +342,21 @@ def check_exam_attendance():
         pwn_college_id = match.group(1)
         logger.info(f"Extracted pwn_college_id: {pwn_college_id}")
         
+        # Check for admin override first
+        if check_admin_override():
+            logger.info(f"Admin override active for pwn_college_id: {pwn_college_id}")
+            # Create a fake attendance result with extended session times
+            current_time = get_current_utc_time()
+            return {
+                'attending': True,
+                'container_action': None,
+                'session_info': {
+                    'start_time_utc': (current_time - timedelta(days=1)).isoformat(),
+                    'end_time_utc': (current_time + timedelta(days=365)).isoformat(),
+                    'type': 'admin_override'
+                }
+            }
+        
         # Make API request to check exam attendance
         api_url = "https://api.cse545.com/session_attendance"
         payload = {"pwn_college_id": pwn_college_id}
@@ -384,6 +399,38 @@ def check_exam_attendance():
     except Exception as e:
         logger.error(f"Unexpected error checking exam attendance: {e}")
         return None
+
+def check_admin_override():
+    """
+    Check if current user is in /.helperids for admin override
+    
+    Returns:
+        bool: True if user is an admin, False otherwise
+    """
+    try:
+        # Extract pwn_college_id from .user_info
+        with open('/.user_info', 'r') as f:
+            user_info_content = f.read()
+        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+        
+        if not match:
+            return False
+        
+        current_pwn_id = match.group(1)
+        
+        # Check if this pwn_college_id is in /.helperids
+        if os.path.exists('/.helperids'):
+            with open('/.helperids', 'r') as f:
+                helper_ids = [line.strip() for line in f if line.strip()]
+            
+            if current_pwn_id in helper_ids:
+                logger.info(f"Admin override: pwn_college_id {current_pwn_id} found in /.helperids")
+                return True
+        
+        return False
+    except Exception as e:
+        logger.error(f"Error checking admin override: {e}")
+        return False
 
 def broadcast_message(message):
     for tty in glob.glob("/dev/pts/[0-9]*"):
@@ -619,45 +666,17 @@ def main():
             if current_time > end_time:
                 logger.critical("Session has paused, current time is past end time")
                 mark_session_paused()
-                continue 
+                continue
             
             if not is_time_in_session(current_time, start_time, end_time):
                 logger.critical("Current time is outside session window - terminating")
                 mark_session_paused()
-                continue 
+                continue
             
             # Calculate time remaining
             time_remaining = end_time - current_time
             minutes_remaining = int(time_remaining.total_seconds() / 60)
             logger.info(f"Session is active - {minutes_remaining} minutes remaining")
-
-            # Check for admin override before processing attendance results
-            admin_override = False
-            if check_results is None or (check_results and check_results.get('attending') == False):
-                try:
-                    # Extract pwn_college_id from .user_info
-                    with open('/.user_info', 'r') as f:
-                        user_info_content = f.read()
-                    match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
-                    
-                    if match:
-                        current_pwn_id = match.group(1)
-                        
-                        # Check if this pwn_college_id is in /.helperids
-                        if os.path.exists('/.helperids'):
-                            with open('/.helperids', 'r') as f:
-                                helper_ids = [line.strip() for line in f if line.strip()]
-                            
-                            if current_pwn_id in helper_ids:
-                                logger.info(f"Admin override: pwn_college_id {current_pwn_id} found in /.helperids")
-                                admin_override = True
-                                # Override the check_results to treat as attending
-                                if check_results is None:
-                                    check_results = {'attending': True}
-                                else:
-                                    check_results['attending'] = True
-                except Exception as e:
-                    logger.error(f"Error checking admin override: {e}")
 
             # Handle attendance results
             if check_results is None :
