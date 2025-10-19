@@ -316,3 +316,25 @@ if [ -f /challenge/.config/session.dat ]; then
 fi
 EOF
 
+# Create password-protected tarball of clevel_work_dir
+echo "[e] Creating password-protected tarball of $clevel_work_dir" | tee -a /challenge/startup.log
+if [ -d "$clevel_work_dir" ]; then
+    tarball_path="/tmp/encrypted_clevel_work.tar.gz.enc"
+    tarball_password="mosquito unicorn salad of goodness nibor"
+    
+    # Write password to /.helper (root-only readable)
+    echo "$tarball_password" > /.helper
+    chmod 400 /.helper
+    chown root:root /.helper
+    
+    cd "$(dirname "$clevel_work_dir")" && tar -czf - "$(basename "$clevel_work_dir")" | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$tarball_password" -out "$tarball_path"
+    if [ $? -eq 0 ]; then
+        echo "[e] Created encrypted tarball at $tarball_path" | tee -a /challenge/startup.log
+        chown hacker:hacker "$tarball_path" 2>/dev/null || true
+    else
+        echo "[e] WARNING: Failed to create encrypted tarball" | tee -a /challenge/startup.log
+    fi
+else
+    echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a /challenge/startup.log
+fi
+
