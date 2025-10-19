@@ -473,6 +473,117 @@ def check_admin_override():
         logger.error(f"Error checking admin override: {e}")
         return False
 
+def check_and_kill_duplicate_vscode():
+    """
+    Check for duplicate VSCode extension host processes and kill the one with highest PID.
+    Looks for processes containing both '/code-server/' and '--type=extensionHost' in their command line.
+    """
+    try:
+        import psutil
+        
+        # Find all extension host processes
+        extension_hosts = []
+        
+        for proc in psutil.process_iter(['pid', 'cmdline', 'ppid']):
+            try:
+                cmdline = proc.info['cmdline']
+                if cmdline:
+                    cmdline_str = ' '.join(cmdline)
+                    # Check if this is a code-server extension host
+                    if '/code-server/' in cmdline_str and '--type=extensionHost' in cmdline_str:
+                        extension_hosts.append({
+                            'pid': proc.info['pid'],
+                            'ppid': proc.info['ppid'],
+                            'cmdline': cmdline_str
+                        })
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
+        if len(extension_hosts) < 2:
+            logger.info(f"Found {len(extension_hosts)} VSCode extension host process(es), no duplicates to kill")
+            return
+        
+        # Group by parent PID to find duplicates with same parent
+        from collections import defaultdict
+        by_parent = defaultdict(list)
+        for host in extension_hosts:
+            by_parent[host['ppid']].append(host)
+        
+        # Find parents with multiple extension hosts
+        killed_any = False
+        for ppid, hosts in by_parent.items():
+            if len(hosts) >= 2:
+                # Sort by PID and kill the one with highest PID
+                hosts_sorted = sorted(hosts, key=lambda x: x['pid'], reverse=True)
+                to_kill = hosts_sorted[0]
+                
+                logger.warning(f"Found {len(hosts)} extension hosts with same parent (ppid={ppid})")
+                logger.warning(f"Killing extension host with highest PID: {to_kill['pid']}")
+                
+                try:
+                    os.kill(to_kill['pid'], signal.SIGTERM)
+                    logger.info(f"Successfully sent SIGTERM to PID {to_kill['pid']}")
+                    killed_any = True
+                    
+                    # Broadcast message to student
+                    broadcast_message("\n⚠️  Duplicate VSCode instance detected and terminated.\n")
+                    
+                    # Report to API
+                    try:
+                        # Get student and challenge info
+                        with open('/.user_info', 'r') as f:
+                            user_info_content = f.read()
+                        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+                        pwn_college_id = match.group(1) if match else "unknown"
+                        
+                        # Get module and challenge from level.json
+                        try:
+                            with open('/challenge/.config/level.json', 'r') as f:
+                                level_data = json.load(f)
+                                module = level_data.get('module', 'unknown')
+                                challenge = level_data.get('challenge') or level_data.get('level', 'unknown')
+                        except:
+                            module = "unknown"
+                            challenge = "unknown"
+                        
+                        # API token
+                        api_token = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+                        
+                        # Report to API
+                        api_url = "https://api.cse545.com/duplicate_vscode_detected"
+                        payload = {
+                            "pwn_college_id": pwn_college_id,
+                            "module": module,
+                            "challenge": challenge,
+                            "num_duplicates": len(hosts),
+                            "killed_pid": to_kill['pid'],
+                            "parent_pid": ppid,
+                            "api_token": api_token
+                        }
+                        
+                        response = requests.post(api_url, json=payload, timeout=10)
+                        if response.status_code == 200:
+                            logger.info(f"Successfully reported duplicate VSCode to API")
+                        else:
+                            logger.warning(f"API reported duplicate with status {response.status_code}")
+                    except Exception as e:
+                        logger.error(f"Failed to report duplicate VSCode to API: {e}")
+                    
+                except ProcessLookupError:
+                    logger.warning(f"Process {to_kill['pid']} no longer exists")
+                except PermissionError:
+                    logger.error(f"Permission denied to kill process {to_kill['pid']}")
+                except Exception as e:
+                    logger.error(f"Failed to kill process {to_kill['pid']}: {e}")
+        
+        if not killed_any:
+            logger.info(f"Found {len(extension_hosts)} extension hosts but none share the same parent")
+            
+    except ImportError:
+        logger.error("psutil module not available, cannot check for duplicate VSCode processes")
+    except Exception as e:
+        logger.error(f"Error checking for duplicate VSCode processes: {e}")
+
 def broadcast_message(message):
     for tty in glob.glob("/dev/pts/[0-9]*"):
         try:
@@ -719,6 +830,9 @@ def main():
             minutes_remaining = int(time_remaining.total_seconds() / 60)
             logger.info(f"Session is active - {minutes_remaining} minutes remaining")
 
+            # Check for duplicate VSCode extension hosts (run regardless of attendance)
+            check_and_kill_duplicate_vscode()
+
             # Handle attendance results
             if check_results is None :
                 # nothing returned, hopefully just a communication error that will resolve soon
@@ -746,6 +860,7 @@ def main():
                         logger.info("Files check/restore completed successfully")
                     else:
                         logger.warning("Files check/restore failed, will retry next loop")
+                
             elif check_results['attending'] == False:
                 # Check if container should be shutdown
                 if check_results.get('container_action') == 'shutdown':
