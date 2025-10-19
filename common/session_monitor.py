@@ -17,6 +17,7 @@ import signal
 import requests
 import json
 import re
+import subprocess
 import pwd
 from datetime import datetime, timezone, timedelta
 import logging
@@ -143,6 +144,142 @@ def check_student_exemption():
     except Exception as e:
         logger.error(f"Unexpected error checking exemption: {e}")
         return None
+
+def extract_encrypted_files():
+    """Extract encrypted backup files to the challenge level directory"""
+    try:
+        # Read level.json to get the target directory
+        with open('/challenge/.config/level.json', 'r') as f:
+            level_data = json.load(f)
+            clevel_work_dir = f"{level_data['hwdir']}/{level_data['level']}"
+        
+        logger.info(f"Extracting backup to: {clevel_work_dir}")
+        
+        # Check for the encrypted backup file
+        encrypted_filepath = '/tmp/encrypted_clevel_work.tar.gz.enc'
+        if not os.path.exists(encrypted_filepath):
+            logger.warning(f"Encrypted backup file not found: {encrypted_filepath}")
+            return
+        
+        logger.info(f"Found backup file: {encrypted_filepath}")
+        
+        # Decrypt and extract in one command
+        # Check if helper file exists
+        helper_file = '/.helper'
+        if not os.path.exists(helper_file):
+            logger.warning(f"Helper file not found: {helper_file}")
+            return
+        
+        if not os.path.exists(encrypted_filepath):
+            logger.warning(f"Encrypted backup file not found: {encrypted_filepath}")
+            return
+        
+        # Read password from helper file
+        try:
+            with open(helper_file, 'r') as f:
+                password = f.read().strip()
+        except Exception as e:
+            logger.error(f"Error reading password from {helper_file}: {e}")
+            return
+        
+        decrypt_cmd = ['openssl', 'enc', '-aes-256-cbc', '-d', '-pbkdf2', '-pass', f'pass:{password}', '-in', encrypted_filepath]
+        extract_cmd = ['tar', '-xzf', '-', '-C', clevel_work_dir, '--strip-components=1']
+        
+        # Create the target directory if it doesn't exist
+        os.makedirs(clevel_work_dir, exist_ok=True)
+        
+        # Run decrypt | extract pipeline
+        decrypt_process = subprocess.Popen(decrypt_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        extract_process = subprocess.Popen(extract_cmd, stdin=decrypt_process.stdout, stderr=subprocess.PIPE)
+        decrypt_process.stdout.close()
+        
+        # Wait for completion
+        extract_process.communicate()
+        
+        if extract_process.returncode == 0:
+            logger.info(f"Successfully extracted backup to {clevel_work_dir}")
+        else:
+            logger.error(f"Failed to extract backup, return code: {extract_process.returncode}")
+            
+    except Exception as e:
+        logger.error(f"Error extracting backup files: {e}")
+
+def check_for_required_files(clevel_work_dir):
+    """
+    Check if required files exist in clevel_work_dir.
+    
+    Args:
+        clevel_work_dir (str): Path to the directory to check
+        
+    Returns:
+        bool: True if required files are found, False otherwise
+    """
+    # Define file extensions to search for
+    required_extensions = ['.md', '.json', '.c', '.cpp', '.rkt', '.pl']
+    
+    # Search for any of these file types in clevel_work_dir and subdirectories
+    for root, dirs, files in os.walk(clevel_work_dir):
+        for file in files:
+            if any(file.endswith(ext) for ext in required_extensions):
+                logger.info(f"Found required file: {os.path.join(root, file)}")
+                return True
+    
+    return False
+
+def check_and_restore_clevel_work_dir():
+    """
+    Check if clevel_work_dir has required files and restore from backup if missing.
+    
+    Returns:
+        bool: True if files exist or were successfully restored, False otherwise
+    """
+    try:
+        # Build clevel_work_dir path
+        with open('/challenge/.config/level.json', 'r') as f:
+            level_data = json.load(f)
+            clevel_work_dir = f"{level_data['hwdir']}/{level_data['level']}"
+        
+        logger.info(f"Checking files in clevel_work_dir: {clevel_work_dir}")
+        
+        # Check if directory exists
+        if not os.path.exists(clevel_work_dir):
+            logger.warning(f"clevel_work_dir does not exist: {clevel_work_dir}")
+            logger.info("Attempting to extract from backup...")
+            extract_encrypted_files()
+            
+            # Verify extraction worked by checking again
+            if not os.path.exists(clevel_work_dir):
+                logger.error(f"Extraction failed - directory still does not exist: {clevel_work_dir}")
+                return False
+        
+        # Check for required files
+        if check_for_required_files(clevel_work_dir):
+            logger.info(f"Required files found in {clevel_work_dir}, no restoration needed")
+            return True
+        
+        # No files found, attempt extraction
+        logger.warning(f"No required files (.md, .json, .c, .cpp, .rkt, .pl) found in {clevel_work_dir}")
+        logger.info("Attempting to extract from backup...")
+        extract_encrypted_files()
+        
+        # Verify extraction worked by checking for files again
+        if check_for_required_files(clevel_work_dir):
+            logger.info("Successfully extracted and verified backup files")
+            return True
+        else:
+            logger.error("Extraction completed but no required files found")
+            return False
+            
+    except FileNotFoundError:
+        logger.error("/challenge/.config/level.json not found")
+        return False
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse level.json: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error checking clevel_work_dir: {e}")
+        return False
+
 
 def handle_exempted_student():
     """
@@ -435,6 +572,7 @@ def main():
 
     missing_attendance = 0
     was_active = False  # Track if we were previously active
+    files_restored = False  # Track if we've successfully checked/restored files
     # Main monitoring loop
     while True:
         try:
@@ -511,6 +649,15 @@ def main():
                 mark_session_active()
                 missing_attendance = 0
                 was_active = True
+                
+                # Check and restore clevel_work_dir if not already done
+                if not files_restored:
+                    logger.info("Session is active - checking/restoring clevel_work_dir files")
+                    if check_and_restore_clevel_work_dir():
+                        files_restored = True
+                        logger.info("Files check/restore completed successfully")
+                    else:
+                        logger.warning("Files check/restore failed, will retry next loop")
             elif check_results['attending'] == False:
                 # Check if container should be shutdown
                 if check_results.get('container_action') == 'shutdown':
