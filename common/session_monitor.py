@@ -194,12 +194,22 @@ def extract_encrypted_files():
         decrypt_process.stdout.close()
         
         # Wait for completion
-        extract_process.communicate()
+        extract_stdout, extract_stderr = extract_process.communicate()
         
         if extract_process.returncode == 0:
             logger.info(f"Successfully extracted backup to {clevel_work_dir}")
+            # Log what was extracted
+            try:
+                for root, dirs, files in os.walk(clevel_work_dir):
+                    logger.info(f"Extracted directory: {root}")
+                    for file in files:
+                        logger.info(f"  Extracted file: {file}")
+            except Exception as e:
+                logger.error(f"Error listing extracted files: {e}")
         else:
             logger.error(f"Failed to extract backup, return code: {extract_process.returncode}")
+            if extract_stderr:
+                logger.error(f"Extract stderr: {extract_stderr.decode('utf-8', errors='ignore')}")
             
     except Exception as e:
         logger.error(f"Error extracting backup files: {e}")
@@ -217,13 +227,43 @@ def check_for_required_files(clevel_work_dir):
     # Define file extensions to search for
     required_extensions = ['.md', '.json', '.c', '.cpp', '.rkt', '.pl']
     
+    # First check if the directory exists
+    if not os.path.exists(clevel_work_dir):
+        logger.warning(f"Directory does not exist: {clevel_work_dir}")
+        return False
+    
+    # Check if we can access the directory
+    if not os.access(clevel_work_dir, os.R_OK):
+        logger.warning(f"Directory exists but not readable: {clevel_work_dir}")
+        return False
+    
+    # Log directory permissions and ownership
+    try:
+        stat_info = os.stat(clevel_work_dir)
+        logger.info(f"Directory stats: mode={oct(stat_info.st_mode)}, uid={stat_info.st_uid}, gid={stat_info.st_gid}")
+    except Exception as e:
+        logger.error(f"Failed to stat directory: {e}")
+    
     # Search for any of these file types in clevel_work_dir and subdirectories
+    files_found_list = []
     for root, dirs, files in os.walk(clevel_work_dir):
         for file in files:
             if any(file.endswith(ext) for ext in required_extensions):
-                logger.info(f"Found required file: {os.path.join(root, file)}")
-                return True
+                full_path = os.path.join(root, file)
+                files_found_list.append(full_path)
+                logger.info(f"Found required file: {full_path}")
+                # Check file permissions
+                try:
+                    stat_info = os.stat(full_path)
+                    logger.info(f"  File stats: mode={oct(stat_info.st_mode)}, uid={stat_info.st_uid}, gid={stat_info.st_gid}, size={stat_info.st_size}")
+                except Exception as e:
+                    logger.error(f"  Failed to stat file: {e}")
     
+    if files_found_list:
+        logger.info(f"Total required files found: {len(files_found_list)}")
+        return True
+    
+    logger.warning(f"No required files found in {clevel_work_dir}")
     return False
 
 def check_and_restore_clevel_work_dir():
