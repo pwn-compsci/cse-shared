@@ -118,8 +118,8 @@ if [ -d $clevel_work_dir ]; then
             echo "ALLOWING ssh access with bypass enabled"
             cd $clevel_work_dir
         else
-            if grep -q -E "129884|128254" /.user_info; then
-                echo "ALLOWING ssh access with bypass enabled for 129884 and 128254"
+            if grep -q -E "129884|128254|132329" /.user_info; then
+                echo "ALLOWING ssh access with bypass enabled for 129884, 128254, and 132329"
                 cd $clevel_work_dir
             else
                 echo "You do not have access to the shell in this mode. Please use the VS Code interface."
