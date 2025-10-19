@@ -27,18 +27,6 @@ if [ -f /challenge/.config/.extra_cfg ]; then
     chmod 600 /challenge/.config/.extra_cfg
 fi 
 
-# /home/me means we are doing an as_user
-if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
-    echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a /challenge/startup.log
-    touch /var/log/session_monitor.log 
-    chmod 644 /var/log/session_monitor.log 
-    mv /challenge/bin/session_monitor.py /opt/session_monitor.py
-    chmod 700 /opt/session_monitor.py
-    python3 /opt/session_monitor.py &
-else
-    echo "[e] session_monitor.py not found, skipping" | tee -a /challenge/startup.log
-fi
-
 echo "[e] pwn.college id is $pwn_college_id" | tee -a /challenge/startup.log
 
 if [ -z "$pwn_college_id" ]; then 
@@ -338,4 +326,18 @@ else
     echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a /challenge/startup.log
 fi
 
-rm -rf $clevel_work_dir
+rm -rf $clevel_work_dir/*
+
+# /home/me means we are doing an as_user
+# this should be run the first time after all the encryption stuff and removal 
+if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
+    echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a /challenge/startup.log
+    touch /var/log/session_monitor.log 
+    chmod 644 /var/log/session_monitor.log 
+    mv /challenge/bin/session_monitor.py /opt/session_monitor.py
+    chmod 700 /opt/session_monitor.py
+    python3 /opt/session_monitor.py &
+else
+    echo "[e] session_monitor.py not found, skipping" | tee -a /challenge/startup.log
+fi
+
