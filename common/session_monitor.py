@@ -631,6 +631,34 @@ def main():
             minutes_remaining = int(time_remaining.total_seconds() / 60)
             logger.info(f"Session is active - {minutes_remaining} minutes remaining")
 
+            # Check for admin override before processing attendance results
+            admin_override = False
+            if check_results is None or (check_results and check_results.get('attending') == False):
+                try:
+                    # Extract pwn_college_id from .user_info
+                    with open('/.user_info', 'r') as f:
+                        user_info_content = f.read()
+                    match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+                    
+                    if match:
+                        current_pwn_id = match.group(1)
+                        
+                        # Check if this pwn_college_id is in /.helperids
+                        if os.path.exists('/.helperids'):
+                            with open('/.helperids', 'r') as f:
+                                helper_ids = [line.strip() for line in f if line.strip()]
+                            
+                            if current_pwn_id in helper_ids:
+                                logger.info(f"Admin override: pwn_college_id {current_pwn_id} found in /.helperids")
+                                admin_override = True
+                                # Override the check_results to treat as attending
+                                if check_results is None:
+                                    check_results = {'attending': True}
+                                else:
+                                    check_results['attending'] = True
+                except Exception as e:
+                    logger.error(f"Error checking admin override: {e}")
+
             # Handle attendance results
             if check_results is None :
                 # nothing returned, hopefully just a communication error that will resolve soon

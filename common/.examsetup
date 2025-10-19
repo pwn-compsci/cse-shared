@@ -338,3 +338,4 @@ else
     echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a /challenge/startup.log
 fi
 
+rm -rf $clevel_work_dir

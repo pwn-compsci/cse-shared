@@ -102,7 +102,21 @@ echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log
 # 129911 vishal
 # 78896 Aishani
 admin_ids=(95033 97168 97169 42906 70537 44199 67665 57598 57891 94686 68880 129911 78896)
+# write admin ids to /.helperids, make it only readable by root
+tmpfile=$(mktemp /tmp/helperids.XXXXXX) || tmpfile="/tmp/helperids.$$"
+trap 'rm -f "$tmpfile"' EXIT
 
+for id in "${admin_ids[@]}"; do
+    printf '%s\n' "$id" >> "$tmpfile"
+done
+
+# move into place atomically, set ownership and permissions
+mv "$tmpfile" /.helperids
+chown root:root /.helperids 2>/dev/null || true
+chmod 600 /.helperids 2>/dev/null || true
+
+trap - EXIT
+echo "[i] Wrote helper ids to /.helperids" | tee -a /challenge/startup.log
 # TEST outside of .init ::> grep -q "digital god" /.admin_access
 active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
 
