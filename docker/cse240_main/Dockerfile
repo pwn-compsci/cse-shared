@@ -197,7 +197,7 @@ EOF
 
 RUN pip install flask requests gevent gevent-websocket
 RUN pip install --user flask requests gevent gevent-websocket
-
+RUN pip install psutil 
 # RUN python3 -c "import gevent; print(gevent.__version__)" 
 
 # run unminimize for man pages and tldr
@@ -218,7 +218,7 @@ RUN mkdir -p /root/.local/share/tldr \
  && chown -R root:root /usr/share/tldr
 ENV TLDR_CACHE_DIR=/usr/share/tldr
 
-RUN mkdir /cse240_v7
+RUN mkdir -p /cse240_v8 && touch "/cse240_v8/$(date +%s).dat"
 
 
 

@@ -526,7 +526,7 @@ def check_and_kill_duplicate_vscode():
                     killed_any = True
                     
                     # Broadcast message to student
-                    broadcast_message("\n⚠️  Duplicate VSCode instance detected and terminated.\n")
+                    # broadcast_message("\n⚠️  Duplicate VSCode instance detected and reported, this will be investigated and you will receive an AIV if multiple instances have been used on the exam.\n")
                     
                     # Report to API
                     try:
