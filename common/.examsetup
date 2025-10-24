@@ -151,6 +151,8 @@ else
         rm -rf /challenge/model 
     fi
     
+    echo 'export HISTFILE="/tmp/.bash_history"' >> /etc/bash.bashrc
+
     json_tests=""
     dat_tests=""
     model_code=""
