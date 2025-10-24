@@ -149,9 +149,10 @@ else
     if [ "$admin_access" = false ]; then
         rm -rf /challenge/problems 
         rm -rf /challenge/model 
+        # move history file location
+        echo 'export HISTFILE="/tmp/.bash_history"' >> /etc/bash.bashrc
     fi
     
-    echo 'export HISTFILE="/tmp/.bash_history"' >> /etc/bash.bashrc
 
     json_tests=""
     dat_tests=""
