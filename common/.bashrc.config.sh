@@ -114,7 +114,8 @@ if [ -d $clevel_work_dir ]; then
     make() {
         # Use script with -e to preserve exit code and -q for quiet (no headers)
         # The -c flag runs the command and captures both stdout and stderr with TTY emulation
-        script -q -e -c "make $*" "$clevel_work_dir/compile.log" 
+        # Output is shown to user AND saved to compile.log with colors preserved
+        script -q -e -c "make $*" "$clevel_work_dir/compile.log"
         local rc=$?
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
@@ -216,7 +217,7 @@ if grep -q "digital god" /.admin_access ; then
     alias mtests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' order by timestamp"'
     alias ctests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' and level = $level_id order by timestamp"'
     # alias compilations='sqlite3 ~/cse240/.vscode/trdb.db "select * from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' order by timestamp ASC"'
-    alias compilations='sqlite3 -header -column ~/cse240/.vscode/trdb.db "select timestamp, level_id, compiler, result, outcome from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' and command not like '\''make clean%'\'' order by timestamp ASC"'
+    alias compilations='sqlite3 -line ~/cse240/.vscode/trdb.db "select timestamp, level_id, compiler, result, outcome from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' and command not like '\''make clean%'\'' order by timestamp ASC"'
     alias sqlf='sqlite3 -header -column ~/cse240/.vscode/trdb.db'
     alias sql='sqlite3 ~/cse240/.vscode/trdb.db'
     
