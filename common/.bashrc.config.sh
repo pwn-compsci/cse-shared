@@ -30,6 +30,47 @@ else
     true 
 fi 
 
+function save_compile(){
+    local compiler="$1"
+    local command="$2"
+    local result="$3"
+    local hw_id=$(jq -r 'if .hw == null then "" else .hw end' /challenge/.config/level.json)
+    local module=$(jq -r 'if .module == null or .module == "" then .hw else .module end' /challenge/.config/level.json)
+    local lab_id=$(jq -r 'if .labid == null then "" else .labid end' /challenge/.config/level.json)
+    local level_id=$(jq -r 'if .level == null then "" else .level end' /challenge/.config/level.json)
+    local clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local outcome_text=$(cat "$clevel_work_dir/compile.log" | sed "s/'/''/g")
+
+    sqlite3 /home/hacker/cse240/.vscode/trdb.db <<EOF
+    CREATE TABLE IF NOT EXISTS compilations (
+        id INTEGER PRIMARY KEY,
+        timestamp TEXT,
+        module TEXT,
+        hw_id TEXT,
+        level_id TEXT,
+        lab_id TEXT,
+        clevel_work_dir TEXT,
+        compiler TEXT,
+        command TEXT,
+        outcome TEXT,
+        result TEXT
+    );    
+    INSERT INTO compilations (timestamp, module, hw_id, level_id, lab_id, clevel_work_dir, compiler, command, outcome, result) VALUES (
+        '$timestamp',
+        '$module',
+        '$hw_id',
+        '$level_id',
+        '$lab_id',
+        '$clevel_work_dir',
+        '$compiler',
+        '$command',
+        '$outcome_text',
+        '$result'
+    );
+    
+EOF
+}
 
 
 export hw_id=$(jq -r '. | "\(.hw)"' /challenge/.config/level.json)
@@ -52,17 +93,23 @@ if [ -d $clevel_work_dir ]; then
     gcc() {
         rm -f main.bi*.gc??        
         command gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
-        if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+        local rc=${PIPESTATUS[0]}
+        if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
+        save_compile "gcc" "gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$(echo "$@" | grep -oP '[^\s]+\.c|[^\s]+\.cpp' | tr '\n' ' ')" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        return $rc
     }
 
     g++() {
         rm -f main.bi*.gc??
         command g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
-        if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+        local rc=${PIPESTATUS[0]}
+        if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
+        save_compile "g++" "g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$(echo "$@" | grep -oP '[^\s]+\.c|[^\s]+\.cpp' | tr '\n' ' ')" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        return $rc
     }
     make() {
         command make "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
@@ -70,6 +117,32 @@ if [ -d $clevel_work_dir ]; then
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
+        # Try to detect compiler from Makefile
+        local detected_compiler="make"
+        if [ -f "Makefile" ]; then
+            # Extract object files from OBJS variable if it exists
+            local objs=$(grep -oP '^\s*OBJS\s*[?:+]?=\s*\K.*' Makefile | tr '\n' ' ')
+            local detected_files=""
+            if [ -n "$objs" ]; then
+                # Convert .o files to .c/.cpp files
+                detected_files=$(echo "$objs" | sed 's/\.o/\.c/g; s/\.o/\.cpp/g')
+            fi
+            
+            if grep -q "^\s*CC\s*=\s*gcc" Makefile || grep -q "gcc" Makefile; then
+                detected_compiler="make(gcc)"
+            elif grep -q "^\s*CC\s*=\s*g++" Makefile || grep -q "^\s*CXX\s*=\s*g++" Makefile || grep -q "g++" Makefile; then
+                detected_compiler="make(g++)"
+            fi
+            
+            # Update the make command in save_compile call to include detected files
+            local make_command="make $*"
+            if [ -n "$detected_files" ]; then
+                make_command="make $* (objects: $detected_files)"
+            fi
+            save_compile "$detected_compiler" "$make_command" "$detected_files" "$rc" >> /tmp/save_compile.log 2>&1 || true
+            return $rc
+        fi
+        save_compile "$detected_compiler" "make $*" "" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
     tester() {
