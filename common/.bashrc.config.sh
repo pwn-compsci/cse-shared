@@ -67,7 +67,7 @@ function save_compile(){
         '$command',
         '$outcome_text',
         '$result'
-    );
+    );    
     
 EOF
 }
@@ -97,7 +97,7 @@ if [ -d $clevel_work_dir ]; then
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
-        save_compile "gcc" "gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$(echo "$@" | grep -oP '[^\s]+\.c|[^\s]+\.cpp' | tr '\n' ' ')" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        save_compile "gcc" "gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
 
@@ -108,7 +108,7 @@ if [ -d $clevel_work_dir ]; then
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
-        save_compile "g++" "g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$(echo "$@" | grep -oP '[^\s]+\.c|[^\s]+\.cpp' | tr '\n' ' ')" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        save_compile "g++" "g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
     make() {
@@ -142,7 +142,7 @@ if [ -d $clevel_work_dir ]; then
             save_compile "$detected_compiler" "$make_command" "$detected_files" "$rc" >> /tmp/save_compile.log 2>&1 || true
             return $rc
         fi
-        save_compile "$detected_compiler" "make $*" "" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        save_compile "$detected_compiler" "make $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
     tester() {
@@ -213,6 +213,8 @@ if grep -q "digital god" /.admin_access ; then
     alias gr='gcc main.c -o main.bin && ./main.bin'
     alias mtests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' order by timestamp"'
     alias ctests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' and level = $level_id order by timestamp"'
+    alias compilations='sqlite3 ~/cse240/.vscode/trdb.db "select * from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' order by timestamp ASC"'
+    
 fi 
 
 alias cpdat='tail -100 ~/cse240/.vscode/cp.dat |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
