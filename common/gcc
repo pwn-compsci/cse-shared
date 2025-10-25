@@ -41,11 +41,10 @@ fi
     rm -f clevel_work_dir/*.gcno clevel_work_dir/*.gcda
 
     /run/challenge/bin/gcc  -O0 -g -fdiagnostics-color=always -Wall -Werror -Wno-stringop-overflow -ftest-coverage -fprofile-arcs "$@"
-
-    if [ ! -f /home/hacker/cse240/.vscode/trdb.db ]; then 
-        exit $?
-    fi
     outcome=$?
+    if [ ! -f /home/hacker/cse240/.vscode/trdb.db ]; then 
+        exit $outcome
+    fi
     outcome_text=$(if [ $outcome -eq 0 ]; then echo "success"; else echo "failure"; fi)
 
     printf "outcome: %s\n" $outcome
@@ -80,6 +79,9 @@ fi
     );
     
 EOF
+
+    exit $outcome
+
 }
 
 
