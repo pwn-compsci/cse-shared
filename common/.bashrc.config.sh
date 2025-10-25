@@ -139,7 +139,7 @@ if [ -d $clevel_work_dir ]; then
             if [ -n "$detected_files" ]; then
                 make_command="make $* (objects: $detected_files)"
             fi
-            save_compile "$detected_compiler" "$make_command" "$detected_files" "$rc" >> /tmp/save_compile.log 2>&1 || true
+            save_compile "$detected_compiler" "$make_command" "$rc" >> /tmp/save_compile.log 2>&1 || true
             return $rc
         fi
         save_compile "$detected_compiler" "make $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
