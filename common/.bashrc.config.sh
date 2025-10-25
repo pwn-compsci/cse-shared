@@ -112,8 +112,10 @@ if [ -d $clevel_work_dir ]; then
         return $rc
     }
     make() {
-        script -q -c "make $*" "$clevel_work_dir/compile.log"
-        local rc=${PIPESTATUS[0]}
+        # Use script with -e to preserve exit code and -q for quiet (no headers)
+        # The -c flag runs the command and captures both stdout and stderr with TTY emulation
+        script -q -e -c "make $*" "$clevel_work_dir/compile.log" > /dev/null
+        local rc=$?
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
