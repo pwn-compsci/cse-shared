@@ -215,7 +215,8 @@ if grep -q "digital god" /.admin_access ; then
     alias ctests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' and level = $level_id order by timestamp"'
     # alias compilations='sqlite3 ~/cse240/.vscode/trdb.db "select * from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' order by timestamp ASC"'
     alias compilations='sqlite3 -header -column ~/cse240/.vscode/trdb.db "select timestamp, level_id, compiler, result, outcome from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' and command not like '\''make clean%'\'' order by timestamp ASC"'
-    alias sql='sqlite3 -header -column -header -column ~/cse240/.vscode/trdb.db'
+    alias sqlf='sqlite3 -header -column ~/cse240/.vscode/trdb.db'
+    alias sql='sqlite3 ~/cse240/.vscode/trdb.db'
     
 fi 
 
