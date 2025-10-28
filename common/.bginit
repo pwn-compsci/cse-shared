@@ -1,6 +1,40 @@
 #!/usr/bin/env bash
 
-echo "Starting .bginit $(date) pid=$$" | tee -a "/challenge/startup.log"
+# Read the log file path created by .init
+if [ -f /tmp/.startup_log_path ]; then
+    STARTUP_LOG=$(cat /tmp/.startup_log_path)
+else
+    # Fallback if .init hasn't run yet
+    STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p /home/hacker/cse240/.vscode/logs
+fi
+
+# Clean up logs directory if it exceeds 50MB (but skip if /home/me exists)
+if [ ! -d /home/me ]; then
+    LOGS_DIR="/home/hacker/cse240/.vscode/logs"
+    if [ -d "$LOGS_DIR" ]; then
+        # Calculate directory size in KB
+        DIR_SIZE=$(du -sk "$LOGS_DIR" 2>/dev/null | cut -f1)
+        MAX_SIZE=$((50 * 1024))  # 50 MB in KB
+        
+        if [ "$DIR_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "Logs directory exceeds 50MB ($DIR_SIZE KB), removing oldest files..." | tee -a "$STARTUP_LOG"
+            # Remove oldest files until we're under the limit
+            while [ "$(du -sk "$LOGS_DIR" 2>/dev/null | cut -f1)" -gt "$MAX_SIZE" ]; do
+                # Find and remove the oldest file
+                oldest_file=$(find "$LOGS_DIR" -type f -name "*.log" -printf '%T+ %p\n' | sort | head -n 1 | cut -d' ' -f2-)
+                if [ -n "$oldest_file" ] && [ -f "$oldest_file" ]; then
+                    echo "Removing old log file: $oldest_file" | tee -a "$STARTUP_LOG"
+                    rm -f "$oldest_file"
+                else
+                    break
+                fi
+            done
+        fi
+    fi
+fi
+
+echo "Starting .bginit $(date) pid=$$" | tee -a "$STARTUP_LOG"
 start_time=$(date +%s)
 diff_start_time=$(date +%s)
 
@@ -13,24 +47,24 @@ if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then
         cd /challenge/model
         # if on of the MUD levels, use multiple threads
         if [ -f /challenge/model/operations.cpp  ]; then 
-            make -j15 >> /challenge/startup.log 2>&1
+            make -j15 >> $STARTUP_LOG 2>&1
         else
-            make  >> /challenge/startup.log 2>&1      
+            make  >> $STARTUP_LOG 2>&1      
         fi 
     else 
         COMPILER=gcc
         if [ -f /challenge/model/main.cpp ]; then 
             COMPILER=g++
-            g++ /challenge/model/main.cpp -g -o /challenge/model/main.bin  >> /challenge/startup.log 2>&1
+            g++ /challenge/model/main.cpp -g -o /challenge/model/main.bin  >> $STARTUP_LOG 2>&1
         else 
-            gcc /challenge/model/main.c -g -o /challenge/model/main.bin >> /challenge/startup.log 2>&1   
+            gcc /challenge/model/main.c -g -o /challenge/model/main.bin >> $STARTUP_LOG 2>&1   
         fi 
         $COMPILER 
     fi  
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
     diff_execution_time=$((end_time - diff_start_time))
-    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Built new version of BINARY  " >> "/challenge/startup.log"
+    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Built new version of BINARY  " >> "$STARTUP_LOG"
     diff_start_time=$(date +%s)
     
     cp /challenge/model/main.bin /challenge/model/modelGood.bin
@@ -47,14 +81,14 @@ if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
     diff_execution_time=$((end_time - diff_start_time))
-    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Completed copying Good copying" >> "/challenge/startup.log"
+    echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, Completed copying Good copying" >> "$STARTUP_LOG"
     diff_start_time=$(date +%s)
     
 fi 
 
 # create noexec so to prevent execve inside a binary
 if [ -f /challenge/.config/noexec.c ] && [ ! -f /challenge/.config/noexec.so ]; then
-    (cd /challenge/.config && gcc -shared -fPIC -o noexec.so noexec.c && echo "compiled noexec.so" >> /challenge/startup.log)
+    (cd /challenge/.config && gcc -shared -fPIC -o noexec.so noexec.c && echo "compiled noexec.so" >> $STARTUP_LOG)
 fi 
 
  # make core dumps go to away each time to save space for users 
@@ -65,7 +99,7 @@ find /home/hacker/ -type f -name '.zcompdump*' -mmin +360 -exec rm -f {} +
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after core cleanups " >> "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after core cleanups " >> "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
 if [ -d /home/hacker/.cache/vscode-cpptools ]; then 
@@ -74,18 +108,18 @@ if [ -d /home/hacker/.cache/vscode-cpptools ]; then
 
     # if cache is over 100mb then clean up cpptools cache files that are older than 2 days
     if [ "$DIR_SIZE" -gt "$THRESHOLD" ]; then
-        find /home/hacker/.cache/vscode-cpptools -maxdepth 2 -type d -mtime +2 -print0 | xargs -0 echo >> /challenge/startup.log
+        find /home/hacker/.cache/vscode-cpptools -maxdepth 2 -type d -mtime +2 -print0 | xargs -0 echo >> $STARTUP_LOG
         find /home/hacker/.cache/vscode-cpptools -maxdepth 2 -type d -mtime +2 -exec rm -rf {} \;
     fi        
 fi 
 
 if grep -q "digital god" /.admin_access; then     
-    echo "[b] Digital God Access Detected, skipping removals" >> /challenge/startup.log
+    echo "[b] Digital God Access Detected, skipping removals" >> $STARTUP_LOG
     if [ -d /challenge/model ]; then 
         chmod 755 -R /challenge/model 
     fi 
 else
-    echo "[b] Regular user detected removing challenge files" >> /challenge/startup.log
+    echo "[b] Regular user detected removing challenge files" >> $STARTUP_LOG
     rm -rf /challenge/{model,.levelinit,.init,.bginit} #,startup.log}
     rm -f  /challenge/system_tests/main.bin
 fi 
@@ -93,7 +127,7 @@ fi
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after rm -f's " >> "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after rm -f's " >> "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
 ENVFILE=/home/hacker/cse240/.cse240env
@@ -101,28 +135,28 @@ ENVFILE=/home/hacker/cse240/.cse240env
 if [ -d /challenge/model ] && [ -d /challenge/system_tests ] && [ -f /challenge/tester ] && [ $(stat -c%s /challenge/tester) -gt 500 ] && grep -q "RUN_TESTS" $ENVFILE;  then 
     resize > /dev/null
     test the tester works with model
-    echo "[+] Starting Model Test" >> /challenge/startup.log
+    echo "[+] Starting Model Test" >> $STARTUP_LOG
     sleep 2
     python3 /challenge/tester --source-dir /challenge/model --test-dir /challenge/system_tests | tee -a /challenge/.config/init.log 2>&1
     
-    echo "[+] Model test complete  -- result = $(grep -q "Congrats," /challenge/.config/init.log)\n" >> /challenge/startup.log
+    echo "[+] Model test complete  -- result = $(grep -q "Congrats," /challenge/.config/init.log)\n" >> $STARTUP_LOG
     if ! grep -q "Congrats," /challenge/.config/init.log ; then
         printf "************************** [ Model Auto Test ] ***************************************\n" | tee -a /challenge/errorlog
         cat /challenge/.config/init.log  | tee -a /challenge/errorlog
         printf "\n\033[31mA problem occurred when running the test of this challenge\nPlease let the staff know on Discord\n\033[0m"  | tee -a /challenge/errorlog
         printf "^^^^^^^^^^^^^^^^^^^^^^^^^^ [ Model Auto Test ] ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n" | tee -a /challenge/errorlog        
     fi 
-    echo "[+] Skipping model test" >> /challenge/startup.log
+    echo "[+] Skipping model test" >> $STARTUP_LOG
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
-    echo "Completed system_tests in .init in $execution_time seconds" >> "/challenge/startup.log"
+    echo "Completed system_tests in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 fi 
 
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " | tee -a "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " | tee -a "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
 # clean up ownership under cse240 if needed
@@ -134,7 +168,7 @@ find /home/hacker/cse240 ! -user hacker ! -type l -not -path "/home/hacker/cse24
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 diff_execution_time=$((end_time - diff_start_time))
-echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, completed chowns " | tee -a "/challenge/startup.log"
+echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, completed chowns " | tee -a "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
 chown root:root /flag
@@ -150,4 +184,4 @@ chown root:root /flag
 #          > /.student &            
 # fi
 
-echo "Finished .bginit at $(date) in pid=$$" | tee -a /challenge/startup.log
+echo "Finished .bginit at $(date) in pid=$$" | tee -a $STARTUP_LOG

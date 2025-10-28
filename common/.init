@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
+
+# Initialize STARTUP_LOG at the very top so all functions and code can use it
+# Create logs directory if it doesn't exist
+mkdir -p /home/hacker/cse240/.vscode/logs
+chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
+
+# Generate log filename based on current date/time
+STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+
+# Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
+echo "$STARTUP_LOG" > /tmp/.startup_log_path
+chmod 644 /tmp/.startup_log_path
+
+# Create symlink at /challenge/startup.log pointing to the current log file
+# Remove old symlink if it exists, then create new one
+rm -f /challenge/startup.log 2>/dev/null || true
+ln -s "$STARTUP_LOG" /challenge/startup.log
+
 create_model_bad() { 
     # File to check for macro definitions
     file_path="/challenge/model/main.c"
@@ -8,12 +26,12 @@ create_model_bad() {
 
     # Check if the file exists
     if [ -f "$file_path" ] && [ -f "$file_path" ]; then  
-        echo "CMD: found file $file_path" | tee -a /challenge/startup.log
+        echo "CMD: found file $file_path" | tee -a $STARTUP_LOG
         # Read the file line by line
         while IFS= read -r line; do
             printf "$line" >> /challenge/read_main_c.log
             if [[ $line =~ $pattern ]]; then
-                echo "Found pattern in line: $line" | tee -a /challenge/startup.log 
+                echo "Found pattern in line: $line" | tee -a $STARTUP_LOG 
                 # Extract X and Y from the matched pattern
                 x="${BASH_REMATCH[1]}"
                 y="${BASH_REMATCH[2]}"
@@ -29,7 +47,7 @@ create_model_bad() {
                     printf "\033[31mCompilation failed for macro MODEL_BAD_${x}_${y}_${z} \033[0m\n" >> /challenge/errorlog
                 fi
                 if [ -f "$output_file" ]; then
-                    echo "Compiled binary created: $output_file" | tee -a /challenge/startup.log
+                    echo "Compiled binary created: $output_file" | tee -a $STARTUP_LOG
                     strip $output_file
                     cp $output_file $clevel_work_dir    
                     chmod 0755 "$output_file" 2>/dev/null || true
@@ -63,14 +81,14 @@ ensure_workspace_trust_disabled() {
 
     # If file doesn't exist, create with the setting
     if [ ! -f "$settings_json" ]; then
-        echo "[c] Creating $settings_json with workspace trust disabled" | tee -a /challenge/startup.log
+        echo "[c] Creating $settings_json with workspace trust disabled" | tee -a $STARTUP_LOG
         printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"        
         return
     fi
 
     # If already set, do nothing
     if grep -q '"security\.workspace\.trust\.enabled"\s*:\s*false' "$settings_json"; then
-        echo "[c] Workspace trust is already disabled in $settings_json" | tee -a /challenge/startup.log
+        echo "[c] Workspace trust is already disabled in $settings_json" | tee -a $STARTUP_LOG
         return
     fi
 
@@ -78,23 +96,23 @@ ensure_workspace_trust_disabled() {
     if command -v jq >/dev/null 2>&1; then
         tmpfile=$(mktemp)
         jq '. + {"security.workspace.trust.enabled": false}' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
-        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a /challenge/startup.log
+        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG
     else
         # Fallback: append before last }
         sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
-        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a /challenge/startup.log 
+        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG 
     fi
 }
 
 start_time=$(date +%s)
-if [[ ! -f /challenge/startup.log ]]; then 
-    echo "first time" | tee -a /challenge/startup.log
+if [[ ! -f $STARTUP_LOG ]]; then 
+    echo "first time" | tee -a $STARTUP_LOG
 else 
-    echo "SECOND time" | tee -a /challenge/startup.log
+    echo "SECOND time" | tee -a $STARTUP_LOG
     exit 0    
 fi 
 
-echo ".init Starting at $(date) in pid=$$" | tee -a /challenge/startup.log 
+echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 # check for admin access 
 # 97169 io1 (red)
@@ -121,7 +139,7 @@ chown root:root /.helperids 2>/dev/null || true
 chmod 600 /.helperids 2>/dev/null || true
 
 trap - EXIT
-echo "[i] Wrote helper ids to /.helperids" | tee -a /challenge/startup.log
+echo "[i] Wrote helper ids to /.helperids" | tee -a $STARTUP_LOG
 # TEST outside of .init ::> grep -q "digital god" /.admin_access
 active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
 
@@ -133,7 +151,7 @@ if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an adm
             admin_access=true
             echo "$active_pwn_college_id you are now a digital god" > /.admin_access
             echo "active_pwn_college_id='$pwn_college_id'" >> /.user_info
-            echo "admin access granted" | tee -a /challenge/startup.log
+            echo "admin access granted" | tee -a $STARTUP_LOG
             break
         fi    
     done
@@ -147,7 +165,7 @@ echo "206.206.192.179   api.cse545.com" >> /etc/hosts
 
 if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
-    echo "No argument supplied" | tee -a /challenge/startup.log    
+    echo "No argument supplied" | tee -a $STARTUP_LOG    
     exit 0
 fi
 
@@ -155,37 +173,37 @@ if [ -f /usr/bin/exec-suid ]; then
     chmod 6755 /usr/bin/exec-suid || true
 fi 
 
-echo "[i] Creating /challenge/bin directory" | tee -a /challenge/startup.log
-mkdir -p /challenge/bin 2| tee -a /challenge/startup.log
+echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
+mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
 
 if [ -f /challenge/bin/redirector.py ]; then 
     #chmod 700 /challenge/bin/redirector.py
-    echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " | tee -a /challenge/startup.log
+    echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " | tee -a $STARTUP_LOG
     python3 /challenge/bin/redirector.py  -d -p 7681 
     python3 /challenge/bin/redirector.py  -d -p 6080
 else 
-    echo "[i] No redirector.py found, not running" | tee -a /challenge/startup.log
+    echo "[i] No redirector.py found, not running" | tee -a $STARTUP_LOG
 fi
 
-echo "[i] Generating symbolic links for common compilers and tools" | tee -a /challenge/startup.log
+echo "[i] Generating symbolic links for common compilers and tools" | tee -a $STARTUP_LOG
 
-ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make} /challenge/bin >> /challenge/startup.log 2>&1
+ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make} /challenge/bin >> $STARTUP_LOG 2>&1
 
 if [ $? -eq 0 ]; then
-    echo "[i] Symbolic links created successfully" | tee -a /challenge/startup.log
+    echo "[i] Symbolic links created successfully" | tee -a $STARTUP_LOG
 else
-    echo "[i] Failed to create symbolic links" | tee -a /challenge/startup.log
+    echo "[i] Failed to create symbolic links" | tee -a $STARTUP_LOG
 fi
 
 # setup tldr link
 if [ -d /usr/share/tldr ]; then     
-    ls -la | tee -a /challenge/startup.log
+    ls -la | tee -a $STARTUP_LOG
     if [ -f /home/hacker/.local/share/tldr ]; then 
         rm -f /home/hacker/.local/share/tldr
-        echo "[i] Removed existing symbolic link for tldr" | tee -a /challenge/startup.log
+        echo "[i] Removed existing symbolic link for tldr" | tee -a $STARTUP_LOG
     fi
     ln -s /usr/share/tldr /home/hacker/.local/share/
-    echo "[i] Created symbolic link for tldr $? " | tee -a /challenge/startup.log
+    echo "[i] Created symbolic link for tldr $? " | tee -a $STARTUP_LOG
     chown -h hacker:hacker /home/hacker/.local/share/tldr
 fi
 
@@ -227,19 +245,19 @@ if [ ! -f /home/hacker/.bashrc ]; then
     cp /etc/skel/.bashrc /home/hacker/.bashrc
     chmod 644 /home/hacker/.bashrc 
     chown hacker:hacker /home/hacker/.bashrc 
-    echo "Creating .bashrc for account hacker" | tee -a /challenge/startup.log
+    echo "Creating .bashrc for account hacker" | tee -a $STARTUP_LOG
 fi 
 if [ ! -f /home/hacker/.profile ]; then 
     cp /etc/skel/.profile /home/hacker/.profile
     chmod 644 /home/hacker/.profile 
     chown hacker:hacker /home/hacker/.profile
-    echo "Creating .profile for account hacker" | tee -a /challenge/startup.log
+    echo "Creating .profile for account hacker" | tee -a $STARTUP_LOG
 fi 
 if [ ! -f /home/hacker/.bash_logout ]; then 
     cp /etc/skel/.bash_logout /home/hacker/.bash_logout
     chmod 644 /home/hacker/.bash_logout 
     chown hacker:hacker /home/hacker/.bash_logout 
-    echo "Creating .bash_logout for account hacker" | tee -a /challenge/startup.log
+    echo "Creating .bash_logout for account hacker" | tee -a $STARTUP_LOG
 fi 
 
 
@@ -255,7 +273,7 @@ if [ -f /challenge/pex_heartbeat ]; then
     chown hacker:hacker /home/hacker/.local/share/ultima/pexs.dat
     chmod 666 /home/hacker/.local/share/ultima/pexs.dat
     python3 /challenge/bin/pex_heartbeat &
-    echo "Started pex_heartbeat " | tee -a /challenge/startup.log
+    echo "Started pex_heartbeat " | tee -a $STARTUP_LOG
 fi 
 
 ENVFILE=/home/hacker/cse240/.cse240env
@@ -270,19 +288,19 @@ chmod 666 /home/hacker/.local/share/ultima/c.dat
 chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 
 ## incorporate cse240 environment changes
-chmod 666 /challenge/startup.log
+chmod 666 $STARTUP_LOG
 
 if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then 
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/zsh/zshenv
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/zshrc       
-    echo "Changing shell for hacker to $(which zsh)" | tee -a /challenge/startup.log
+    echo "Changing shell for hacker to $(which zsh)" | tee -a $STARTUP_LOG
     #chsh -s $(which zsh) hacker     
     
     target_file="/etc/bash.bashrc"
     if grep -q 'Automatically switch to Zsh for interactive sessions' "$target_file"; then
-        echo "Block already exists in $target_file" | tee -a /challenge/startup.log
+        echo "Block already exists in $target_file" | tee -a $STARTUP_LOG
     else
-        echo "Adding to top of $target_file" | tee -a /challenge/startup.log
+        echo "Adding to top of $target_file" | tee -a $STARTUP_LOG
         sudo sed -i '1i\
             # Automatically switch to Zsh for interactive sessions\n\
             if [ -t 1 ] \&\& [ -n "$BASH_VERSION" ] \&\& [ -z "$ZSH_VERSION" ]; then\n\
@@ -298,7 +316,7 @@ else
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/bash.bashrc
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/bash.bashrc
             
-    printf 'echo "Added commands to BASHRC FILE!!!!" | tee -a /challenge/startup.log '
+    printf 'echo "Added commands to BASHRC FILE!!!!" | tee -a $STARTUP_LOG '
 
     export SHELL=$(which bash)
 fi 
@@ -321,7 +339,7 @@ fi
 
 mkdir -p /challenge/.config
 
-cat /challenge/.config/level.json | tee -a /challenge/startup.log 
+cat /challenge/.config/level.json | tee -a $STARTUP_LOG 
 # use level config to define variables 
 clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
 
@@ -335,7 +353,7 @@ else
     hw_id=$(jq -r '.hw' /challenge/.config/level.json)
 fi 
 
-echo "clevel_work_dir=$clevel_work_dir" | tee -a /challenge/startup.log
+echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 
 # user information configuration
 pwn_college_id=$active_pwn_college_id
@@ -347,9 +365,9 @@ if [ -f /challenge/.config/ed.dat ]; then
     if [ -d /home/me ]; then 
         pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
     fi 
-    echo "pwn college id = '$pwn_college_id'" | tee -a /challenge/startup.log 
+    echo "pwn college id = '$pwn_college_id'" | tee -a $STARTUP_LOG 
     grep -Poh ".*${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
-    cat /challenge/.config/info.dat | tee -a /challenge/startup.log
+    cat /challenge/.config/info.dat | tee -a $STARTUP_LOG
     if [ ! -d /home/me ]; then 
         rm -f /challenge/.config/ed.dat
     fi
@@ -372,7 +390,7 @@ echo "pwn_college_id='$pwn_college_id'" >> /.user_info
 ######                                      Exam Setup                                                              ######
 ##########################################################################################################################
 isExam=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
-echo "isExam=$isExam" | tee -a /challenge/startup.log
+echo "isExam=$isExam" | tee -a $STARTUP_LOG
 if [[ -n $isExam ]]; then 
     cs_user_data_dir="/home/hacker/.local/share/code-server-exam"
      if [ ! -d $cs_user_data_dir ]; then 
@@ -381,19 +399,19 @@ if [[ -n $isExam ]]; then
     fi 
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
-        echo "[i] Completed .examsetup" >> "/challenge/startup.log"
+        echo "[i] Completed .examsetup" >> "$STARTUP_LOG"
     fi 
 
     # setup EXAM_REFERENCE if it exists
     if [ -f /challenge/EXAM_REFERENCE.md ]; then     
         cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
-        echo "[i] Found EXAM_REFERENCE, including in user's directory $clevel_work_dir" | tee -a /challenge/startup.log
+        echo "[i] Found EXAM_REFERENCE, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
     # can move .vsocde and .cse240env to ro
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
 else
-    echo "Not an exam level" | tee -a /challenge/startup.log
+    echo "Not an exam level" | tee -a $STARTUP_LOG
     cs_user_data_dir="/home/hacker/.local/share/code-server"
      if [ ! -d $cs_user_data_dir ]; then 
         mkdir -p $cs_user_data_dir
@@ -424,7 +442,7 @@ fi
 ensure_workspace_trust_disabled "$cs_user_data_dir"
 
 
-#echo "clevel_work_dir=$clevel_work_dir" | tee -a /challenge/startup.log
+#echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 if [[ -d $clevel_work_dir ]] && [ "$hw_id" -ne 77 ]; then 
     # cleans up path
     clevel_work_dir=$(realpath $clevel_work_dir)
@@ -446,19 +464,19 @@ fi
 #         fi     
 #     done 
 # else
-#     echo "[+] Skipping requiredUserTest copy because not used for this level" | tee -a /challenge/startup.log
+#     echo "[+] Skipping requiredUserTest copy because not used for this level" | tee -a $STARTUP_LOG
 # fi 
 
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
-echo "Past init in .init in $execution_time seconds $(date) pid=$$" >> "/challenge/startup.log"
+echo "Past init in .init in $execution_time seconds $(date) pid=$$" >> "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
 
 # create symlink for system_tests in working directory
 if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
-    ls -la $clevel_work_dir | tee -a /challenge/startup.log
-    echo "[i] Creating symlink for system_tests in $clevel_work_dir" | tee -a /challenge/startup.log
+    ls -la $clevel_work_dir | tee -a $STARTUP_LOG
+    echo "[i] Creating symlink for system_tests in $clevel_work_dir" | tee -a $STARTUP_LOG
     ln -s /challenge/system_tests $clevel_work_dir/system_tests
 fi 
 
@@ -480,11 +498,11 @@ if [ -f /challenge/.levelinit ]; then
     source /challenge/.levelinit
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
-    echo "Completed .levelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
+    echo "Completed .levelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 fi 
 
-echo "Starting workspace build$(date) in pid=$$" | tee -a /challenge/startup.log 
+echo "Starting workspace build$(date) in pid=$$" | tee -a $STARTUP_LOG 
 # ###################################################################################################################### #
 # vvvv Build Tasks and Launcher for workspace vvvv                                                                       #
 # Creates 4 tasks for workspace file                                                                                     #
@@ -556,20 +574,20 @@ task_gcc=$(generate_task "build-gcc" "/usr/bin/gcc" "$(generate_args)" "$task_wo
 #task_terminal=$(generate_terminal_task "$task_work_dir")
 
 if grep -q "$clevel_work_dir" "$ENVFILE"; then   # we find current dir in ENVFILE then do not close everything.
-    printf "NOT going to generate the close editor windows b/c \n$clevel_work_dir $(cat $ENVFILE)\n\n" | tee -a /challenge/startup.log
+    printf "NOT going to generate the close editor windows b/c \n$clevel_work_dir $(cat $ENVFILE)\n\n" | tee -a $STARTUP_LOG
     #tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
     tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
 else
-    printf "generating close \n$clevel_work_dir" | tee -a /challenge/startup.log
-    #cat "$ENVFILE" | tee -a /challenge/startup.log
-    printf "\n\n" | tee -a /challenge/startup.log
+    printf "generating close \n$clevel_work_dir" | tee -a $STARTUP_LOG
+    #cat "$ENVFILE" | tee -a $STARTUP_LOG
+    printf "\n\n" | tee -a $STARTUP_LOG
     task_close=$(generate_close_command )
     #tasks=$(printf '[ %s, %s, %s, %s, %s ]' "$task_close" "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
     #tasks=$(printf '[ %s, %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
     tasks=$(printf '[ %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )   
-    echo "------------------------------------------------------------------------" | tee -a /challenge/startup.log 
-    echo "$tasks" | tee -a /challenge/startup.log 
-    echo "------------------------------------------------------------------------" | tee -a /challenge/startup.log 
+    echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
+    echo "$tasks" | tee -a $STARTUP_LOG 
+    echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
 fi 
 
 # To pretty-print for debugging
@@ -639,7 +657,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
     fi
 
     #if [ ! -f "$wsname"  ] || ! grep -q "terminal.integrated" $wsname; then 
-        echo "[+] Creating workspace file $wsname" | tee -a /challenge/startup.log 
+        echo "[+] Creating workspace file $wsname" | tee -a $STARTUP_LOG 
         
         if [[ -d /home/other ]]; then 
             dirs_to_open=$(printf '{ "path": "%s" }, { "path": "%s" } ' "$task_work_dir" "$coders_work_dir" )
@@ -669,16 +687,16 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
         }\n' "$dirs_to_open" "$launch" "$tasks" > $tmpfile
         # { "name": "Open Terminal on Start", "preLaunchTask": "Open Default Terminal" }
         cat $tmpfile > /challenge/workspace.debug
-        echo "workspace json file written to /challenge/workspace.debug" | tee -a /challenge/startup.log
+        echo "workspace json file written to /challenge/workspace.debug" | tee -a $STARTUP_LOG
         
-        jq '.' $tmpfile > "$wsname" 2| tee -a /challenge/startup.log
+        jq '.' $tmpfile > "$wsname" 2| tee -a $STARTUP_LOG
         
         chown hacker:hacker "$wsname"
 
         if [[ $? == 0 ]]; then 
             rm -f "$tmpfile"
         else 
-            echo "error occurred with jq" | tee -a /challenge/startup.log 
+            echo "error occurred with jq" | tee -a $STARTUP_LOG 
         fi 
 
     #else 
@@ -698,7 +716,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
     
     coder_file="$cs_user_data_dir/coder.json"
 
-    echo "[+] Checking ${coder_file} for ${wsname}" | tee -a /challenge/startup.log
+    echo "[+] Checking ${coder_file} for ${wsname}" | tee -a $STARTUP_LOG
 
     
     if [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; then 
@@ -711,35 +729,35 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
 
         chown hacker:hacker ${coder_file}
         chmod +r ${coder_file}
-        echo "[+] Updated Coder file " | tee -a /challenge/startup.log
-        cat $coder_file | tee -a /challenge/startup.log 
+        echo "[+] Updated Coder file " | tee -a $STARTUP_LOG
+        cat $coder_file | tee -a $STARTUP_LOG 
     else
-        echo "[+] Skipping coder file update because found $wsname in ${coder_file} $clevel_work_dir" | tee -a /challenge/startup.log
+        echo "[+] Skipping coder file update because found $wsname in ${coder_file} $clevel_work_dir" | tee -a $STARTUP_LOG
     fi 
 
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
-    echo "Completed autoload setup in .init in $execution_time seconds" >> "/challenge/startup.log"
+    echo "Completed autoload setup in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 else
     echo "No autoload performed"    
 fi 
-echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a /challenge/startup.log 
+echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
 # for MUD levels update items.json and rooms.json on each instance start
 if [ -f /challenge/system_tests/items.json ]; then 
-    echo "Updating items.json and rooms.json into $clevel_work_dir" >> "/challenge/startup.log"
+    echo "Updating items.json and rooms.json into $clevel_work_dir" >> "$STARTUP_LOG"
     cp /challenge/system_tests/{items.json,rooms.json} /challenge/
     cp /challenge/system_tests/{items.json,rooms.json} $clevel_work_dir    
 fi 
 
 if [[ $clevel_work_dir == *"25-proj-mud"* ]]; then
-    echo "@@@@@@@@@@@@@@@@@@@ Inside if" | tee -a /challenge/startup.log 
+    echo "@@@@@@@@@@@@@@@@@@@ Inside if" | tee -a $STARTUP_LOG 
     if [ -f $clevel_work_dir/main.c ] && ! grep -q "//pc eof" $clevel_work_dir/main.c ; then 
-        echo "Inside if2 for main.c" | tee -a /challenge/startup.log 
+        echo "Inside if2 for main.c" | tee -a $STARTUP_LOG 
         printf "\n//pc eof 285 main\n" >> $clevel_work_dir/main.c
     fi 
     if [ -f $clevel_work_dir/data.c ] && ! grep -q "//pc eof" $clevel_work_dir/data.c; then 
-        echo "Inside if3 for data.c" | tee -a /challenge/startup.log
+        echo "Inside if3 for data.c" | tee -a $STARTUP_LOG
         printf "\n//pc eof 285 data\n" >> $clevel_work_dir/data.c
     fi 
 fi 
@@ -751,7 +769,7 @@ new_extdir="/run/challenge/share/code/extensions"
 if find "$new_extdir" -mindepth 1 -maxdepth 1 -type d -name "ms-vscode.cpptools-*" | read; then
     chmod +x $new_extdir/ms-vscode.cpptools-*/{bin/cpptools*,bin/libc.so,debugAdapters/bin/OpenDebugAD7,LLVM/bin/clang-*}  
 else
-  echo "ms vscode cpptools directory not found in $new_exitdir." | tee -a /challenge/startup.log
+  echo "ms vscode cpptools directory not found in $new_exitdir." | tee -a $STARTUP_LOG
 fi
 
 #######################################################################
@@ -762,17 +780,17 @@ if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then
     # Check if hw_id > 8 or lab_id > 10
     if [[ "$clevel_work_dir" == *"scheme"* ]]; then
         if raco pkg show racket-langserver | grep -q 'racket-langserver'; then
-            echo "Starting racket-langserver in the background..." | tee -a /challenge/startup.log
+            echo "Starting racket-langserver in the background..." | tee -a $STARTUP_LOG
             #nohup racket -l racket-langserver > racket-langserver.log 2>&1 &
             # racket-langserver requires x11 but we want to run in background, so using xfvb-run
             nohup xvfb-run racket --lib racket-langserver > /tmp/racket-langserver.log 2>&1 &
-            echo "racket-langserver started with PID $!" | tee -a /challenge/startup.log
+            echo "racket-langserver started with PID $!" | tee -a $STARTUP_LOG
         else
-            echo "racket-langserver is not installed. " | tee -a /challenge/startup.log
+            echo "racket-langserver is not installed. " | tee -a $STARTUP_LOG
             
         fi
     else
-        echo "Not starting racket server b/c $hw_id <= 8 or $lab_id <= 10 " | tee -a /challenge/startup.log
+        echo "Not starting racket server b/c $hw_id <= 8 or $lab_id <= 10 " | tee -a $STARTUP_LOG
     fi 
 fi 
 
@@ -812,7 +830,7 @@ echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240
 echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> /home/hacker/cse240/.vscode/cp.dat
 ############################################################################################
 
-echo "Wrapup stuff $(date) in pid=$$" | tee -a /challenge/startup.log 
+echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 
 
@@ -847,14 +865,14 @@ fi
 
 # this script runs as root, make sure any new files or directories are owned by hacker
 
-# ls -la /challenge/system_tests/*.json | tee -a /challenge/startup.log
+# ls -la /challenge/system_tests/*.json | tee -a $STARTUP_LOG
 ##########################################################
 # DISABLED for DEBUGGING 
 ##########################################################
-echo "Starting final setup and cleanup $(date) in pid=$$" | tee -a /challenge/startup.log 
+echo "Starting final setup and cleanup $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 if [ "$admin_access" = true ]; then
-    echo "Admin access granted" | tee -a /challenge/startup.log
+    echo "Admin access granted" | tee -a $STARTUP_LOG
     printf 'alias switch="env HOME=/home/me bash"\n' >> /etc/bash.bashrc    
     find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 777 {} \;
     find /challenge/system_tests -type f -name 'stest*hidden.json' -exec chmod 666 {} \;
@@ -864,7 +882,7 @@ if [ "$admin_access" = true ]; then
     
     # Add any additional admin-specific commands here
 else
-   # rm -f /challenge/startup.log 
+   # rm -f $STARTUP_LOG 
     # set chmod on important files that will be deleted by .bginit
     if [ -f "$base_dir/system_tests/main.bin" ]; then
         find "$base_dir" -type f \( -name model -o -name .levelinit -o -name .init -o -name .bginit -o -path "$base_dir/system_tests/main.bin" \) -exec chmod 700 {} +
@@ -875,6 +893,6 @@ else
     chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
 fi 
 
-echo "Ending .init at $(date) in pid=$$" | tee -a /challenge/startup.log 
+echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 
