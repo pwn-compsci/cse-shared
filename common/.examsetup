@@ -85,17 +85,6 @@ else
     chosen_problem="${dirs[RANDOM % ${#dirs[@]}]}"
     echo "[e] Randomly chosen problem: $chosen_problem" >> $STARTUP_LOG
 
-    # for debugging
-    # override random if examLevel is set
-    if [ -f /home/hacker/cse240/.examproblems.json ]; then
-        examLevel=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('examLevel', ''))" 2>/dev/null)        
-        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' /home/hacker/cse240/.examproblems.json)
-        if [ -n "$exam_problem" ]; then
-            chosen_problem="$exam_problem"
-            echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" | tee -a $STARTUP_LOG
-        fi
-    fi
-    
     # Add problem override, when last start of exam was within 15 minutes 
     if [ -f /home/hacker/cse240/.vscode/starts.log ] && [ ${#dirs[@]} -gt 1 ]; then
         # Get the module and level from the current environment
@@ -142,6 +131,17 @@ else
             fi
         fi
     fi 
+
+    # for debugging
+    # override random if examLevel is set
+    if [ -f /home/hacker/cse240/.examproblems.json ]; then
+        examLevel=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('examLevel', ''))" 2>/dev/null)        
+        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' /home/hacker/cse240/.examproblems.json)
+        if [ -n "$exam_problem" ]; then
+            chosen_problem="$exam_problem"
+            echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" | tee -a $STARTUP_LOG
+        fi
+    fi
 
     echo "[e] Setting up problem $chosen_problem in $clevel_work_dir" | tee -a $STARTUP_LOG
     echo "chosen_problem=$chosen_problem" >> /challenge/.config/chosen_problem.dat
