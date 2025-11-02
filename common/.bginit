@@ -52,7 +52,7 @@ if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then
             make  >> $STARTUP_LOG 2>&1      
         fi 
         # Remove any SECRET password values from the log
-        sed -i 's/-DSECRET="[^"]*"/-DSECRET="***"/g' "$STARTUP_LOG"
+        sed -i 's/-DSECRET="[^"\\]*\(\\.[^"\\]*\)*"/-DSECRET="***"/g' "$STARTUP_LOG"
     else 
         COMPILER=gcc
         if [ -f /challenge/model/main.cpp ]; then 
