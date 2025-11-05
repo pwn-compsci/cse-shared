@@ -521,8 +521,8 @@ def check_and_kill_duplicate_vscode():
                 logger.warning(f"Killing extension host with highest PID: {to_kill['pid']}")
                 
                 try:
-                    os.kill(to_kill['pid'], signal.SIGTERM)
-                    logger.info(f"Successfully sent SIGTERM to PID {to_kill['pid']}")
+                    # os.kill(to_kill['pid'], signal.SIGTERM)
+                    # logger.info(f"Successfully sent SIGTERM to PID {to_kill['pid']}")
                     killed_any = True
                     
                     # Broadcast message to student
