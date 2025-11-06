@@ -175,8 +175,8 @@ diff_start_time=$(date +%s)
 
 chown root:root /flag
 
-
-if [ ! -d /home/me ] && ! grep -q "digital god" /.admin_access; then
+# if [ ! -d /home/me ] && ! grep -q "digital god" /.admin_access; then
+if [ ! -d /home/me ] ; then
     level=$(jq -r '.level' /challenge/.config/level.json)    
     module=$(jq -r '.module' /challenge/.config/level.json)    
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
