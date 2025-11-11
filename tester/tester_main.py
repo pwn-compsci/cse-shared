@@ -985,25 +985,27 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
             else:
                 if e.stdout is not None and len(e.stdout) > 0:
                     stdout_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stdout.txt")
+                    stdout_text = e.stdout if isinstance(e.stdout, str) else e.stdout.decode('utf-8', errors='replace')
                     with open(stdout_file, 'w') as f:
-                        f.write(e.stdout)
+                        f.write(stdout_text)
                     print("\tStandard Output:")
-                    if len(e.stdout) > 5000:
-                        print(e.stdout[:5000])
+                    if len(stdout_text) > 5000:
+                        print(stdout_text[:5000])
                         print(f"{DARK_GREY}... truncated, see full output in {stdout_file}{RESET_COLOR}")
                     else:
-                        print(e.stdout)
+                        print(stdout_text)
                 
                 if e.stderr is not None and len(e.stderr) > 0:
                     stderr_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stderr.txt")
+                    stderr_text = e.stderr if isinstance(e.stderr, str) else e.stderr.decode('utf-8', errors='replace')
                     with open(stderr_file, 'w') as f:
-                        f.write(e.stderr)
+                        f.write(stderr_text)
                     print("\tStandard Error:")
-                    if len(e.stderr) > 5000:
-                        print(e.stderr[:5000])
+                    if len(stderr_text) > 5000:
+                        print(stderr_text[:5000])
                         print(f"{DARK_GREY}... truncated, see full output in {stderr_file}{RESET_COLOR}")
                     else:
-                        print(e.stderr)
+                        print(stderr_text)
         sys.exit(104)
     except subprocess.CalledProcessError as cpe:
         print(f"\n{test}: {YELLOW} ERROR {os.path.basename(target_path)} {RESET_COLOR}")
