@@ -956,18 +956,54 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
             print(f"\tCommand          :{BLUE} {' '.join([target_path])} {' '.join(formmated_args)}{RESET_COLOR}")
             print(f"\tInput Data:      :{repr(input_data)}")
 
+            # Create output directory
+            tmp_test_outputdir = os.path.join("/tmp", "test_output")
+            os.makedirs(tmp_test_outputdir, mode=0o755, exist_ok=True)
+
             if result is not None:
-                print("\tStandard Output:")
-                print(result.stdout[:5000])
-                print("\tStandard Error:")
-                print(result.stderr[:5000])
-            else :
-                if ( e.stdout is not None and len(e.stdout) > 0):
+                if len(result.stdout) > 0:
+                    stdout_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stdout.txt")
+                    with open(stdout_file, 'w') as f:
+                        f.write(result.stdout)
                     print("\tStandard Output:")
-                    print(e.stdout[:5000])
-                if (e.stderr is not None and len(e.stderr) > 0):
+                    if len(result.stdout) > 5000:
+                        print(result.stdout[:5000])
+                        print(f"{DARK_GREY}... truncated, see full output in {stdout_file}{RESET_COLOR}")
+                    else:
+                        print(result.stdout)
+                
+                if len(result.stderr) > 0:
+                    stderr_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stderr.txt")
+                    with open(stderr_file, 'w') as f:
+                        f.write(result.stderr)
                     print("\tStandard Error:")
-                    print(e.stderr[:5000])
+                    if len(result.stderr) > 5000:
+                        print(result.stderr[:5000])
+                        print(f"{DARK_GREY}... truncated, see full output in {stderr_file}{RESET_COLOR}")
+                    else:
+                        print(result.stderr)
+            else:
+                if e.stdout is not None and len(e.stdout) > 0:
+                    stdout_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stdout.txt")
+                    with open(stdout_file, 'w') as f:
+                        f.write(e.stdout)
+                    print("\tStandard Output:")
+                    if len(e.stdout) > 5000:
+                        print(e.stdout[:5000])
+                        print(f"{DARK_GREY}... truncated, see full output in {stdout_file}{RESET_COLOR}")
+                    else:
+                        print(e.stdout)
+                
+                if e.stderr is not None and len(e.stderr) > 0:
+                    stderr_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stderr.txt")
+                    with open(stderr_file, 'w') as f:
+                        f.write(e.stderr)
+                    print("\tStandard Error:")
+                    if len(e.stderr) > 5000:
+                        print(e.stderr[:5000])
+                        print(f"{DARK_GREY}... truncated, see full output in {stderr_file}{RESET_COLOR}")
+                    else:
+                        print(e.stderr)
         sys.exit(104)
     except subprocess.CalledProcessError as cpe:
         print(f"\n{test}: {YELLOW} ERROR {os.path.basename(target_path)} {RESET_COLOR}")
@@ -1005,12 +1041,32 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
         else:
             print(f"\tError: {cpe}")
 
-        if (len(cpe.stdout) > 0):
+        # Create output directory
+        tmp_test_outputdir = os.path.join("/tmp", "test_output")
+        os.makedirs(tmp_test_outputdir, mode=0o755, exist_ok=True)
+
+        if len(cpe.stdout) > 0:
+            stdout_file = os.path.join(tmp_test_outputdir, f"{test}_error_stdout.txt")
+            with open(stdout_file, 'w') as f:
+                f.write(cpe.stdout)
             print("\tStandard Output:")
-            print(cpe.stdout)
-        if (len(cpe.stderr) > 0):
+            if len(cpe.stdout) > 5000:
+                print(cpe.stdout[:5000])
+                print(f"{DARK_GREY}... truncated, see full output in {stdout_file}{RESET_COLOR}")
+            else:
+                print(cpe.stdout)
+        
+        if len(cpe.stderr) > 0:
+            stderr_file = os.path.join(tmp_test_outputdir, f"{test}_error_stderr.txt")
+            with open(stderr_file, 'w') as f:
+                f.write(cpe.stderr)
             print("\tStandard Error:")
-            print(cpe.stderr)
+            if len(cpe.stderr) > 5000:
+                print(cpe.stderr[:5000])
+                print(f"{DARK_GREY}... truncated, see full output in {stderr_file}{RESET_COLOR}")
+            else:
+                print(cpe.stderr)
+        
         if (model_program):
             print("\nTry again if it occurrs again, please contact support via Discord")
 

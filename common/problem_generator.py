@@ -100,7 +100,8 @@ for var_name in global_vars_added:
     else:
         context[var_name[:-1]] = loaded_data[var_name]
 
-context['menu_confirmation_replaced'] = escape_for_regex(context['menu_confirmation']).replace('__', "[0-9]+")
+no_period_menu_target = context['menu_target'].replace('.', '')
+context['menu_confirmation_replaced'] = escape_for_regex(no_period_menu_target).replace('__', "[0-9]+")
 
 # Add order_confirmation_replaced if order_confirmation exists
 if 'order_confirmation' in context:
