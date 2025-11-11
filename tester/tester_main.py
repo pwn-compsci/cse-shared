@@ -970,7 +970,7 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
                         print(result.stdout[:5000])
                         print(f"{DARK_GREY}... truncated, see full output in {stdout_file}{RESET_COLOR}")
                     else:
-                        print(result.stdout)
+                        print(result.stdout)  
                 
                 if len(result.stderr) > 0:
                     stderr_file = os.path.join(tmp_test_outputdir, f"{test}_timeout_stderr.txt")
