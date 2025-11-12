@@ -257,6 +257,23 @@ else
 fi
 
 history_dir="$cs_user_data_dir/User/History"
+
+# Rename history directories that don't start with old_
+if [ -d "$history_dir" ]; then
+    echo "[e] Checking history directory: $history_dir" | tee -a $STARTUP_LOG
+    for dir in "$history_dir"/*; do
+        if [ -d "$dir" ]; then
+            dirname=$(basename "$dir")
+            # Check if directory name doesn't start with old_
+            if [[ ! "$dirname" =~ ^old_ ]]; then
+                new_name="old_${dirname}"
+                echo "[e] Renaming $dirname to $new_name" | tee -a $STARTUP_LOG
+                mv "$dir" "$history_dir/$new_name"
+            fi
+        fi
+    done
+fi
+
 # Setup FIFOs if missing
 echo "[e] Starting vscode with $clevel_work_dir, $coder_workspace_file, and $cs_user_data_dir  " | tee -a $STARTUP_LOG
 
