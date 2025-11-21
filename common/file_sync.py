@@ -350,7 +350,7 @@ def main():
         log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
         while True:
             try:
-                log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
+                log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}, CWD: {os.getcwd()}")
                 fileList = []
                 for directories in workdir:
                     lstOfFiles = get_all_files(directories)
@@ -405,11 +405,11 @@ def main():
                         for file in syncTheseFiles:
                             baseFileName = os.path.basename(file)
                             if module == "33-proj-pokemud":
-                                zip.write(os.path.join("pokemud", baseFileName))
+                                zip.write(file, arcname=os.path.join("pokemud", baseFileName))
                             elif module == '34-ec-muddydriver':
-                                zip.write(os.path.join("muddydriver", baseFileName))
+                                zip.write(file, arcname=os.path.join("muddydriver", baseFileName))
                             else:
-                                zip.write(baseFileName)
+                                zip.write(file, arcname=baseFileName)
                     
                     zip_contents = ""
                     with open(zipName, 'rb') as zip:
