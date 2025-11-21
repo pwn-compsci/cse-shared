@@ -342,9 +342,9 @@ def main():
         # Adds the current directory to a list so it can look at a subdirectories (for pokemud or bfs)
         workdir = [os.path.join(hwdir, level)] 
 
-        if module == "33-pokemud":
+        if module == "33-proj-pokemud":
             workdir.append(os.path.join(currentDirectory, "pokemud"))
-        if module == '33-muddydriver':
+        if module == '34-ec-muddydriver':
             workdir.append(os.path.join(currentDirectory, "muddydriver"))
         
         log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
