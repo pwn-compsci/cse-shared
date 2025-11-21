@@ -350,6 +350,7 @@ def main():
         log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
         while True:
             try:
+                log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
                 fileList = []
                 for directories in workdir:
                     lstOfFiles = get_all_files(directories)
