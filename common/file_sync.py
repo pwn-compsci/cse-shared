@@ -40,7 +40,7 @@ def query_for_sha256(module, level, filename):
     Ensures that there is only one row for the passed in module, level, and filename
     
     Args:
-        module (str): Module Identifier, will be inserted.
+        module (str): Module Identifier, will be inserted. 
         level (str): Level Identifier, will be inserted.
         filename (str): The filename that will be inserted
 
