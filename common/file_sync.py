@@ -404,9 +404,10 @@ def main():
                     with ZipFile(zipName, 'w') as zip:
                         for file in syncTheseFiles:
                             baseFileName = os.path.basename(file)
-                            if module == "33-proj-pokemud" and 'pokemud' in file:
+                            directParentDir = os.path.basename(os.path.dirname(file))
+                            if module == "33-proj-pokemud" and directParentDir == 'pokemud':
                                 zip.write(file, arcname=os.path.join("pokemud", baseFileName))
-                            elif module == '34-ec-muddydriver' and 'muddydriver' in file:
+                            elif module == '34-ec-muddydriver' and directParentDir == 'muddydriver':
                                 zip.write(file, arcname=os.path.join("muddydriver", baseFileName))
                             else:
                                 zip.write(file, arcname=baseFileName)
