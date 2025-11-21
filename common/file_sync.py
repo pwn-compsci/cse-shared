@@ -403,7 +403,13 @@ def main():
                     zipName = f'{pwn_college_id}_{module}_{level}.zip'
                     with ZipFile(zipName, 'w') as zip:
                         for file in syncTheseFiles:
-                            zip.write(os.path.basename(file))
+                            baseFileName = os.path.basename(file)
+                            if module == "33-proj-pokemud":
+                                zip.write(os.path.join("pokemud", baseFileName))
+                            elif module == '34-ec-muddydriver':
+                                zip.write(os.path.join("muddydriver", baseFileName))
+                            else:
+                                zip.write(baseFileName)
                     
                     zip_contents = ""
                     with open(zipName, 'rb') as zip:
