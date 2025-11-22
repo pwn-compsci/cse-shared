@@ -118,15 +118,21 @@ if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
 
 
 def chown_recursive(path, uid, gid):
+    if os.path.islink(path):
+        return
     for root, dirs, files in os.walk(path):
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
+            if os.path.islink(dir_path):
+                continue
             try:
                 shutil.chown(dir_path, uid, gid)
             except FileNotFoundError:
                 pass
         for file_name in files:
             file_path = os.path.join(root, file_name)
+            if os.path.islink(file_path):
+                continue
             try:
                 shutil.chown(file_path, uid, gid)
             except FileNotFoundError:
