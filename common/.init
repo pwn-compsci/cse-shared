@@ -8,6 +8,30 @@ if [ -f /home/hacker/core ]; then
     fi
 fi
 
+### cleanup vscode-cpptools cache if it grows too large
+cache_dir="/home/hacker/.cache/vscode-cpptools"
+cache_size=$(du -sm "$cache_dir" 2>/dev/null | cut -f1)
+
+# Only proceed if cache_size is a valid number
+if [[ "$cache_size" =~ ^[0-9]+$ ]]; then
+    # If the cpptools cache directory size is greater than 200 MB, remove its contents
+    if [ "$cache_size" -gt 200 ]; then
+        echo "[i] vscode-cpptools cache size=${cache_size}MB exceeds 200MB — removing cache contents from $cache_dir" >> /challenge/startup.log
+        # Remove directories (cache subdirs) and files inside the cache directory but keep the parent dir
+        if [ -d "$cache_dir" ]; then
+            find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>>/challenge/startup.log || true
+            find "$cache_dir" -mindepth 1 -maxdepth 1 -type f -exec rm -f {} + 2>>/challenge/startup.log || true
+            echo "[i] vscode-cpptools cache cleaned" >> /challenge/startup.log
+        else
+            echo "[i] vscode-cpptools cache dir not found: $cache_dir" >> /challenge/startup.log
+        fi
+    else
+        echo "[i] vscode-cpptools cache (${cache_size}MB) is within the size limit" >> /challenge/startup.log
+    fi
+else
+    echo "[i] vscode-cpptools cache dir does not exist or is inaccessible: $cache_dir" >> /challenge/startup.log
+fi
+
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
 mkdir -p /home/hacker/cse240/.vscode/logs
