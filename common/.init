@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
 mkdir -p /home/hacker/cse240/.vscode/logs
@@ -16,6 +17,14 @@ chmod 644 /tmp/.startup_log_path
 # Remove old symlink if it exists, then create new one
 rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
+
+start_time=$(date +%s)
+if [[ ! -f $STARTUP_LOG ]]; then 
+    echo "first time" | tee -a $STARTUP_LOG
+else 
+    echo "SECOND time" | tee -a $STARTUP_LOG
+    exit 0    
+fi 
 
 # Delete large core file if it exists at /home/hacker/core
 if [ -f /home/hacker/core ]; then
@@ -144,13 +153,6 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
-start_time=$(date +%s)
-if [[ ! -f $STARTUP_LOG ]]; then 
-    echo "first time" | tee -a $STARTUP_LOG
-else 
-    echo "SECOND time" | tee -a $STARTUP_LOG
-    exit 0    
-fi 
 
 echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
