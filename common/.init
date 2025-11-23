@@ -8,6 +8,24 @@ if [ -f /home/hacker/core ]; then
     fi
 fi
 
+
+# Initialize STARTUP_LOG at the very top so all functions and code can use it
+# Create logs directory if it doesn't exist
+mkdir -p /home/hacker/cse240/.vscode/logs
+chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
+
+# Generate log filename based on current date/time
+STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+
+# Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
+echo "$STARTUP_LOG" > /tmp/.startup_log_path
+chmod 644 /tmp/.startup_log_path
+
+# Create symlink at /challenge/startup.log pointing to the current log file
+# Remove old symlink if it exists, then create new one
+rm -f /challenge/startup.log 2>/dev/null || true
+ln -s "$STARTUP_LOG" /challenge/startup.log
+
 ### cleanup vscode-cpptools cache if it grows too large
 cache_dir="/home/hacker/.cache/vscode-cpptools"
 cache_size=$(du -sm "$cache_dir" 2>/dev/null | cut -f1)
@@ -32,22 +50,6 @@ else
     echo "[i] vscode-cpptools cache dir does not exist or is inaccessible: $cache_dir" >> /challenge/startup.log
 fi
 
-# Initialize STARTUP_LOG at the very top so all functions and code can use it
-# Create logs directory if it doesn't exist
-mkdir -p /home/hacker/cse240/.vscode/logs
-chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
-
-# Generate log filename based on current date/time
-STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
-
-# Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
-echo "$STARTUP_LOG" > /tmp/.startup_log_path
-chmod 644 /tmp/.startup_log_path
-
-# Create symlink at /challenge/startup.log pointing to the current log file
-# Remove old symlink if it exists, then create new one
-rm -f /challenge/startup.log 2>/dev/null || true
-ln -s "$STARTUP_LOG" /challenge/startup.log
 
 create_model_bad() { 
     # File to check for macro definitions
