@@ -1131,7 +1131,7 @@ def run_reset_commands(reset_commands):
 
 
 # Get the list of test files and sort them numerically
-def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_failure=False, case_sensitive=False, hidden_test=False):
+def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_failure=False, case_sensitive=False, hidden_test=False, skip_template_diffs=False):
 
     test = os.path.splitext(os.path.basename(test_json_file))[0]
     working_dir = source_dir
@@ -1142,6 +1142,17 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         print(f"An error was encountered reading the test case {test_json_file}")
         print(jde)
         sys.exit(27)
+
+    # Check if this is a template diff test that should be skipped
+    if skip_template_diffs:
+        target_filename = test_json.get("target", "")
+        args = test_json.get("args", [])
+        if target_filename == "diff" and any("/challenge/template" in arg for arg in args):
+            test_name = test_json.get('name', '')
+            if len(test_name) > 1:
+                test_name = f" - {test_name}"
+            print(f"{YELLOW}SKIP{RESET_COLOR} {test_name} (template diff test skipped with -u option)")
+            return "skipped"
 
     reset_commands = test_json.get("resetCommands",[])
 
@@ -1387,7 +1398,7 @@ def clean_up(target_dir):
         delete_file(main_gcno_fp)
 
 
-def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sensitive=False):
+def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sensitive=False, skip_template_diffs=False):
     # test_cases = [os.path.join(test_dir, file) for file in os.listdir(test_dir) if file.endswith(".json")]
     test_cases = sorted(
         [os.path.join(test_dir, file) for file in os.listdir(test_dir) if file.startswith("stest") and file.endswith(".json")],
@@ -1396,19 +1407,25 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
 
     passes = 0
     failures = 0
+    skipped = 0
     test_count = len(test_cases)
     for test_json_file in test_cases:
         hidden_test = False
         if "hidden" in test_json_file:
             hidden_test = True
-        if run_test(source_dir, test_dir, test_json_file, case_sensitive=case_sensitive, hidden_test=hidden_test):
+        result = run_test(source_dir, test_dir, test_json_file, case_sensitive=case_sensitive, hidden_test=hidden_test, skip_template_diffs=skip_template_diffs)
+        if result == "skipped":
+            skipped += 1
+        elif result:
             passes += 1
         else:
             failures += 1
             if os.getenv("TEST_ALL", "") == "":
                 print("")
                 if passes > 0:
-                    print(f"The program passed {passes} tests of {test_count}")
+                    print(f"The program passed {passes} tests of {test_count - skipped}")
+                if skipped > 0:
+                    print(f"Skipped {skipped} template diff tests")
                 print(f"{RED}Failed System Test {os.path.basename(test_json_file)} {RESET_COLOR} ")
 
                 return failures, passes, test_json_file
@@ -1778,7 +1795,8 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
     last_test_json_fp = ""
     if compile_success and os.path.exists(SYSTEM_TESTS_DIR):
         print("---------------[ System Tests ]---------------")
-        resfail, respass, last_test_json_fp = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive)
+        skip_template_diffs = args.use_current_dir
+        resfail, respass, last_test_json_fp = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive, skip_template_diffs=skip_template_diffs)
         total_failures += resfail
         total_passes += respass
 
@@ -1882,18 +1900,19 @@ def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_se
         model_bad = os.path.join(CHALLENGE_DIR, f"modelBad{module_num}.{level_num_str}.{test_num}.bin")
 
     # the expectation is that the test will fail when running with model_bad, so we invert using expect_failure
-    if run_test(source_dir, os.path.dirname(ut), ut, model_bad, expect_failure=True, case_sensitive=case_sensitive):
+    # User tests never skip template diffs
+    if run_test(source_dir, os.path.dirname(ut), ut, model_bad, expect_failure=True, case_sensitive=case_sensitive, skip_template_diffs=False):
         passes += 1
     else:
         failures += 1
 
-    if run_test(source_dir, os.path.dirname(ut), ut, model_good, case_sensitive=case_sensitive):
+    if run_test(source_dir, os.path.dirname(ut), ut, model_good, case_sensitive=case_sensitive, skip_template_diffs=False):
         passes += 1
     else:
         failures += 1
     if compile_success and compiled_users_code:
         users_main_bin = os.path.join(source_dir, "main.bin")
-        if run_test(source_dir, os.path.dirname(ut), ut, users_main_bin, case_sensitive=case_sensitive):
+        if run_test(source_dir, os.path.dirname(ut), ut, users_main_bin, case_sensitive=case_sensitive, skip_template_diffs=False):
             passes += 1
         else:
             failures += 1

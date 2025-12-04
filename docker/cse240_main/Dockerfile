@@ -163,13 +163,11 @@ RUN apt-get update && xargs apt-get install --no-install-recommends -yqq <<EOF \
         openjdk-17-jdk        
 EOF
 
-################# Install Land Rune ############################################
+################# Install Land Run ############################################
 # Copy compiled landrun binary only
 COPY --from=landrunbuilder /go/bin/landrun /usr/local/bin/landrun
 
 ################################################################################
-
-RUN raco pkg install --auto --scope installation racket-langserver
 
 RUN ln -sf /usr/bin/ipython3 /usr/bin/ipython
 
@@ -218,7 +216,27 @@ RUN mkdir -p /root/.local/share/tldr \
  && chown -R root:root /usr/share/tldr
 ENV TLDR_CACHE_DIR=/usr/share/tldr
 
-RUN mkdir -p /cse240_v8 && touch "/cse240_v8/$(date +%s).dat"
+######################################################################
+# Install racket-langserver
+
+RUN raco pkg install --auto --scope installation racket-langserver
+
+# ensure racket-langserver is visible under collects for `racket --lib`
+RUN mkdir -p /usr/share/racket/collects && \
+    cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
+    chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
+
+RUN mkdir -p /cse240_v9 && touch "/cse240_v9/$(date +%Y-%m-%d_%H-%M-%S).dat"
+
+# -------- Final stage: inherit everything from builder and fix collects perms --------
+FROM builder AS final
+
+# Ensure the racket-langserver collects are readable by any runtime user
+# (safe no-op if the directory already exists)
+RUN if [ -d /usr/share/racket/collects/racket-langserver ]; then chmod -R a+rX /usr/share/racket/collects/racket-langserver || true; fi
+
+# keep current user behavior: do not change USER, CMD or ENTRYPOINT
+# this stage intentionally does not add or remove other files
 
 
 
