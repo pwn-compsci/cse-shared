@@ -898,14 +898,14 @@ function performSessionCheck() {
  */
 async function clearTabsAndShowMessage() {
     try {
-        log('[Session Check] Clearing tabs and shutting down...');
+        log('[Session Check] Session ended - closing all tabs and shutting down...');
         
-        // Close all tabs
+        // Close all tabs without saving
         const allTabGroups = vscode.window.tabGroups.all;
         for (const group of allTabGroups) {
             for (const tab of group.tabs) {
                 try {
-                    await vscode.window.tabGroups.close(tab, true); // true = don't save
+                    await vscode.window.tabGroups.close(tab, true);
                 } catch (error) {
                     log(`[Session Check] Error closing tab: ${error}`);
                 }
@@ -913,10 +913,13 @@ async function clearTabsAndShowMessage() {
         }
         
         // Create /tmp/done directory and message.md file
-        const message = "You have left the exam and the code is no longer available using the exam session.\n\n" +
+        const message = "# Exam Session Ended\n\n" +
+                        "You have left the exam and the code is no longer available using the exam session.\n\n" +
                         "To review your exam code, please open Chrome and start a new instance of the Sandbox.\n\n" +
-                        "To view files, for exam 3 (aka exam30) problem 04, open the Sandbox module, in the terminal type:\n\n" + 
-                        "    code ~/cse240/exam30/04/\n\n";
+                        "**Example:** To view files for exam 3 (aka exam30) problem 04:\n\n" + 
+                        "1. Open the Sandbox module\n" +
+                        "2. In the terminal, type: `code ~/cse240/exam30/04/`\n\n" +
+                        "This window will close automatically.\n";
         
         const doneDir = '/tmp/done';
         const messageFile = '/tmp/done/message.md';
@@ -930,16 +933,46 @@ async function clearTabsAndShowMessage() {
         await fs.writeFile(messageFile, message);
         log('[Session Check] Created /tmp/done/message.md');
         
-        // Open the message.md file
+        // Open the message file
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFile));
         await vscode.window.showTextDocument(doc, {
             preview: false,
             preserveFocus: false
         });
-        log('[Session Check] Opened message.md');
         
         // Show notification
-        vscode.window.showWarningMessage('All files closed because you left the exam.');
+        vscode.window.showWarningMessage('Exam session ended. All files closed. This window will close shortly.');
+        log('[Session Check] Displayed message, sending killme request...');
+        
+        // Send killme request to pwn.college
+        const killmeOptions = {
+            hostname: 'pwn.college',
+            port: 443,
+            path: '/workspace/code/exam_api/killme',
+            method: 'GET',
+            timeout: 5000
+        };
+        
+        const killmeReq = https.request(killmeOptions, (res) => {
+            log(`[Session Check] Killme request status: ${res.statusCode}`);
+        });
+        
+        killmeReq.on('error', (error) => {
+            log(`[Session Check] Killme request error: ${error}`);
+        });
+        
+        killmeReq.on('timeout', () => {
+            log('[Session Check] Killme request timed out');
+            killmeReq.destroy();
+        });
+        
+        killmeReq.end();
+        
+        // Close window after 1 second
+        setTimeout(() => {
+            log('[Session Check] Closing window now');
+            vscode.commands.executeCommand('workbench.action.closeWindow');
+        }, 1000);
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);
