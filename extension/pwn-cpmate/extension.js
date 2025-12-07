@@ -919,7 +919,7 @@ async function clearTabsAndShowMessage() {
                         "**Example:** To view files for exam 3 (aka exam30) problem 04:\n\n" + 
                         "1. Open the Sandbox module\n" +
                         "2. In the terminal, type: `code ~/cse240/exam30/04/`\n\n" +
-                        "This window will close automatically.\n";
+                        "This window will close automatically.\n"; 
         
         const doneDir = '/tmp/done';
         const messageFile = '/tmp/done/message.md';
