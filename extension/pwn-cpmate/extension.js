@@ -944,35 +944,64 @@ async function clearTabsAndShowMessage() {
         vscode.window.showWarningMessage('Exam session ended. All files closed. This window will close shortly.');
         log('[Session Check] Displayed message, sending killme request...');
         
-        // Send killme request to pwn.college
-        const killmeOptions = {
-            hostname: 'pwn.college',
-            port: 443,
-            path: '/workspace/code/exam_api/killme',
-            method: 'GET',
-            timeout: 5000
-        };
+        // Send killme request to pwn.college and wait for response
+        try {
+            const killmeOptions = {
+                hostname: 'pwn.college',
+                port: 443,
+                path: '/workspace/code/exam_api/killme',
+                method: 'GET',
+                timeout: 5000
+            };
+            
+            log(`[Session Check] Making HTTPS request to https://${killmeOptions.hostname}${killmeOptions.path}`);
+            
+            const killmeReq = https.request(killmeOptions, (res) => {
+                let data = '';
+                
+                log(`[Session Check] Killme request status: ${res.statusCode}`);
+                
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                
+                res.on('end', () => {
+                    log(`[Session Check] Killme response: ${data}`);
+                });
+            });
+            
+            killmeReq.on('error', (error) => {
+                log(`[Session Check] Killme request error: ${error.message}`);
+                // @ts-ignore - error.code may exist on network errors
+                log(`[Session Check] Error code: ${error.code || 'unknown'}`);
+            });
+            
+            killmeReq.on('timeout', () => {
+                log('[Session Check] Killme request timed out after 5 seconds');
+                killmeReq.destroy();
+            });
+            
+            killmeReq.end();
+            log('[Session Check] Killme request sent, waiting before closing window...');
+            
+        } catch (error) {
+            log(`[Session Check] Exception making killme request: ${error}`);
+        }
         
-        const killmeReq = https.request(killmeOptions, (res) => {
-            log(`[Session Check] Killme request status: ${res.statusCode}`);
-        });
-        
-        killmeReq.on('error', (error) => {
-            log(`[Session Check] Killme request error: ${error}`);
-        });
-        
-        killmeReq.on('timeout', () => {
-            log('[Session Check] Killme request timed out');
-            killmeReq.destroy();
-        });
-        
-        killmeReq.end();
-        
-        // Close window after 1 second
-        setTimeout(() => {
-            log('[Session Check] Closing window now');
-            vscode.commands.executeCommand('workbench.action.closeWindow');
-        }, 1000);
+        // Close window after 2 seconds (give request time to complete)
+        setTimeout(async () => {
+            log('[Session Check] Attempting to close window...');
+            try {
+                // Try different commands that might work in web VS Code
+                await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+                log('[Session Check] Closed all editors');
+            } catch (error) {
+                log(`[Session Check] Could not close editors: ${error}`);
+            }
+            
+            // The killme request should trigger container shutdown anyway
+            log('[Session Check] Session cleanup complete, container will shutdown shortly');
+        }, 2000);
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);
