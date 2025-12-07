@@ -94,15 +94,23 @@ function activate(context) {
     loadSessionConfiguration().then(() => {
         log(`Session configuration loaded: isExam=${isExamSession}, pwnCollegeId=${pwnCollegeId}`);
         
+        // Check if session already dead on startup
+        if (isExamSession && fsa.existsSync('/challenge/.dead')) {
+            log('[Session Check] Session already terminated on startup - triggering cleanup');
+            clearTabsAndShowMessage();
+            return; // Don't proceed with normal initialization
+        }
+        
         // Start session monitoring if this is an exam session
         if (isExamSession && pwnCollegeId) {
             startSessionMonitoring(context);
         }
+        
+        // Only initialize environment if session is not dead
+        initEnvironment();
     }).catch(err => {
         log(`Error loading session configuration: ${err}`);
     });
-    
-    initEnvironment();
 
     // Prevent opening files if session is dead (except message.md)
     let textDocumentOpen = vscode.workspace.onDidOpenTextDocument(async (document) => {
