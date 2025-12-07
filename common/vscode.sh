@@ -51,7 +51,7 @@ while [ $attempts -lt $max_attempts ]; do
       --rwx /proc
       --rox /challenge,/.admin_access
       --rw /run/landrun-cmd.fifo 
-      --ro  $coder_workspace_file
+      --ro  $coder_workspace_file,/.user_info
       --rw /home/hacker/.cache,/home/hacker/.local/
       --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
       --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env,/home/hacker/.profile,/etc/bash.bashrc,/home/hacker/.bash_history
