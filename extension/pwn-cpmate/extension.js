@@ -944,45 +944,24 @@ async function clearTabsAndShowMessage() {
         vscode.window.showWarningMessage('Exam session ended. All files closed. This window will close shortly.');
         log('[Session Check] Displayed message, sending killme request...');
         
-        // Send killme request to pwn.college and wait for response
+        // Create /tmp/.killme file as fallback signal for session_monitor
         try {
-            const killmeOptions = {
-                hostname: 'pwn.college',
-                port: 443,
-                path: '/workspace/code/exam_api/killme',
-                method: 'GET',
-                timeout: 5000
-            };
+            const killmeFile = '/tmp/.killme';
+            const timestamp = new Date().toISOString();
+            await fs.writeFile(killmeFile, `Session ended at ${timestamp}\n`);
+            log('[Session Check] Created /tmp/.killme file');
+        } catch (error) {
+            log(`[Session Check] Failed to create /tmp/.killme: ${error}`);
+        }
+        
+        // Send killme request using vscode.env.openExternal (works in browser context)
+        try {
+            const killmeUrl = 'https://pwn.college/workspace/code/exam_api/killme';
+            log(`[Session Check] Making request to ${killmeUrl}`);
             
-            log(`[Session Check] Making HTTPS request to https://${killmeOptions.hostname}${killmeOptions.path}`);
-            
-            const killmeReq = https.request(killmeOptions, (res) => {
-                let data = '';
-                
-                log(`[Session Check] Killme request status: ${res.statusCode}`);
-                
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-                
-                res.on('end', () => {
-                    log(`[Session Check] Killme response: ${data}`);
-                });
-            });
-            
-            killmeReq.on('error', (error) => {
-                log(`[Session Check] Killme request error: ${error.message}`);
-                // @ts-ignore - error.code may exist on network errors
-                log(`[Session Check] Error code: ${error.code || 'unknown'}`);
-            });
-            
-            killmeReq.on('timeout', () => {
-                log('[Session Check] Killme request timed out after 5 seconds');
-                killmeReq.destroy();
-            });
-            
-            killmeReq.end();
-            log('[Session Check] Killme request sent, waiting before closing window...');
+            // Use openExternal which works in web VS Code
+            await vscode.env.openExternal(vscode.Uri.parse(killmeUrl));
+            log('[Session Check] Killme request sent via openExternal');
             
         } catch (error) {
             log(`[Session Check] Exception making killme request: ${error}`);
