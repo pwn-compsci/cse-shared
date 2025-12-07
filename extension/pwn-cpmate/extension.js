@@ -30,9 +30,7 @@ var extensionId = "";
 var pwnCollegeId = null;
 var isExamSession = false;
 var sessionCheckInterval = null;
-var lastConnectionCheck = Date.now();
 const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
-const API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff";
 
 const PWN_STATUS_FILE = "/home/hacker/.local/share/ultima/pexs.dat"
 const BASEDIR = "/home/hacker/cse240/.vscode/"
@@ -876,107 +874,7 @@ function performSessionCheck() {
     }
 }
 
-/**
- * Check session attendance via API
- */
-async function checkSessionAttendance() {
-    if (!pwnCollegeId) {
-        log('[Attendance API] ERROR - Cannot check attendance: pwn_college_id not loaded');
-        return;
-    }
-    
-    log(`[Attendance API] Checking attendance for pwn_college_id: ${pwnCollegeId}`);
-    
-    try {
-        const postData = JSON.stringify({
-            pwn_college_id: pwnCollegeId
-        });
-        
-        log(`[Attendance API] Request payload: ${postData}`);
-        
-        const options = {
-            hostname: 'api.cse545.com',
-            port: 443,
-            path: '/session_attendance',
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
-            },
-            timeout: 30000
-        };
-        
-        log('[Attendance API] Making HTTPS request to api.cse545.com/session_attendance');
-        
-        const req = https.request(options, (res) => {
-            let data = '';
-            
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            
-            res.on('end', () => {
-                try {
-                    log(`[Attendance API] Response received - Status Code: ${res.statusCode}`);
-                    
-                    if (res.statusCode === 404) {
-                        log('[Attendance API] ⚠️  Response 404 - Student not attending exam session');
-                        return;
-                    }
-                    
-                    if (res.statusCode !== 200) {
-                        log(`[Attendance API] ⚠️  Unexpected status code: ${res.statusCode}`);
-                        log(`[Attendance API] Response data: ${data}`);
-                        return;
-                    }
-                    
-                    const response = JSON.parse(data);
-                    log(`[Attendance API] ✓ Response parsed successfully: ${JSON.stringify(response)}`);
-                    
-                    const attending = response.attending;
-                    const containerAction = response.container_action;
-                    
-                    log(`[Attendance API] attending=${attending}, container_action=${containerAction}`);
-                    
-                    if (attending === false && containerAction === 'shutdown') {
-                        log('[Attendance API] ⚠️  CRITICAL: Student left exam + shutdown requested - CLEARING TABS');
-                        clearTabsAndShowMessage();
-                    } else if (attending === true) {
-                        log('[Attendance API] ✓ Student is attending - session active');
-                    } else if (attending === false) {
-                        log('[Attendance API] ⚠️  Student not attending but no shutdown action requested');
-                    } else {
-                        log(`[Attendance API] ⚠️  Unexpected response state: attending=${attending}`);
-                    }
-                } catch (error) {
-                    log(`[Attendance API] ❌ ERROR parsing response: ${error}`);
-                    log(`[Attendance API] Raw response data: ${data}`);
-                }
-            });
-        });
-        
-        req.on('error', (error) => {
-            log(`[Attendance API] ❌ ERROR - Request failed: ${error}`);
-            // @ts-ignore - error.code may exist on some error types
-            const errCode = error.code || 'UNKNOWN';
-            log(`[Attendance API] Error details - Name: ${error.name}, Code: ${errCode}`);
-        });
-        
-        req.on('timeout', () => {
-            log('[Attendance API] ❌ ERROR - Request timed out after 30 seconds');
-            req.destroy();
-        });
-        
-        req.write(postData);
-        req.end();
-        
-        log('[Attendance API] Request sent, awaiting response...');
-        
-    } catch (error) {
-        log(`[Attendance API] ❌ ERROR in checkSessionAttendance: ${error}`);
-        log(`[Attendance API] Error stack: ${error.stack}`);
-    }
-}
+
 
 /**
  * Clear all open tabs and show message to student
@@ -986,7 +884,10 @@ async function clearTabsAndShowMessage() {
         const timestamp = new Date().toISOString();
         log(`[Clear Tabs] ========== STARTING TAB CLEAR OPERATION at ${timestamp} ==========`);
         
-        const message = `You have left the exam and the code is no longer available using the exam session. To review your exam code, please open Chrome and start a new instance of the Sandbox. See discord post for information on viewing prior exam files`;
+        const message = "You have left the exam and the code is no longer available using the exam session.\n" +
+                        "To review your exam code, please open Chrome and start a new instance of the Sandbox.\n" +
+                        "To view files, for exam 3 (aka exam30) problem 04, open the Sandbox module, in the terminal type:\n" + 
+                        "code ~/cse240/exam30/04/\n\n";
         
         // Get all tab groups
         const allTabGroups = vscode.window.tabGroups.all;
