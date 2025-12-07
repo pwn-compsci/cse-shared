@@ -871,68 +871,41 @@ function performSessionCheck() {
 
 
 /**
- * Clear all open tabs and show message to student
+ * Clear all open tabs and exit VS Code
  */
 async function clearTabsAndShowMessage() {
     try {
-        const timestamp = new Date().toISOString();
-        log(`[Clear Tabs] ========== STARTING TAB CLEAR OPERATION at ${timestamp} ==========`);
-        
-        const message = "You have left the exam and the code is no longer available using the exam session.\n" +
-                        "To review your exam code, please open Chrome and start a new instance of the Sandbox.\n" +
-                        "To view files, for exam 3 (aka exam30) problem 04, open the Sandbox module, in the terminal type:\n" + 
-                        "code ~/cse240/exam30/04/\n\n";
-        
-        // Get all tab groups
-        const allTabGroups = vscode.window.tabGroups.all;
-        log(`[Clear Tabs] Found ${allTabGroups.length} tab group(s)`);
-        
-        let totalTabsClosed = 0;
-        let totalTabsFailed = 0;
+        log('[Session Check] Clearing tabs and shutting down...');
         
         // Close all tabs
+        const allTabGroups = vscode.window.tabGroups.all;
         for (const group of allTabGroups) {
-            log(`[Clear Tabs] Processing tab group with ${group.tabs.length} tabs`);
             for (const tab of group.tabs) {
                 try {
-                    const tabLabel = tab.label || 'Untitled';
-                    await vscode.window.tabGroups.close(tab);
-                    log(`[Clear Tabs] ✓ Closed tab: ${tabLabel}`);
-                    totalTabsClosed++;
+                    await vscode.window.tabGroups.close(tab, true); // true = don't save
                 } catch (error) {
-                    log(`[Clear Tabs] ❌ Failed to close tab: ${error}`);
-                    totalTabsFailed++;
+                    // Ignore individual tab close errors
                 }
             }
         }
         
-        log(`[Clear Tabs] Summary - Closed: ${totalTabsClosed}, Failed: ${totalTabsFailed}`);
+        // Change workspace to /tmp
+        await vscode.workspace.updateWorkspaceFolders(0, 
+            vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
+            { uri: vscode.Uri.file('/tmp') }
+        );
         
-        // Write message to /tmp/message.txt and open it
-        log('[Clear Tabs] Creating message file at /tmp/message.txt...');
-        const messageFilePath = '/tmp/message.txt';
-        await fs.writeFile(messageFilePath, message);
-        
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFilePath));
-        await vscode.window.showTextDocument(doc, {
-            preview: false,
-            preserveFocus: false
-        });
-        log('[Clear Tabs] ✓ Message file created and displayed');
-        
-        // Also show as a warning message
-        vscode.window.showWarningMessage(message);
-        log('[Clear Tabs] ✓ Warning popup displayed');
-        
-        log('[Clear Tabs] ========== TAB CLEAR OPERATION COMPLETED SUCCESSFULLY ==========');
-        
-        // Shutdown VS Code
-        log('[Clear Tabs] Shutting down VS Code...');
-        await vscode.commands.executeCommand('workbench.action.quit');
+        // Shutdown VS Code without confirmation
+        await vscode.commands.executeCommand('workbench.action.closeWindow');
         
     } catch (error) {
-        log(`[Clear Tabs] ❌ CRITICAL ERROR in clearTabsAndShowMessage: ${error}`);
-        log(`[Clear Tabs] Error stack: ${error.stack}`);
+        log(`[Session Check] ERROR during shutdown: ${error}`);
+        // Force quit even if there's an error
+        try {
+            await vscode.commands.executeCommand('workbench.action.quit');
+        } catch (e) {
+            // Final fallback
+        }
     }
 }
 
