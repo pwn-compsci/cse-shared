@@ -92,7 +92,7 @@ function activate(context) {
     //vscode.window.showInformationMessage(`Welcome to pwn.college's CSE240 🦆`);
     extensionId = context.extension.id;
     
-    // Load configuration on startup
+    // Load configuration on startup and start session monitoring if needed
     loadSessionConfiguration().then(() => {
         log(`Session configuration loaded: isExam=${isExamSession}, pwnCollegeId=${pwnCollegeId}`);
         
