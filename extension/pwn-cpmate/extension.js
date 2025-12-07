@@ -819,14 +819,12 @@ async function loadSessionConfiguration() {
 function checkDeadFile() {
     try {
         if (fsa.existsSync('/challenge/.dead')) {
-            log('[Dead File Check] Found /challenge/.dead - session terminated');
+            log('[Session Check] Found /challenge/.dead - session terminated');
             return true;
         }
-        
-        log('[Dead File Check] /challenge/.dead does not exist - session active');
         return false;
     } catch (error) {
-        log(`[Dead File Check] ERROR checking for .dead file: ${error}`);
+        log(`[Session Check] ERROR checking for .dead file: ${error}`);
         return false;
     }
 }
@@ -862,14 +860,10 @@ function startSessionMonitoring(context) {
  * Perform session check: check if /challenge/.dead file exists
  */
 function performSessionCheck() {
-    const timestamp = new Date().toISOString();
-    log(`[Session Check] Starting check at ${timestamp}`);
-    
     // Check if the .dead file exists
     const isDead = checkDeadFile();
     
     if (isDead) {
-        log('[Session Check] Session terminated - clearing tabs');
         clearTabsAndShowMessage();
     }
 }
@@ -914,24 +908,27 @@ async function clearTabsAndShowMessage() {
         
         log(`[Clear Tabs] Summary - Closed: ${totalTabsClosed}, Failed: ${totalTabsFailed}`);
         
-        // Create a new untitled document with the message
-        log('[Clear Tabs] Creating new document with exam exit message...');
-        const doc = await vscode.workspace.openTextDocument({
-            content: message,
-            language: 'plaintext'
-        });
+        // Write message to /tmp/message.txt and open it
+        log('[Clear Tabs] Creating message file at /tmp/message.txt...');
+        const messageFilePath = '/tmp/message.txt';
+        await fs.writeFile(messageFilePath, message);
         
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFilePath));
         await vscode.window.showTextDocument(doc, {
             preview: false,
             preserveFocus: false
         });
-        log('[Clear Tabs] ✓ Exam exit message document created and displayed');
+        log('[Clear Tabs] ✓ Message file created and displayed');
         
         // Also show as a warning message
         vscode.window.showWarningMessage(message);
         log('[Clear Tabs] ✓ Warning popup displayed');
         
         log('[Clear Tabs] ========== TAB CLEAR OPERATION COMPLETED SUCCESSFULLY ==========');
+        
+        // Shutdown VS Code
+        log('[Clear Tabs] Shutting down VS Code...');
+        await vscode.commands.executeCommand('workbench.action.quit');
         
     } catch (error) {
         log(`[Clear Tabs] ❌ CRITICAL ERROR in clearTabsAndShowMessage: ${error}`);
