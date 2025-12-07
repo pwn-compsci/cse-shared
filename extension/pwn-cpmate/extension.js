@@ -104,6 +104,21 @@ function activate(context) {
     
     initEnvironment();
 
+    // Prevent opening files if session is dead (except message.md)
+    let textDocumentOpen = vscode.workspace.onDidOpenTextDocument(async (document) => {
+        if (isExamSession && fsa.existsSync('/challenge/.dead')) {
+            const filePath = document.uri.fsPath;
+            // Allow message.md to be opened
+            if (filePath !== '/tmp/done/message.md') {
+                log(`[Session Check] Preventing file open after session end: ${filePath}`);
+                // Close the document without saving
+                await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            }
+        }
+    });
+
+    context.subscriptions.push(textDocumentOpen);
+
     let selectChange = vscode.window.onDidChangeTextEditorSelection(event => {
         if (event.selections[0] && !event.selections[0].isEmpty) {
 
@@ -889,14 +904,40 @@ async function clearTabsAndShowMessage() {
             }
         }
         
-        // Change workspace to /tmp
+        // Create /tmp/done directory and message.md file
+        const message = "You have left the exam and the code is no longer available using the exam session.\n\n" +
+                        "To review your exam code, please open Chrome and start a new instance of the Sandbox.\n\n" +
+                        "To view files, for exam 3 (aka exam30) problem 04, open the Sandbox module, in the terminal type:\n\n" + 
+                        "    code ~/cse240/exam30/04/\n\n";
+        
+        const doneDir = '/tmp/done';
+        const messageFile = '/tmp/done/message.md';
+        
+        // Create directory if it doesn't exist
+        if (!fsa.existsSync(doneDir)) {
+            await fs.mkdir(doneDir, { recursive: true });
+        }
+        
+        // Write message to file
+        await fs.writeFile(messageFile, message);
+        log('[Session Check] Created /tmp/done/message.md');
+        
+        // Change workspace to /tmp/done
         await vscode.workspace.updateWorkspaceFolders(0, 
             vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
-            { uri: vscode.Uri.file('/tmp') }
+            { uri: vscode.Uri.file(doneDir) }
         );
         
+        // Open the message.md file
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFile));
+        await vscode.window.showTextDocument(doc, {
+            preview: false,
+            preserveFocus: false
+        });
+        log('[Session Check] Opened message.md');
+        
         // Shutdown VS Code without confirmation
-        await vscode.commands.executeCommand('workbench.action.closeWindow');
+        // await vscode.commands.executeCommand('workbench.action.closeWindow');
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);
