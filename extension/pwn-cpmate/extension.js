@@ -41,6 +41,11 @@ const CB_LOG_PATH = `${BASEDIR}cbinfo.dat`
 const DB_PATH = `/home/hacker/cse240/.vscode/trdb.db`
 
 async function log(text) {
+    try {
+        console.log(text);
+    } catch(error){
+        // ignore console log errors
+    }
     if (typeof text !== 'string') {
         text = `=> ${text}`
     }
