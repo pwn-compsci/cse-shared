@@ -933,18 +933,26 @@ async function clearTabsAndShowMessage() {
         await fs.writeFile(messageFile, message);
         log('[Session Check] Created /tmp/done/message.md');
         
+        // Change workspace to /tmp/done
+        await vscode.workspace.updateWorkspaceFolders(0, 
+            vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
+            { uri: vscode.Uri.file(doneDir) }
+        );
+        log('[Session Check] Changed workspace to /tmp/done');
+        
         // Open the message file
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFile));
         await vscode.window.showTextDocument(doc, {
             preview: false,
             preserveFocus: false
         });
+        log('[Session Check] Opened message.md');
         
         // Show notification
-        vscode.window.showWarningMessage('Exam session ended. All files closed. This window will close shortly.');
-        log('[Session Check] Displayed message, sending killme request...');
+        vscode.window.showWarningMessage('Exam session ended. All files closed.');
+        log('[Session Check] Displayed message');
         
-        // Create /tmp/.killme file as fallback signal for session_monitor
+        // Create /tmp/.killme file as signal for session_monitor
         try {
             const killmeFile = '/tmp/.killme';
             const timestamp = new Date().toISOString();
@@ -953,34 +961,8 @@ async function clearTabsAndShowMessage() {
         } catch (error) {
             log(`[Session Check] Failed to create /tmp/.killme: ${error}`);
         }
-        
-        // Send killme request using vscode.env.openExternal (works in browser context)
-        try {
-            const killmeUrl = 'https://pwn.college/workspace/code/exam_api/killme';
-            log(`[Session Check] Making request to ${killmeUrl}`);
-            
-            // Use openExternal which works in web VS Code
-            await vscode.env.openExternal(vscode.Uri.parse(killmeUrl));
-            log('[Session Check] Killme request sent via openExternal');
-            
-        } catch (error) {
-            log(`[Session Check] Exception making killme request: ${error}`);
-        }
-        
-        // Close window after 2 seconds (give request time to complete)
-        setTimeout(async () => {
-            log('[Session Check] Attempting to close window...');
-            try {
-                // Try different commands that might work in web VS Code
-                await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-                log('[Session Check] Closed all editors');
-            } catch (error) {
-                log(`[Session Check] Could not close editors: ${error}`);
-            }
-            
-            // The killme request should trigger container shutdown anyway
-            log('[Session Check] Session cleanup complete, container will shutdown shortly');
-        }, 2000);
+
+
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);
