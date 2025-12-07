@@ -19,6 +19,7 @@ import json
 import re
 import subprocess
 import pwd
+import threading
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -605,6 +606,19 @@ def kill_process_1():
         except Exception as e2:
             logger.error(f"Failed to force kill process 1: {e2}")
 
+def watch_for_killme():
+    """Background thread that watches for /tmp/.killme file and kills container immediately"""
+    logger.info("Started killme watcher thread")
+    while True:
+        try:
+            if os.path.exists('/tmp/.killme'):
+                logger.critical("Found /tmp/.killme file - immediate shutdown requested")
+                kill_process_1()
+                break
+        except Exception as e:
+            logger.error(f"Error checking for /tmp/.killme: {e}")
+        time.sleep(1)  # Check every second
+
 def mark_session_paused(message=None):
     """
     Pause the session by marking it as terminated
@@ -873,6 +887,12 @@ def main():
                         logger.info("Created /challenge/.dead with current timestamp")
                     except Exception as e:
                         logger.error(f"Failed to create /challenge/.dead: {e}")
+                    
+                    # Start background thread to watch for /tmp/.killme
+                    watcher_thread = threading.Thread(target=watch_for_killme, daemon=True)
+                    watcher_thread.start()
+                    logger.info("Started killme watcher thread")
+                    
                     time.sleep(15)
                     kill_process_1()
                     
