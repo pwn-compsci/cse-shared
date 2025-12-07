@@ -34,7 +34,7 @@ FROM essentials AS vscoder
 
 RUN mkdir -p /run/challenge/share/code/extensions
 
-COPY pwn-cpmate-0.0.1.vsix /run/challenge/share/code/extensions
+COPY pwn-cpmate-0.0.2.vsix /run/challenge/share/code/extensions
 COPY AmauryRabouan.new-vsc-prolog-1.1.12.vsix /run/challenge/share/code/extensions
 
 RUN curl -fsSL https://code-server.dev/install.sh | bash
@@ -48,7 +48,7 @@ RUN <<EOF
     --extensions-dir=/run/challenge/share/code/extensions \
     --install-extension ms-python.python \
     --install-extension /run/challenge/share/code/extensions/cpptools-linux.vsix \
-    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.1.vsix \
+    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix \
     --install-extension evzen-wybitul.magic-racket \
     --install-extension /run/challenge/share/code/extensions/AmauryRabouan.new-vsc-prolog-1.1.12.vsix
 

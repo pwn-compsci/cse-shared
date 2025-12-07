@@ -2,7 +2,7 @@
   "name": "pwn-cpmate",
   "displayName": "pwn-cpmate",
   "description": "This extension is necessary for pwn.college interactions in c and cpp.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "cse240",
   "engines": {
     "vscode": ">=1.88.0"

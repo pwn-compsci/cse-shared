@@ -5,7 +5,7 @@ const fsa = require('fs');
 const os = require('os');
 const https = require('https');
 
-const version = "1.1";
+const version = "1.2";
 //const historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
 var historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
 var historyMap = new Map(); // Cache to store file paths and their corresponding history directories
@@ -25,6 +25,14 @@ let debounceTimeout;
 var lockChangeCheck = false;
 var clipboardRetries = 0;
 var extensionId = "";
+
+// Session monitoring variables
+var pwnCollegeId = null;
+var isExamSession = false;
+var sessionCheckInterval = null;
+var lastConnectionCheck = Date.now();
+const SESSION_CHECK_INTERVAL_MS = 60000; // 60 seconds
+const API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff";
 
 const PWN_STATUS_FILE = "/home/hacker/.local/share/ultima/pexs.dat"
 const BASEDIR = "/home/hacker/cse240/.vscode/"
@@ -78,6 +86,19 @@ function getTimestampBasedName() {
 function activate(context) {
     //vscode.window.showInformationMessage(`Welcome to pwn.college's CSE240 🦆`);
     extensionId = context.extension.id;
+    
+    // Load configuration on startup
+    loadSessionConfiguration().then(() => {
+        log(`Session configuration loaded: isExam=${isExamSession}, pwnCollegeId=${pwnCollegeId}`);
+        
+        // Start session monitoring if this is an exam session
+        if (isExamSession && pwnCollegeId) {
+            startSessionMonitoring(context);
+        }
+    }).catch(err => {
+        log(`Error loading session configuration: ${err}`);
+    });
+    
     initEnvironment();
 
     let selectChange = vscode.window.onDidChangeTextEditorSelection(event => {
@@ -681,6 +702,13 @@ function deactivate() {
         clearInterval(CBReaderInterval);
         CBReaderInterval = null;
     }
+    
+    // Stop session monitoring
+    if (sessionCheckInterval !== null) {
+        clearInterval(sessionCheckInterval);
+        sessionCheckInterval = null;
+        logSync('Stopped session monitoring interval');
+    }
 
     // Clear timeout
     if (debounceTimeout) {
@@ -725,6 +753,303 @@ function deactivate() {
 //         console.error('Error accessing .bashrc:', err);
 //         logSync(`Error accessing .bashrc: ${err}`);
 //     }
+}
+
+/**
+ * Load session configuration from /.user_info and level.json
+ * Determines if this is an exam session and gets pwn_college_id
+ */
+async function loadSessionConfiguration() {
+    try {
+        log('[Config] ========== LOADING SESSION CONFIGURATION ==========');
+        
+        // Read /.user_info to get pwn_college_id
+        const userInfoPath = '/.user_info';
+        log(`[Config] Checking for user info at: ${userInfoPath}`);
+        
+        if (fsa.existsSync(userInfoPath)) {
+            log('[Config] ✓ User info file found, reading...');
+            const userInfo = await fs.readFile(userInfoPath, 'utf8');
+            log(`[Config] User info file size: ${userInfo.length} bytes`);
+            
+            const match = userInfo.match(/pwn_college_id=['"]?(\d+)['"]?/);
+            if (match) {
+                pwnCollegeId = match[1];
+                log(`[Config] ✓ Loaded pwn_college_id: ${pwnCollegeId}`);
+            } else {
+                log('[Config] ⚠️  Could not find pwn_college_id pattern in /.user_info');
+                log(`[Config] File preview: ${userInfo.substring(0, 200)}...`);
+            }
+        } else {
+            log('[Config] ⚠️  /.user_info file not found');
+        }
+        
+        // Read level.json to check if this is an exam session
+        const levelJsonPath = '/challenge/.config/level.json';
+        log(`[Config] Checking for level config at: ${levelJsonPath}`);
+        
+        if (fsa.existsSync(levelJsonPath)) {
+            log('[Config] ✓ Level config file found, reading...');
+            const levelData = JSON.parse(await fs.readFile(levelJsonPath, 'utf8'));
+            isExamSession = levelData.examLevel !== undefined && levelData.examLevel !== null;
+            log(`[Config] examLevel value: ${levelData.examLevel}`);
+            log(`[Config] Is exam session: ${isExamSession}`);
+        } else {
+            log('[Config] ⚠️  /challenge/.config/level.json not found');
+            isExamSession = false;
+        }
+        
+        log('[Config] ========== CONFIGURATION LOADED ==========');
+        log(`[Config] Final state - pwn_college_id: ${pwnCollegeId}, isExam: ${isExamSession}`);
+        
+    } catch (error) {
+        log(`[Config] ❌ ERROR loading session configuration: ${error}`);
+        log(`[Config] Error stack: ${error.stack}`);
+        throw error;
+    }
+}
+
+/**
+ * Check if we can access local filesystem (indicates VSCode is still connected)
+ * @returns {boolean} true if connected, false otherwise
+ */
+function checkVSCodeConnection() {
+    try {
+        // Try to access /.user_info file
+        if (fsa.existsSync('/.user_info')) {
+            log('[Connection Check] Successfully accessed /.user_info - VSCode connected');
+            return true;
+        }
+        
+        // Fallback: try /challenge/.config/level.json
+        if (fsa.existsSync('/challenge/.config/level.json')) {
+            log('[Connection Check] Successfully accessed level.json - VSCode connected');
+            return true;
+        }
+        
+        // Fallback: try home directory
+        if (fsa.existsSync('/home/hacker')) {
+            log('[Connection Check] Successfully accessed /home/hacker - VSCode connected');
+            return true;
+        }
+        
+        log('[Connection Check] FAILED - Cannot access filesystem, VSCode may be disconnected');
+        return false;
+    } catch (error) {
+        log(`[Connection Check] ERROR - Exception during check: ${error}`);
+        return false;
+    }
+}
+
+/**
+ * Start monitoring session attendance
+ */
+function startSessionMonitoring(context) {
+    log('[Session Monitor] Starting session monitoring...');
+    log(`[Session Monitor] Check interval: ${SESSION_CHECK_INTERVAL_MS / 1000} seconds`);
+    log(`[Session Monitor] pwn_college_id: ${pwnCollegeId}`);
+    
+    // Check immediately on startup
+    performSessionCheck();
+    
+    // Then check every minute
+    sessionCheckInterval = setInterval(() => {
+        performSessionCheck();
+    }, SESSION_CHECK_INTERVAL_MS);
+    
+    // Add to context subscriptions for cleanup
+    context.subscriptions.push({
+        dispose: () => {
+            if (sessionCheckInterval) {
+                clearInterval(sessionCheckInterval);
+                sessionCheckInterval = null;
+            }
+        }
+    });
+}
+
+/**
+ * Perform session check: first verify connectivity, then check attendance
+ */
+function performSessionCheck() {
+    const timestamp = new Date().toISOString();
+    log(`[Session Check] Starting check at ${timestamp}`);
+    
+    // First check if VSCode is still connected by testing file access
+    const isConnected = checkVSCodeConnection();
+    
+    if (!isConnected) {
+        log('[Session Check] VSCode NOT connected to filesystem - checking API to see if student left exam');
+        // When disconnected from filesystem, check the API (different server)
+        // to determine if student left exam (should clear tabs) or just a network blip (do nothing)
+        checkSessionAttendance();
+        return;
+    }
+    
+    // If connected, everything is working normally - skip API check
+    log('[Session Check] VSCode connected to filesystem - all systems normal, skipping API check');
+}
+
+/**
+ * Check session attendance via API
+ */
+async function checkSessionAttendance() {
+    if (!pwnCollegeId) {
+        log('[Attendance API] ERROR - Cannot check attendance: pwn_college_id not loaded');
+        return;
+    }
+    
+    log(`[Attendance API] Checking attendance for pwn_college_id: ${pwnCollegeId}`);
+    
+    try {
+        const postData = JSON.stringify({
+            pwn_college_id: pwnCollegeId
+        });
+        
+        log(`[Attendance API] Request payload: ${postData}`);
+        
+        const options = {
+            hostname: 'api.cse545.com',
+            port: 443,
+            path: '/session_attendance',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 30000
+        };
+        
+        log('[Attendance API] Making HTTPS request to api.cse545.com/session_attendance');
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            res.on('end', () => {
+                try {
+                    log(`[Attendance API] Response received - Status Code: ${res.statusCode}`);
+                    
+                    if (res.statusCode === 404) {
+                        log('[Attendance API] ⚠️  Response 404 - Student not attending exam session');
+                        return;
+                    }
+                    
+                    if (res.statusCode !== 200) {
+                        log(`[Attendance API] ⚠️  Unexpected status code: ${res.statusCode}`);
+                        log(`[Attendance API] Response data: ${data}`);
+                        return;
+                    }
+                    
+                    const response = JSON.parse(data);
+                    log(`[Attendance API] ✓ Response parsed successfully: ${JSON.stringify(response)}`);
+                    
+                    const attending = response.attending;
+                    const containerAction = response.container_action;
+                    
+                    log(`[Attendance API] attending=${attending}, container_action=${containerAction}`);
+                    
+                    if (attending === false && containerAction === 'shutdown') {
+                        log('[Attendance API] ⚠️  CRITICAL: Student left exam + shutdown requested - CLEARING TABS');
+                        clearTabsAndShowMessage();
+                    } else if (attending === true) {
+                        log('[Attendance API] ✓ Student is attending - session active');
+                    } else if (attending === false) {
+                        log('[Attendance API] ⚠️  Student not attending but no shutdown action requested');
+                    } else {
+                        log(`[Attendance API] ⚠️  Unexpected response state: attending=${attending}`);
+                    }
+                } catch (error) {
+                    log(`[Attendance API] ❌ ERROR parsing response: ${error}`);
+                    log(`[Attendance API] Raw response data: ${data}`);
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            log(`[Attendance API] ❌ ERROR - Request failed: ${error}`);
+            // @ts-ignore - error.code may exist on some error types
+            const errCode = error.code || 'UNKNOWN';
+            log(`[Attendance API] Error details - Name: ${error.name}, Code: ${errCode}`);
+        });
+        
+        req.on('timeout', () => {
+            log('[Attendance API] ❌ ERROR - Request timed out after 30 seconds');
+            req.destroy();
+        });
+        
+        req.write(postData);
+        req.end();
+        
+        log('[Attendance API] Request sent, awaiting response...');
+        
+    } catch (error) {
+        log(`[Attendance API] ❌ ERROR in checkSessionAttendance: ${error}`);
+        log(`[Attendance API] Error stack: ${error.stack}`);
+    }
+}
+
+/**
+ * Clear all open tabs and show message to student
+ */
+async function clearTabsAndShowMessage() {
+    try {
+        const timestamp = new Date().toISOString();
+        log(`[Clear Tabs] ========== STARTING TAB CLEAR OPERATION at ${timestamp} ==========`);
+        
+        const message = `You have left the exam and the code is no longer available using the exam session. To review your exam code, please open Chrome and start a new instance of the Sandbox. See discord post for information on viewing prior exam files`;
+        
+        // Get all tab groups
+        const allTabGroups = vscode.window.tabGroups.all;
+        log(`[Clear Tabs] Found ${allTabGroups.length} tab group(s)`);
+        
+        let totalTabsClosed = 0;
+        let totalTabsFailed = 0;
+        
+        // Close all tabs
+        for (const group of allTabGroups) {
+            log(`[Clear Tabs] Processing tab group with ${group.tabs.length} tabs`);
+            for (const tab of group.tabs) {
+                try {
+                    const tabLabel = tab.label || 'Untitled';
+                    await vscode.window.tabGroups.close(tab);
+                    log(`[Clear Tabs] ✓ Closed tab: ${tabLabel}`);
+                    totalTabsClosed++;
+                } catch (error) {
+                    log(`[Clear Tabs] ❌ Failed to close tab: ${error}`);
+                    totalTabsFailed++;
+                }
+            }
+        }
+        
+        log(`[Clear Tabs] Summary - Closed: ${totalTabsClosed}, Failed: ${totalTabsFailed}`);
+        
+        // Create a new untitled document with the message
+        log('[Clear Tabs] Creating new document with exam exit message...');
+        const doc = await vscode.workspace.openTextDocument({
+            content: message,
+            language: 'plaintext'
+        });
+        
+        await vscode.window.showTextDocument(doc, {
+            preview: false,
+            preserveFocus: false
+        });
+        log('[Clear Tabs] ✓ Exam exit message document created and displayed');
+        
+        // Also show as a warning message
+        vscode.window.showWarningMessage(message);
+        log('[Clear Tabs] ✓ Warning popup displayed');
+        
+        log('[Clear Tabs] ========== TAB CLEAR OPERATION COMPLETED SUCCESSFULLY ==========');
+        
+    } catch (error) {
+        log(`[Clear Tabs] ❌ CRITICAL ERROR in clearTabsAndShowMessage: ${error}`);
+        log(`[Clear Tabs] Error stack: ${error.stack}`);
+    }
 }
 
 module.exports = {
