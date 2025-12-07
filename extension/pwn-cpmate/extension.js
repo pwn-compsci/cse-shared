@@ -933,12 +933,12 @@ async function clearTabsAndShowMessage() {
         await fs.writeFile(messageFile, message);
         log('[Session Check] Created /tmp/done/message.md');
         
-        // Change workspace to /tmp/done
-        await vscode.workspace.updateWorkspaceFolders(0, 
-            vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
-            { uri: vscode.Uri.file(doneDir) }
-        );
-        log('[Session Check] Changed workspace to /tmp/done');
+        // // Change workspace to /tmp/done
+        // await vscode.workspace.updateWorkspaceFolders(0, 
+        //     vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
+        //     { uri: vscode.Uri.file(doneDir) }
+        // );
+        // log('[Session Check] Changed workspace to /tmp/done');
         
         // Open the message file
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFile));
@@ -961,8 +961,6 @@ async function clearTabsAndShowMessage() {
         } catch (error) {
             log(`[Session Check] Failed to create /tmp/.killme: ${error}`);
         }
-
-
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);
