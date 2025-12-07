@@ -210,16 +210,17 @@ if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_
     echo "No argument supplied" | tee -a $STARTUP_LOG    
     exit 0
 fi
-# Add pwn_college_id to level.json if it exists and has a value
-if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
-    if command -v jq >/dev/null 2>&1; then
-        tmpfile=$(mktemp)
-        jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" && mv "$tmpfile" /challenge/.config/level.json
-        echo "[i] Added pwn_college_id to level.json" | tee -a $STARTUP_LOG
-    else
-        echo "[!] jq not available, skipping pwn_college_id addition to level.json" | tee -a $STARTUP_LOG
-    fi
-fi
+
+# # Add pwn_college_id to level.json if it exists and has a value
+# if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
+#     if command -v jq >/dev/null 2>&1; then
+#         tmpfile=$(mktemp)
+#         jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" && mv "$tmpfile" /challenge/.config/level.json
+#         echo "[i] Added pwn_college_id to level.json" | tee -a $STARTUP_LOG
+#     else
+#         echo "[!] jq not available, skipping pwn_college_id addition to level.json" | tee -a $STARTUP_LOG
+#     fi
+# fi
 if [ -f /usr/bin/exec-suid ]; then 
     chmod 6755 /usr/bin/exec-suid || true
 fi 
