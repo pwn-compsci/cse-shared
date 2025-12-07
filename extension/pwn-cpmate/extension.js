@@ -884,7 +884,7 @@ async function clearTabsAndShowMessage() {
                 try {
                     await vscode.window.tabGroups.close(tab, true); // true = don't save
                 } catch (error) {
-                    // Ignore individual tab close errors
+                    log(`[Session Check] Error closing tab: ${error}`);
                 }
             }
         }
