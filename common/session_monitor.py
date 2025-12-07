@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger("session_monitor")
 
 # Configuration
-CHECK_INTERVAL = 60  # Check every 60 seconds
+CHECK_INTERVAL = 30  # Check every 30 seconds
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # Seconds between retries
 
@@ -866,6 +866,14 @@ def main():
                 if check_results.get('container_action') == 'shutdown':
                     logger.critical("Container shutdown requested - killing process 1")
                     broadcast_message("Container is being shutdown by instructor.\n")
+                    # Create /challenge/.dead file with current timestamp
+                    try:
+                        with open('/challenge/.dead', 'w') as f:
+                            f.write(f"{current_time.isoformat()}\n")
+                        logger.info("Created /challenge/.dead with current timestamp")
+                    except Exception as e:
+                        logger.error(f"Failed to create /challenge/.dead: {e}")
+                    time.sleep(30)
                     kill_process_1()
                     
                 if missing_attendance < 5:

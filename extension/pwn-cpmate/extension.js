@@ -31,7 +31,7 @@ var pwnCollegeId = null;
 var isExamSession = false;
 var sessionCheckInterval = null;
 var lastConnectionCheck = Date.now();
-const SESSION_CHECK_INTERVAL_MS = 60000; // 60 seconds
+const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
 const API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff";
 
 const PWN_STATUS_FILE = "/home/hacker/.local/share/ultima/pexs.dat"
@@ -815,49 +815,36 @@ async function loadSessionConfiguration() {
 }
 
 /**
- * Check if we can access local filesystem (indicates VSCode is still connected)
- * @returns {boolean} true if connected, false otherwise
+ * Check if /challenge/.dead file exists (indicates session should be terminated)
+ * @returns {boolean} true if .dead file exists, false otherwise
  */
-function checkVSCodeConnection() {
+function checkDeadFile() {
     try {
-        // Try to access /.user_info file
-        if (fsa.existsSync('/.user_info')) {
-            log('[Connection Check] Successfully accessed /.user_info - VSCode connected');
+        if (fsa.existsSync('/challenge/.dead')) {
+            log('[Dead File Check] Found /challenge/.dead - session terminated');
             return true;
         }
         
-        // Fallback: try /challenge/.config/level.json
-        if (fsa.existsSync('/challenge/.config/level.json')) {
-            log('[Connection Check] Successfully accessed level.json - VSCode connected');
-            return true;
-        }
-        
-        // Fallback: try home directory
-        if (fsa.existsSync('/home/hacker')) {
-            log('[Connection Check] Successfully accessed /home/hacker - VSCode connected');
-            return true;
-        }
-        
-        log('[Connection Check] FAILED - Cannot access filesystem, VSCode may be disconnected');
+        log('[Dead File Check] /challenge/.dead does not exist - session active');
         return false;
     } catch (error) {
-        log(`[Connection Check] ERROR - Exception during check: ${error}`);
+        log(`[Dead File Check] ERROR checking for .dead file: ${error}`);
         return false;
     }
 }
 
 /**
- * Start monitoring session attendance
+ * Start monitoring for session termination
  */
 function startSessionMonitoring(context) {
     log('[Session Monitor] Starting session monitoring...');
     log(`[Session Monitor] Check interval: ${SESSION_CHECK_INTERVAL_MS / 1000} seconds`);
-    log(`[Session Monitor] pwn_college_id: ${pwnCollegeId}`);
+    log(`[Session Monitor] Monitoring for /challenge/.dead file`);
     
     // Check immediately on startup
     performSessionCheck();
     
-    // Then check every minute
+    // Then check every 10 seconds
     sessionCheckInterval = setInterval(() => {
         performSessionCheck();
     }, SESSION_CHECK_INTERVAL_MS);
@@ -874,25 +861,19 @@ function startSessionMonitoring(context) {
 }
 
 /**
- * Perform session check: first verify connectivity, then check attendance
+ * Perform session check: check if /challenge/.dead file exists
  */
 function performSessionCheck() {
     const timestamp = new Date().toISOString();
     log(`[Session Check] Starting check at ${timestamp}`);
     
-    // First check if VSCode is still connected by testing file access
-    const isConnected = checkVSCodeConnection();
+    // Check if the .dead file exists
+    const isDead = checkDeadFile();
     
-    if (!isConnected) {
-        log('[Session Check] VSCode NOT connected to filesystem - checking API to see if student left exam');
-        // When disconnected from filesystem, check the API (different server)
-        // to determine if student left exam (should clear tabs) or just a network blip (do nothing)
-        checkSessionAttendance();
-        return;
+    if (isDead) {
+        log('[Session Check] Session terminated - clearing tabs');
+        clearTabsAndShowMessage();
     }
-    
-    // If connected, everything is working normally - skip API check
-    log('[Session Check] VSCode connected to filesystem - all systems normal, skipping API check');
 }
 
 /**
