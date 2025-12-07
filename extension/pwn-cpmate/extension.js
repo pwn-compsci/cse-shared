@@ -930,12 +930,6 @@ async function clearTabsAndShowMessage() {
         await fs.writeFile(messageFile, message);
         log('[Session Check] Created /tmp/done/message.md');
         
-        // Change workspace to /tmp/done
-        await vscode.workspace.updateWorkspaceFolders(0, 
-            vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0,
-            { uri: vscode.Uri.file(doneDir) }
-        );
-        
         // Open the message.md file
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(messageFile));
         await vscode.window.showTextDocument(doc, {
@@ -944,8 +938,8 @@ async function clearTabsAndShowMessage() {
         });
         log('[Session Check] Opened message.md');
         
-        // Shutdown VS Code without confirmation
-        // await vscode.commands.executeCommand('workbench.action.closeWindow');
+        // Show notification
+        vscode.window.showWarningMessage('All files closed because you left the exam.');
         
     } catch (error) {
         log(`[Session Check] ERROR during shutdown: ${error}`);

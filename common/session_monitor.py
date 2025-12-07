@@ -873,7 +873,7 @@ def main():
                         logger.info("Created /challenge/.dead with current timestamp")
                     except Exception as e:
                         logger.error(f"Failed to create /challenge/.dead: {e}")
-                    time.sleep(30)
+                    time.sleep(15)
                     kill_process_1()
                     
                 if missing_attendance < 5:
