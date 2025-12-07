@@ -13,9 +13,9 @@ fi
 DOCKER_DIR="$SCRIPTS_DIR/../../docker/cse240_main"
 cp $SCRIPTS_DIR/pwn-cpmate-0.0.2.vsix $DOCKER_DIR
 
-current_version=$(grep -oP 'RUN mkdir /cse240_v\K[0-9]+' "$DOCKER_DIR/Dockerfile")
+current_version=$(grep -oP 'RUN mkdir -p /cse240_v\K[0-9]+' "$DOCKER_DIR/Dockerfile")
 next_version=$((current_version + 1))
-sed -i "s|RUN mkdir /cse240_v$current_version|RUN mkdir /cse240_v$next_version|" "$DOCKER_DIR/Dockerfile"
+sed -i "s|/cse240_v$current_version|/cse240_v$next_version|g" "$DOCKER_DIR/Dockerfile"
 
 #cd $DOCKER_DIR
 docker build -t tricke/cse240 "$DOCKER_DIR"
