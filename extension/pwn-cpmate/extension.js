@@ -153,6 +153,43 @@ function activate(context) {
     // Requirements webview panel
     let requirementsPanel = null;
     
+    // Register a simple tree data provider that auto-triggers the command
+    class RequirementsViewProvider {
+        getTreeItem(element) {
+            return element;
+        }
+        
+        getChildren() {
+            return [];
+        }
+    }
+    
+    const requirementsViewProvider = new RequirementsViewProvider();
+    vscode.window.registerTreeDataProvider('pwn-cpmate.requirementsView', requirementsViewProvider);
+    
+    // Auto-trigger requirements when view becomes visible
+    let viewVisible = false;
+    vscode.window.onDidChangeActiveColorTheme(() => {
+        // This is a hack - we trigger on theme change which happens when view opens
+        if (!viewVisible) {
+            viewVisible = true;
+            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+        }
+    });
+    
+    // Better approach: listen to view visibility directly
+    const treeView = vscode.window.createTreeView('pwn-cpmate.requirementsView', {
+        treeDataProvider: requirementsViewProvider
+    });
+    
+    treeView.onDidChangeVisibility((e) => {
+        if (e.visible) {
+            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+        }
+    });
+    
+    context.subscriptions.push(treeView);
+    
     const showRequirementsCommand = vscode.commands.registerCommand('pwn-cpmate.showRequirements', async () => {
         // If panel already exists, reveal it
         if (requirementsPanel) {
@@ -852,12 +889,18 @@ function activate(context) {
         }
                 
         // Open main.c/.cpp/.rkt/.pl if exists
-        console.log("init check to open files", !activeEditor, "found=", found, vscode.workspace.textDocuments.length == 0);
-        log(`init check to open files ${!activeEditor}, ${found}, ${vscode.workspace.textDocuments.length == 0}`);
+        // Check if readme.html is currently open in any editor
+        const readmeOpen = vscode.window.visibleTextEditors.some(editor => 
+            editor.document.fileName.endsWith('readme.html')
+        );
+        
+        console.log("init check to open files", !activeEditor, "found=", found, vscode.workspace.textDocuments.length == 0, "readme open=", readmeOpen);
+        log(`init check to open files ${!activeEditor}, ${found}, ${vscode.workspace.textDocuments.length == 0}, readme=${readmeOpen}`);
 
-        if (!activeEditor || found || vscode.workspace.textDocuments.length == 0) {
+        // Don't auto-open if readme.html is already open
+        if (!readmeOpen && (!activeEditor || found || vscode.workspace.textDocuments.length == 0)) {
             if (initialFiles){
-                let firstFileToOpen = false; 
+                let firstFileToOpen = true; 
                 for (const file of initialFiles) {
                     const filePath = `${cLevelWorkDir}/${file}`;
                     console.log("opening", filePath);

@@ -46,26 +46,17 @@
       "pwn-requirements": [
         {
           "id": "pwn-cpmate.requirementsView",
-          "name": "",
-          "visibility": "visible"
+          "name": "Challenge Requirements"
         }
       ]
     },
     "menus": {
-      "view/title": [
+      "commandPalette": [
         {
-          "command": "pwn-cpmate.showRequirements",
-          "when": "view == pwn-cpmate.requirementsView",
-          "group": "navigation"
+          "command": "pwn-cpmate.showRequirements"
         }
       ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "pwn-cpmate.requirementsView",
-        "contents": "Click the icon above or press Ctrl+Shift+R to view requirements.\n[Open Requirements](command:pwn-cpmate.showRequirements)"
-      }
-    ]
+    }
   },
   "scripts": {
     "postinstall": "node ./node_modules/vsce/out/vsce install",
