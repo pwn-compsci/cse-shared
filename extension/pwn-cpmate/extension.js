@@ -150,31 +150,6 @@ function activate(context) {
 
     context.subscriptions.push(selectChange);
     
-    // Requirements view provider for sidebar
-    class RequirementsViewProvider {
-        getTreeItem(element) {
-            return element;
-        }
-        
-        getChildren(element) {
-            if (!element) {
-                // Root level - show a single item to open requirements
-                const item = new vscode.TreeItem('View Requirements', vscode.TreeItemCollapsibleState.None);
-                item.command = {
-                    command: 'pwn-cpmate.showRequirements',
-                    title: 'Show Requirements'
-                };
-                item.iconPath = new vscode.ThemeIcon('book');
-                item.tooltip = 'Click to view challenge requirements (Ctrl+Shift+R)';
-                return Promise.resolve([item]);
-            }
-            return Promise.resolve([]);
-        }
-    }
-    
-    const requirementsViewProvider = new RequirementsViewProvider();
-    vscode.window.registerTreeDataProvider('pwn-cpmate.requirementsView', requirementsViewProvider);
-    
     // Requirements webview panel
     let requirementsPanel = null;
     
@@ -332,12 +307,23 @@ function activate(context) {
                 </script>
             `;
             
+            // Load CSS file and convert to webview URI
+            let cssContent = '';
+            try {
+                const cssPath = '/challenge/shared-readme.css';
+                cssContent = await fs.readFile(cssPath, 'utf8');
+                // Inject CSS as inline style to ensure it loads
+                const styleTag = `<style>${cssContent}</style>`;
+                htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
+            } catch (cssError) {
+                log(`Could not load CSS: ${cssError.message}`);
+            }
+            
             // Insert script before closing body tag
             htmlContent = htmlContent.replace('</body>', clipboardScript + '</body>');
             
-            // Fix resource paths to use vscode-resource scheme if needed
-            htmlContent = htmlContent.replace(/href="\/workspace\/code\/html\//g, 'href="');
-            htmlContent = htmlContent.replace(/src="\/workspace\/code\/js\//g, 'src="');
+            // Remove external CSS links that won't work in webview
+            htmlContent = htmlContent.replace(/<link[^>]*href="[^"]*shared-readme\.css"[^>]*>/g, '');
             
             requirementsPanel.webview.html = htmlContent;
             

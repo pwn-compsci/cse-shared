@@ -46,7 +46,8 @@
       "pwn-requirements": [
         {
           "id": "pwn-cpmate.requirementsView",
-          "name": "Challenge Requirements"
+          "name": "",
+          "visibility": "visible"
         }
       ]
     },
@@ -58,7 +59,13 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "pwn-cpmate.requirementsView",
+        "contents": "Click the icon above or press Ctrl+Shift+R to view requirements.\n[Open Requirements](command:pwn-cpmate.showRequirements)"
+      }
+    ]
   },
   "scripts": {
     "postinstall": "node ./node_modules/vsce/out/vsce install",
