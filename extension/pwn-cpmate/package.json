@@ -18,7 +18,47 @@
     "workspaceContains:**/*.txt"
   ],
   "contributes": {
-    "commands": []
+    "commands": [
+      {
+        "command": "pwn-cpmate.showRequirements",
+        "title": "Show Requirements",
+        "category": "PWN",
+        "icon": "$(book)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "pwn-cpmate.showRequirements",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pwn-requirements",
+          "title": "Requirements",
+          "icon": "requirements_icon.png"
+        }
+      ]
+    },
+    "views": {
+      "pwn-requirements": [
+        {
+          "id": "pwn-cpmate.requirementsView",
+          "name": "Challenge Requirements"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "pwn-cpmate.showRequirements",
+          "when": "view == pwn-cpmate.requirementsView",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "postinstall": "node ./node_modules/vsce/out/vsce install",

@@ -150,6 +150,218 @@ function activate(context) {
 
     context.subscriptions.push(selectChange);
     
+    // Requirements view provider for sidebar
+    class RequirementsViewProvider {
+        getTreeItem(element) {
+            return element;
+        }
+        
+        getChildren(element) {
+            if (!element) {
+                // Root level - show a single item to open requirements
+                const item = new vscode.TreeItem('View Requirements', vscode.TreeItemCollapsibleState.None);
+                item.command = {
+                    command: 'pwn-cpmate.showRequirements',
+                    title: 'Show Requirements'
+                };
+                item.iconPath = new vscode.ThemeIcon('book');
+                item.tooltip = 'Click to view challenge requirements (Ctrl+Shift+R)';
+                return Promise.resolve([item]);
+            }
+            return Promise.resolve([]);
+        }
+    }
+    
+    const requirementsViewProvider = new RequirementsViewProvider();
+    vscode.window.registerTreeDataProvider('pwn-cpmate.requirementsView', requirementsViewProvider);
+    
+    // Requirements webview panel
+    let requirementsPanel = null;
+    
+    const showRequirementsCommand = vscode.commands.registerCommand('pwn-cpmate.showRequirements', async () => {
+        // If panel already exists, reveal it
+        if (requirementsPanel) {
+            requirementsPanel.reveal(vscode.ViewColumn.Two);
+            return;
+        }
+        
+        // Create new webview panel
+        requirementsPanel = vscode.window.createWebviewPanel(
+            'pwnRequirements',
+            'Requirements',
+            vscode.ViewColumn.Two,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.file('/challenge')]
+            }
+        );
+        
+        // Handle messages from webview
+        requirementsPanel.webview.onDidReceiveMessage(
+            async message => {
+                if (message.type === 'clipboardCopy') {
+                    const { originalText, modifiedText, prompts } = message;
+                    
+                    // Get active editor and file path
+                    const activeEditor = vscode.window.activeTextEditor;
+                    const currentFilePath = activeEditor ? activeEditor.document.uri.fsPath : null;
+                    
+                    // Generate timestamp-based ID
+                    const saveid = getTimestampBasedName();
+                    
+                    // Find history directory for current file
+                    let historyDir = "/home/hacker/.local/share/ultima/skipped";
+                    if (currentFilePath) {
+                        try {
+                            historyDir = await findHistoryDirectory(currentFilePath);
+                        } catch (error) {
+                            log(`Could not find history directory: ${error.message}`);
+                        }
+                    }
+                    
+                    // Save to history directory with CC_ prefix
+                    const ext = currentFilePath ? path.extname(currentFilePath) : '.txt';
+                    const ccFilename = `CC_${saveid}${ext}`;
+                    const ccFullPath = path.join(historyDir, ccFilename);
+                    
+                    try {
+                        await fs.writeFile(ccFullPath, originalText);
+                        log(`[Requirements] Saved clipboard copy to ${ccFullPath}`);
+                    } catch (error) {
+                        log(`[Requirements] Error saving CC file: ${error.message}`);
+                    }
+                    
+                    // Also log to skipped directory JSON with timestamped filename
+                    const skipDir = path.join(os.homedir(), '.local/share/ultima/skipped');
+                    await fs.mkdir(skipDir, { recursive: true });
+                    
+                    const jsonFilename = `clipboard_${saveid}.json`;
+                    const jsonFullPath = path.join(skipDir, jsonFilename);
+                    
+                    const logEntry = {
+                        timestamp: new Date().toISOString(),
+                        source: 'requirements-webview',
+                        currentFile: currentFilePath,
+                        historyDirectory: historyDir,
+                        ccFile: ccFullPath,
+                        originalText: originalText,
+                        modifiedText: modifiedText,
+                        promptsUsed: prompts,
+                        textLength: originalText.length,
+                        linesCount: originalText.split('\n').length
+                    };
+                    
+                    try {
+                        await fs.writeFile(jsonFullPath, JSON.stringify(logEntry, null, 2));
+                        log(`[Requirements] Logged clipboard data to ${jsonFullPath}`);
+                    } catch (error) {
+                        log(`[Requirements] Error logging to JSON: ${error.message}`);
+                    }
+                }
+            },
+            undefined,
+            context.subscriptions
+        );
+        
+        // Load readme.html content
+        try {
+            const readmePath = '/challenge/readme.html';
+            let htmlContent = await fs.readFile(readmePath, 'utf8');
+            
+            // Inject clipboard interception script
+            const clipboardScript = `
+                <script>
+                    const vscode = acquireVsCodeApi();
+                    
+                    console.log('[Requirements] Clipboard interception loaded');
+                    
+                    // Load prompts from /tmp/.prinfo
+                    function loadPrompts() {
+                        try {
+                            // Use synchronous XHR to read file (webview context)
+                            const xhr = new XMLHttpRequest();
+                            xhr.open('GET', 'file:///tmp/.prinfo', false);
+                            xhr.send(null);
+                            if (xhr.status === 200 || xhr.status === 0) {
+                                return xhr.responseText.trim().split('\\n').filter(p => p.length > 0);
+                            }
+                        } catch (error) {
+                            console.log('[Requirements] Could not load prompts from /tmp/.prinfo:', error.message);
+                        }
+                        return [];
+                    }
+                    
+                    document.addEventListener('copy', function(e) {
+                        const selection = window.getSelection();
+                        const selectedText = selection.toString();
+                        
+                        if (!selectedText) return;
+                        
+                        console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '...');
+                        
+                        // Load prompts
+                        const prompts = loadPrompts();
+                        
+                        let modifiedText = selectedText;
+                        
+                        if (prompts.length > 0) {
+                            // Find middle line to inject prompts
+                            const lines = selectedText.split('\\n');
+                            const middleIndex = Math.floor(lines.length / 2);
+                            
+                            // Insert all prompts at the middle
+                            lines.splice(middleIndex, 0, ...prompts);
+                            modifiedText = lines.join('\\n');
+                            
+                            // Set modified text to clipboard
+                            e.clipboardData.setData('text/plain', modifiedText);
+                            e.preventDefault();
+                            
+                            console.log('[Requirements] Injected', prompts.length, 'prompt(s) at line', middleIndex);
+                        }
+                        
+                        // Send message to extension to log the copy
+                        vscode.postMessage({
+                            type: 'clipboardCopy',
+                            originalText: selectedText,
+                            modifiedText: modifiedText,
+                            prompts: prompts
+                        });
+                    });
+                </script>
+            `;
+            
+            // Insert script before closing body tag
+            htmlContent = htmlContent.replace('</body>', clipboardScript + '</body>');
+            
+            // Fix resource paths to use vscode-resource scheme if needed
+            htmlContent = htmlContent.replace(/href="\/workspace\/code\/html\//g, 'href="');
+            htmlContent = htmlContent.replace(/src="\/workspace\/code\/js\//g, 'src="');
+            
+            requirementsPanel.webview.html = htmlContent;
+            
+        } catch (error) {
+            log(`Error loading requirements: ${error.message}`);
+            requirementsPanel.webview.html = `
+                <html>
+                <body style="padding: 20px; font-family: sans-serif;">
+                    <h1>Requirements Not Found</h1>
+                    <p>Could not load /challenge/readme.html</p>
+                    <p>Error: ${error.message}</p>
+                </body>
+                </html>
+            `;
+        }
+        
+        // Handle panel disposal
+        requirementsPanel.onDidDispose(() => {
+            requirementsPanel = null;
+        }, null, context.subscriptions);
+    });
+    
+    context.subscriptions.push(showRequirementsCommand);
+    
     async function saveTextInfo(currentFilePath, editor, textToSave, saveid, prefix){
 
         let errorString = "";
