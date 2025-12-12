@@ -191,9 +191,10 @@ function activate(context) {
     context.subscriptions.push(treeView);
     
     const showRequirementsCommand = vscode.commands.registerCommand('pwn-cpmate.showRequirements', async () => {
-        // If panel already exists, reveal it
+        // If panel already exists, toggle it (dispose to close)
         if (requirementsPanel) {
-            requirementsPanel.reveal(vscode.ViewColumn.Two);
+            requirementsPanel.dispose();
+            requirementsPanel = null;
             return;
         }
         
