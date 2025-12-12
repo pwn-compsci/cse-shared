@@ -233,6 +233,30 @@ function activate(context) {
                     } catch (error) {
                         log(`[Requirements] Error logging to JSON: ${error.message}`);
                     }
+                    
+                    // Also append to main log.json file
+                    const mainLogPath = path.join(skipDir, 'log.json');
+                    try {
+                        let logData = {};
+                        try {
+                            const data = await fs.readFile(mainLogPath, 'utf8');
+                            logData = JSON.parse(data);
+                        } catch (readError) {
+                            if (readError.code !== 'ENOENT') {
+                                throw readError;
+                            }
+                            // File doesn't exist, start fresh
+                            logData = {};
+                        }
+                        
+                        // Add entry with saveid as key
+                        logData[saveid] = logEntry;
+                        
+                        await fs.writeFile(mainLogPath, JSON.stringify(logData, null, 2));
+                        log(`[Requirements] Appended to ${mainLogPath}`);
+                    } catch (logError) {
+                        log(`[Requirements] Error updating log.json: ${logError.message}`);
+                    }
                 }
             },
             undefined,
