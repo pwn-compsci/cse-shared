@@ -191,25 +191,6 @@ function activate(context) {
                 vscode.commands.executeCommand('pwn-cpmate.showRequirements');
             }, 1000); // Delay to let VS Code finish initializing
         }
-        
-        // Hide Extensions and Source Control from activity bar by updating settings
-        setTimeout(async () => {
-            try {
-                const workbenchConfig = vscode.workspace.getConfiguration('workbench');
-                
-                // Update the hidden items in activity bar
-                // This sets which views are hidden in the activity bar
-                await workbenchConfig.update(
-                    'activityBar.hiddenItems',
-                    ['workbench.view.extensions', 'workbench.view.scm'],
-                    vscode.ConfigurationTarget.Global
-                );
-                
-                log('[Activity Bar] Hidden Extensions and Source Control buttons');
-            } catch (error) {
-                log(`[Activity Bar] Could not hide activity bar items: ${error.message}`);
-            }
-        }, 2000);
     }
     
     // Intercept opening readme.html file to show webview instead
