@@ -188,9 +188,36 @@ function activate(context) {
         const config = vscode.workspace.getConfiguration('pwn-cpmate');
         const autoOpen = config.get('autoOpenRequirements', true);
         if (autoOpen) {
-            setTimeout(() => {
-                vscode.commands.executeCommand('pwn-cpmate.showRequirements');
-            }, 1000); // Delay to let VS Code finish initializing
+            // Close all tabs in column 2 and Welcome tabs before opening requirements
+            setTimeout(async () => {
+                try {
+                    // Close Welcome tabs
+                    const welcomeTabs = vscode.window.tabGroups.all
+                        .flatMap(group => group.tabs)
+                        .filter(tab => {
+                            const input = tab.input;
+                            return input && typeof input === 'object' && 
+                                   'uri' in input && input.uri && 
+                                   input.uri.scheme === 'walkthrough';
+                        });
+                    if (welcomeTabs.length > 0) {
+                        await vscode.window.tabGroups.close(welcomeTabs);
+                    }
+                    
+                    // Close all tabs in column 2 (ViewColumn.Two)
+                    const column2Group = vscode.window.tabGroups.all.find(group => group.viewColumn === vscode.ViewColumn.Two);
+                    if (column2Group && column2Group.tabs.length > 0) {
+                        await vscode.window.tabGroups.close(column2Group.tabs);
+                    }
+                } catch (err) {
+                    console.error('[Requirements] Error closing startup tabs:', err);
+                }
+                
+                // Open requirements after cleanup
+                setTimeout(() => {
+                    vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+                }, 200);
+            }, 800); // Wait for VS Code to finish restoring workspace
         }
     }
     
@@ -248,13 +275,29 @@ function activate(context) {
         const viewColumn = paneMode === 'single' ? vscode.ViewColumn.Active : vscode.ViewColumn.Two;
         
         // If using split mode, close any existing editors in column 2 to avoid duplicates
+        // Also close Welcome tabs
         if (viewColumn === vscode.ViewColumn.Two) {
             const tabGroups = vscode.window.tabGroups.all;
+            
+            // Close Welcome tabs in all columns
+            const welcomeTabs = tabGroups
+                .flatMap(group => group.tabs)
+                .filter(tab => {
+                    const input = tab.input;
+                    return input && typeof input === 'object' && 
+                           'uri' in input && input.uri && 
+                           input.uri.scheme === 'walkthrough';
+                });
+            if (welcomeTabs.length > 0) {
+                await vscode.window.tabGroups.close(welcomeTabs);
+            }
+            
+            // Close all tabs in column 2
             for (const group of tabGroups) {
                 if (group.viewColumn === vscode.ViewColumn.Two) {
                     // Close all tabs in the second column
-                    for (const tab of group.tabs) {
-                        await vscode.window.tabGroups.close(tab);
+                    if (group.tabs.length > 0) {
+                        await vscode.window.tabGroups.close(group.tabs);
                     }
                 }
             }
