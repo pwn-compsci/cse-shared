@@ -56,6 +56,16 @@
           "command": "pwn-cpmate.showRequirements"
         }
       ]
+    },
+    "configuration": {
+      "title": "PWN Copilot Mate",
+      "properties": {
+        "pwn-cpmate.autoOpenRequirements": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open requirements panel on startup if readme.html exists"
+        }
+      }
     }
   },
   "scripts": {

@@ -153,42 +153,46 @@ function activate(context) {
     // Requirements webview panel
     let requirementsPanel = null;
     
-    // Register a simple tree data provider that auto-triggers the command
-    class RequirementsViewProvider {
-        getTreeItem(element) {
-            return element;
-        }
+    // Check if readme.html exists
+    const readmeExists = fsa.existsSync('/challenge/readme.html');
+    
+    // Create status bar button for requirements if readme exists
+    if (readmeExists) {
+        const requirementsButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        requirementsButton.text = "$(book) Requirements";
+        requirementsButton.tooltip = "Show Challenge Requirements (Ctrl+Shift+R)";
+        requirementsButton.command = 'pwn-cpmate.showRequirements';
+        requirementsButton.show();
+        context.subscriptions.push(requirementsButton);
         
-        getChildren() {
-            return [];
+        // Auto-open requirements on startup if configured
+        const config = vscode.workspace.getConfiguration('pwn-cpmate');
+        const autoOpen = config.get('autoOpenRequirements', true);
+        if (autoOpen) {
+            setTimeout(() => {
+                vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+            }, 1000); // Delay to let VS Code finish initializing
         }
     }
     
-    const requirementsViewProvider = new RequirementsViewProvider();
-    vscode.window.registerTreeDataProvider('pwn-cpmate.requirementsView', requirementsViewProvider);
-    
-    // Auto-trigger requirements when view becomes visible
-    let viewVisible = false;
-    vscode.window.onDidChangeActiveColorTheme(() => {
-        // This is a hack - we trigger on theme change which happens when view opens
-        if (!viewVisible) {
-            viewVisible = true;
+    // Intercept opening readme.html file to show webview instead
+    vscode.workspace.onDidOpenTextDocument((document) => {
+        if (document.uri.fsPath === '/challenge/readme.html') {
+            // Close the text editor
+            vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            // Show webview instead
             vscode.commands.executeCommand('pwn-cpmate.showRequirements');
         }
     });
     
-    // Better approach: listen to view visibility directly
-    const treeView = vscode.window.createTreeView('pwn-cpmate.requirementsView', {
-        treeDataProvider: requirementsViewProvider
+    // Listen for window messages (from outer iframe or other sources)
+    // This allows external code to trigger requirements display
+    const messageListener = vscode.window.onDidChangeWindowState((state) => {
+        // Check if there's a global message we should respond to
+        // Note: This is limited - VS Code doesn't have direct postMessage API
+        // But we can use the command palette or custom protocol handlers
     });
-    
-    treeView.onDidChangeVisibility((e) => {
-        if (e.visible) {
-            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
-        }
-    });
-    
-    context.subscriptions.push(treeView);
+    context.subscriptions.push(messageListener);
     
     const showRequirementsCommand = vscode.commands.registerCommand('pwn-cpmate.showRequirements', async () => {
         // If panel already exists, toggle it (dispose to close)
