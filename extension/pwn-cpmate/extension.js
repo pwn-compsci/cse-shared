@@ -238,9 +238,6 @@ function activate(context) {
             return;
         }
         
-        // Switch to Explorer view (project container)
-        await vscode.commands.executeCommand('workbench.view.explorer');
-        
         // Get user preference for pane mode
         const config = vscode.workspace.getConfiguration('pwn-cpmate');
         const paneMode = config.get('requirementsPaneMode', 'split');
