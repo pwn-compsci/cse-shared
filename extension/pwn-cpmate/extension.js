@@ -287,12 +287,9 @@ function activate(context) {
                         log(`[Requirements] Error saving CC file: ${error.message}`);
                     }
                     
-                    // Also log to skipped directory JSON with timestamped filename
+                    // Append to main log.json file
                     const skipDir = path.join(os.homedir(), '.local/share/ultima/skipped');
                     await fs.mkdir(skipDir, { recursive: true });
-                    
-                    const jsonFilename = `clipboard_${saveid}.json`;
-                    const jsonFullPath = path.join(skipDir, jsonFilename);
                     
                     const logEntry = {
                         timestamp: new Date().toISOString(),
@@ -309,15 +306,6 @@ function activate(context) {
                         textLength: originalText.length,
                         linesCount: originalText.split('\n').length
                     };
-                    
-                    try {
-                        await fs.writeFile(jsonFullPath, JSON.stringify(logEntry, null, 2));
-                        log(`[Requirements] Logged clipboard data to ${jsonFullPath}`);
-                    } catch (error) {
-                        log(`[Requirements] Error logging to JSON: ${error.message}`);
-                    }
-                    
-                    // Also append to main log.json file
                     const mainLogPath = path.join(skipDir, 'log.json');
                     try {
                         let logData = {};
