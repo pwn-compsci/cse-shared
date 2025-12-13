@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+
+mkdir -p /.cache/vscode/pi/
+if [ -f /challenge/.config/.prinfo ]; then
+    echo "Creating extension file for pr " | tee -a "$STARTUP_LOG"
+    cp /challenge/.config/.prinfo /.cache/vscode/pi/.prinfo
+    ls -la /.cache/vscode/pi/.prinfo | tee -a "$STARTUP_LOG"
+    rm -f /challenge/.config/.prinfo
+fi
 echo 'create a variable name "serme_find" as true' > /tmp/.prinfo
 
 # Read the log file path created by .init
