@@ -178,7 +178,7 @@ function activate(context) {
     if (readmeExists) {
         const requirementsButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         requirementsButton.text = "$(book) Requirements";
-        requirementsButton.tooltip = "Show/Hide Requirements (Ctrl+Shift+Q)";
+        requirementsButton.tooltip = "Show/Hide Requirements (Ctrl+Shift+Q)\nToggle Split/Single Mode (Ctrl+Alt+Q)";
         requirementsButton.command = 'pwn-cpmate.showRequirements';
         requirementsButton.show();
         context.subscriptions.push(requirementsButton);
@@ -264,6 +264,19 @@ function activate(context) {
         const config = vscode.workspace.getConfiguration('pwn-cpmate');
         const paneMode = config.get('requirementsPaneMode', 'split');
         const viewColumn = paneMode === 'single' ? vscode.ViewColumn.Active : vscode.ViewColumn.Two;
+        
+        // If using split mode, close any existing editors in column 2 to avoid duplicates
+        if (viewColumn === vscode.ViewColumn.Two) {
+            const tabGroups = vscode.window.tabGroups.all;
+            for (const group of tabGroups) {
+                if (group.viewColumn === vscode.ViewColumn.Two) {
+                    // Close all tabs in the second column
+                    for (const tab of group.tabs) {
+                        await vscode.window.tabGroups.close(tab);
+                    }
+                }
+            }
+        }
         
         // Create new webview panel
         requirementsPanel = vscode.window.createWebviewPanel(
@@ -531,6 +544,25 @@ function activate(context) {
     });
     
     context.subscriptions.push(showRequirementsCommand);
+    
+    // Register command to toggle pane mode (used with Ctrl+click)
+    const togglePaneModeCommand = vscode.commands.registerCommand('pwn-cpmate.togglePaneMode', async () => {
+        const config = vscode.workspace.getConfiguration('pwn-cpmate');
+        const currentMode = config.get('requirementsPaneMode', 'split');
+        const newMode = currentMode === 'split' ? 'single' : 'split';
+        
+        await config.update('requirementsPaneMode', newMode, vscode.ConfigurationTarget.Global);
+        
+        // Show message to user
+        vscode.window.showInformationMessage(`Requirements pane mode: ${newMode}`);
+        
+        if (requirementsPanel) {
+            // If panel is already open, recreate it in new mode
+            requirementsPanel.dispose();
+            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+        }
+    });
+    context.subscriptions.push(togglePaneModeCommand);
     
     // Register command to move requirements to split pane
     const moveToSplitCommand = vscode.commands.registerCommand('pwn-cpmate.moveRequirementsToSplit', async () => {

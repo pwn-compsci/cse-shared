@@ -34,6 +34,11 @@
         "command": "pwn-cpmate.moveRequirementsToSingle",
         "title": "Move Requirements to Single Pane",
         "category": "PWN"
+      },
+      {
+        "command": "pwn-cpmate.togglePaneMode",
+        "title": "Toggle Requirements Pane Mode (Split/Single)",
+        "category": "PWN"
       }
     ],
     "keybindings": [
@@ -41,6 +46,11 @@
         "command": "pwn-cpmate.showRequirements",
         "key": "ctrl+shift+q",
         "mac": "cmd+shift+q"
+      },
+      {
+        "command": "pwn-cpmate.togglePaneMode",
+        "key": "ctrl+alt+q",
+        "mac": "cmd+alt+q"
       }
     ],
     "menus": {
