@@ -407,12 +407,31 @@ function activate(context) {
             try {
                 const cssPath = '/challenge/shared-readme.css';
                 cssContent = await fs.readFile(cssPath, 'utf8');
-                // Inject CSS as inline style to ensure it loads
-                const styleTag = `<style>${cssContent}</style>`;
-                htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
             } catch (cssError) {
-                log(`Could not load CSS: ${cssError.message}`);
+                log(`Could not load CSS from /challenge/shared-readme.css: ${cssError.message}`);
+                // Fallback to minimal CSS with data-hide support
+                cssContent = `
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                        background: #1a1a1a; 
+                        color: #e0e0e0; 
+                        padding: 20px;
+                        line-height: 1.6;
+                    }
+                    [data-hide="true"] {
+                        position: absolute;
+                        left: -10000px;
+                        width: 1px;
+                        height: 1px;
+                        overflow: hidden;
+                        clip: rect(1px, 1px, 1px, 1px);
+                        white-space: nowrap;
+                    }
+                `;
             }
+            // Inject CSS as inline style to ensure it loads
+            const styleTag = `<style>${cssContent}</style>`;
+            htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
             
             // Insert script before closing body tag
             htmlContent = htmlContent.replace('</body>', clipboardScript + '</body>');
