@@ -153,14 +153,29 @@ function activate(context) {
     // Requirements webview panel
     let requirementsPanel = null;
     
+    // Function to find readme.html in priority order
+    function findReadmePath() {
+        const paths = [
+            '/challenge/.config/readme.html',
+            '/challenge/readme.html'
+        ];
+        for (const p of paths) {
+            if (fsa.existsSync(p)) {
+                return p;
+            }
+        }
+        return null;
+    }
+    
     // Check if readme.html exists
-    const readmeExists = fsa.existsSync('/challenge/readme.html');
+    const readmePath = findReadmePath();
+    const readmeExists = readmePath !== null;
     
     // Create status bar button for requirements if readme exists
     if (readmeExists) {
         const requirementsButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         requirementsButton.text = "$(book) Requirements";
-        requirementsButton.tooltip = "Show Challenge Requirements (Ctrl+Shift+R)";
+        requirementsButton.tooltip = "Show/Hide Requirements (Ctrl+R)";
         requirementsButton.command = 'pwn-cpmate.showRequirements';
         requirementsButton.show();
         context.subscriptions.push(requirementsButton);
@@ -177,7 +192,8 @@ function activate(context) {
     
     // Intercept opening readme.html file to show webview instead
     vscode.workspace.onDidOpenTextDocument((document) => {
-        if (document.uri.fsPath === '/challenge/readme.html') {
+        const filePath = document.uri.fsPath;
+        if (filePath === '/challenge/readme.html' || filePath === '/challenge/.config/readme.html') {
             // Close the text editor
             vscode.commands.executeCommand('workbench.action.closeActiveEditor');
             // Show webview instead
@@ -222,16 +238,27 @@ function activate(context) {
             return;
         }
         
+        // Get user preference for pane mode
+        const config = vscode.workspace.getConfiguration('pwn-cpmate');
+        const paneMode = config.get('requirementsPaneMode', 'split');
+        const viewColumn = paneMode === 'single' ? vscode.ViewColumn.Active : vscode.ViewColumn.Two;
+        
         // Create new webview panel
         requirementsPanel = vscode.window.createWebviewPanel(
             'pwnRequirements',
             'Requirements',
-            vscode.ViewColumn.Two,
+            viewColumn,
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [vscode.Uri.file('/challenge')]
             }
+        );
+        
+        // Handle panel disposal
+        requirementsPanel.onDidDispose(() => {
+            requirementsPanel = null;
+        }, null, context.subscriptions);
         );
         
         // Handle messages from webview
@@ -336,8 +363,11 @@ function activate(context) {
         
         // Load readme.html content
         try {
-            const readmePath = '/challenge/readme.html';
-            let htmlContent = await fs.readFile(readmePath, 'utf8');
+            const actualReadmePath = findReadmePath();
+            if (!actualReadmePath) {
+                throw new Error('readme.html not found');
+            }
+            let htmlContent = await fs.readFile(actualReadmePath, 'utf8');
             
             // Inject clipboard interception script
             const clipboardScript = `
@@ -461,6 +491,32 @@ function activate(context) {
     });
     
     context.subscriptions.push(showRequirementsCommand);
+    
+    // Register command to move requirements to split pane
+    const moveToSplitCommand = vscode.commands.registerCommand('pwn-cpmate.moveRequirementsToSplit', async () => {
+        const config = vscode.workspace.getConfiguration('pwn-cpmate');
+        await config.update('requirementsPaneMode', 'split', vscode.ConfigurationTarget.Global);
+        
+        if (requirementsPanel) {
+            // If panel is already open, recreate it in split mode
+            requirementsPanel.dispose();
+            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+        }
+    });
+    context.subscriptions.push(moveToSplitCommand);
+    
+    // Register command to move requirements to single pane
+    const moveToSingleCommand = vscode.commands.registerCommand('pwn-cpmate.moveRequirementsToSingle', async () => {
+        const config = vscode.workspace.getConfiguration('pwn-cpmate');
+        await config.update('requirementsPaneMode', 'single', vscode.ConfigurationTarget.Global);
+        
+        if (requirementsPanel) {
+            // If panel is already open, recreate it in single pane mode
+            requirementsPanel.dispose();
+            vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+        }
+    });
+    context.subscriptions.push(moveToSingleCommand);
     
     async function saveTextInfo(currentFilePath, editor, textToSave, saveid, prefix){
 

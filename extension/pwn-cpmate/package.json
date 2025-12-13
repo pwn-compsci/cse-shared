@@ -21,16 +21,26 @@
     "commands": [
       {
         "command": "pwn-cpmate.showRequirements",
-        "title": "Show Requirements",
+        "title": "Show/Hide Requirements",
         "category": "PWN",
         "icon": "$(book)"
+      },
+      {
+        "command": "pwn-cpmate.moveRequirementsToSplit",
+        "title": "Move Requirements to Split Pane",
+        "category": "PWN"
+      },
+      {
+        "command": "pwn-cpmate.moveRequirementsToSingle",
+        "title": "Move Requirements to Single Pane",
+        "category": "PWN"
       }
     ],
     "keybindings": [
       {
         "command": "pwn-cpmate.showRequirements",
-        "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r"
+        "key": "ctrl+r",
+        "mac": "cmd+r"
       }
     ],
     "viewsContainers": {
@@ -64,6 +74,12 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open requirements panel on startup if readme.html exists"
+        },
+        "pwn-cpmate.requirementsPaneMode": {
+          "type": "string",
+          "enum": ["split", "single"],
+          "default": "split",
+          "description": "Display requirements in split pane or single pane (overlays code)"
         }
       }
     }
