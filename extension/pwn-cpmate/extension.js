@@ -175,7 +175,7 @@ function activate(context) {
     if (readmeExists) {
         const requirementsButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         requirementsButton.text = "$(book) Requirements";
-        requirementsButton.tooltip = "Show/Hide Requirements (Ctrl+R)";
+        requirementsButton.tooltip = "Show/Hide Requirements (Ctrl+Shift+Q)";
         requirementsButton.command = 'pwn-cpmate.showRequirements';
         requirementsButton.show();
         context.subscriptions.push(requirementsButton);

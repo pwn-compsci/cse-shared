@@ -39,8 +39,8 @@
     "keybindings": [
       {
         "command": "pwn-cpmate.showRequirements",
-        "key": "ctrl+r",
-        "mac": "cmd+r"
+        "key": "ctrl+shift+q",
+        "mac": "cmd+shift+q"
       }
     ],
     "viewsContainers": {
