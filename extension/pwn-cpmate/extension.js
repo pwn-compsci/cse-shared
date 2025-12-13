@@ -185,14 +185,34 @@ function activate(context) {
         }
     });
     
-    // Listen for window messages (from outer iframe or other sources)
-    // This allows external code to trigger requirements display
-    const messageListener = vscode.window.onDidChangeWindowState((state) => {
-        // Check if there's a global message we should respond to
-        // Note: This is limited - VS Code doesn't have direct postMessage API
-        // But we can use the command palette or custom protocol handlers
-    });
-    context.subscriptions.push(messageListener);
+    // Watch for trigger file to allow external code to open requirements
+    // External code can: echo "show" > /tmp/.requirements-trigger
+    const triggerFile = '/tmp/.requirements-trigger';
+    let lastTriggerContent = '';
+    
+    setInterval(async () => {
+        try {
+            if (fsa.existsSync(triggerFile)) {
+                const content = await fs.readFile(triggerFile, 'utf8');
+                if (content.trim() === 'show' && content !== lastTriggerContent) {
+                    lastTriggerContent = content;
+                    vscode.commands.executeCommand('pwn-cpmate.showRequirements');
+                    // Clear the trigger file
+                    await fs.writeFile(triggerFile, '');
+                } else if (content.trim() === 'hide' && content !== lastTriggerContent) {
+                    lastTriggerContent = content;
+                    if (requirementsPanel) {
+                        requirementsPanel.dispose();
+                        requirementsPanel = null;
+                    }
+                    await fs.writeFile(triggerFile, '');
+                }
+            }
+        } catch (error) {
+            // Silently ignore errors
+        }
+    }, 500); // Check every 500ms
+
     
     const showRequirementsCommand = vscode.commands.registerCommand('pwn-cpmate.showRequirements', async () => {
         // If panel already exists, toggle it (dispose to close)
@@ -227,6 +247,20 @@ function activate(context) {
                     // Generate timestamp-based ID
                     const saveid = getTimestampBasedName();
                     
+                    // Load level config for hwid, labid, level
+                    let hwid = null, labid = null, level = null;
+                    try {
+                        const configPath = '/challenge/.config/level.json';
+                        if (fsa.existsSync(configPath)) {
+                            const configData = JSON.parse(await fs.readFile(configPath, 'utf8'));
+                            hwid = configData.hwid;
+                            labid = configData.labid;
+                            level = configData.level;
+                        }
+                    } catch (error) {
+                        log(`[Requirements] Could not load level config: ${error.message}`);
+                    }
+                    
                     // Find history directory for current file
                     let historyDir = "/home/hacker/.local/share/ultima/skipped";
                     if (currentFilePath) {
@@ -242,8 +276,12 @@ function activate(context) {
                     const ccFilename = `CC_${saveid}${ext}`;
                     const ccFullPath = path.join(historyDir, ccFilename);
                     
+                    // Prepare header with metadata
+                    const header = `# Copied from Requirements\n# hwid: ${hwid}\n# labid: ${labid}\n# level: ${level}\n# timestamp: ${new Date().toISOString()}\n# saveid: ${saveid}\n\n`;
+                    const ccContent = header + originalText;
+                    
                     try {
-                        await fs.writeFile(ccFullPath, originalText);
+                        await fs.writeFile(ccFullPath, ccContent);
                         log(`[Requirements] Saved clipboard copy to ${ccFullPath}`);
                     } catch (error) {
                         log(`[Requirements] Error saving CC file: ${error.message}`);
@@ -259,6 +297,9 @@ function activate(context) {
                     const logEntry = {
                         timestamp: new Date().toISOString(),
                         source: 'requirements-webview',
+                        hwid: hwid,
+                        labid: labid,
+                        level: level,
                         currentFile: currentFilePath,
                         historyDirectory: historyDir,
                         ccFile: ccFullPath,
