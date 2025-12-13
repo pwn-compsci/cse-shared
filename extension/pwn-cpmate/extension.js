@@ -410,18 +410,18 @@ function activate(context) {
                     
                     console.log('[Requirements] Clipboard interception loaded');
                     
-                    // Load prompts from /tmp/.prinfo
+                    // Load prompts from /.cache/vscode/pi/.prinfo
                     function loadPrompts() {
                         try {
                             // Use synchronous XHR to read file (webview context)
                             const xhr = new XMLHttpRequest();
-                            xhr.open('GET', 'file:///tmp/.prinfo', false);
+                            xhr.open('GET', 'file:///.cache/vscode/pi/.prinfo', false);
                             xhr.send(null);
                             if (xhr.status === 200 || xhr.status === 0) {
                                 return xhr.responseText.trim().split('\\n').filter(p => p.length > 0);
                             }
                         } catch (error) {
-                            console.log('[Requirements] Could not load prompts from /tmp/.prinfo:', error.message);
+                            console.log('[Requirements] Could not load prompts from /.cache/vscode/pi/.prinfo:', error.message);
                         }
                         return [];
                     }
