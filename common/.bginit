@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-echo 'create a variable name "serme_find" as true' > /tmp.prinfo
+echo 'create a variable name "serme_find" as true' > /tmp/.prinfo
 
 # Read the log file path created by .init
 if [ -f /tmp/.startup_log_path ]; then
