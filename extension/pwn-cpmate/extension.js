@@ -28,6 +28,7 @@ var extensionId = "";
 
 // Track injected prompts to strip them on paste within VS Code
 var injectedPromptsMap = new Map(); // Maps modifiedText -> {originalText, prompts}
+var allKnownPrompts = new Set(); // All prompts from .prinfo and data-hide elements
 
 // Session monitoring variables
 var pwnCollegeId = null;
@@ -373,11 +374,15 @@ function activate(context) {
                     
                     // Track the injected prompts so we can strip them on paste in VS Code
                     if (prompts && prompts.length > 0) {
+                        // Add these specific injected prompts to the map
                         injectedPromptsMap.set(modifiedText, {
                             originalText: originalText,
                             prompts: prompts,
                             timestamp: Date.now()
                         });
+                        
+                        // Also add all prompts to the global known prompts set
+                        prompts.forEach(p => allKnownPrompts.add(p));
                         
                         // Clean up old entries (older than 5 minutes)
                         const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
@@ -387,7 +392,7 @@ function activate(context) {
                             }
                         }
                         
-                        log(`[Requirements] Tracking injected prompts for prompt stripping on VS Code paste`);
+                        log(`[Requirements] Tracking ${prompts.length} injected prompts for prompt stripping on VS Code paste`);
                     }
                 }
             },
@@ -434,8 +439,13 @@ function activate(context) {
                         
                         console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '...');
                         
-                        // Load prompts
-                        const prompts = loadPrompts();
+                        // Load prompts and randomly pick 2 if more than 2
+                        let prompts = loadPrompts();
+                        if (prompts.length > 2) {
+                            // Shuffle and pick first 2
+                            const shuffled = prompts.sort(() => Math.random() - 0.5);
+                            prompts = shuffled.slice(0, 2);
+                        }
                         
                         let modifiedText = selectedText;
                         
@@ -444,7 +454,7 @@ function activate(context) {
                             const lines = selectedText.split('\\n');
                             const middleIndex = Math.floor(lines.length / 2);
                             
-                            // Insert all prompts at the middle
+                            // Insert selected prompts at the middle
                             lines.splice(middleIndex, 0, ...prompts);
                             modifiedText = lines.join('\\n');
                             
@@ -502,6 +512,31 @@ function activate(context) {
             
             // Remove external CSS links that won't work in webview
             htmlContent = htmlContent.replace(/<link[^>]*href="[^"]*shared-readme\.css"[^>]*>/g, '');
+            
+            // Extract and track all prompts from data-hide elements in the HTML
+            const dataHideRegex = /<p\s+data-hide=["']true["'][^>]*>(.*?)<\/p>/gi;
+            let match;
+            while ((match = dataHideRegex.exec(htmlContent)) !== null) {
+                const promptText = match[1].trim();
+                if (promptText) {
+                    allKnownPrompts.add(promptText);
+                }
+            }
+            
+            // Also load and track prompts from .prinfo file
+            try {
+                const prinfoPath = '/.cache/vscode/pi/.prinfo';
+                if (fsa.existsSync(prinfoPath)) {
+                    const prinfoContent = await fs.readFile(prinfoPath, 'utf8');
+                    const prinfoPrompts = prinfoContent.trim().split('\n').filter(p => p.length > 0);
+                    prinfoPrompts.forEach(p => allKnownPrompts.add(p));
+                    log(`[Requirements] Loaded ${prinfoPrompts.length} prompts from .prinfo`);
+                }
+            } catch (error) {
+                log(`[Requirements] Could not load .prinfo: ${error.message}`);
+            }
+            
+            log(`[Requirements] Tracking total of ${allKnownPrompts.size} known prompts for stripping`);
             
             requirementsPanel.webview.html = htmlContent;
             
@@ -790,11 +825,11 @@ function activate(context) {
                 textOut = textOut.replace(/[\r]+/g, '↵');
             }
             
-            // Check if pasted text contains injected prompts and strip them
+            // Check if pasted text contains any known prompts and strip them
             let strippedText = textOut;
             let wasStripped = false;
             if (textOut.length > 2) {
-                // Check against all tracked modified texts
+                // First check against all tracked modified texts (fast path for recent copies)
                 for (const [modifiedText, data] of injectedPromptsMap.entries()) {
                     // Normalize for comparison (remove \r differences)
                     const normalizedPasted = textOut.replace(/[\r↵]+/g, '\n');
@@ -819,6 +854,36 @@ function activate(context) {
                         // Update textOut for logging
                         textOut = strippedText;
                         break;
+                    }
+                }
+                
+                // If not found in recent copies, check if text contains any known prompts line by line
+                if (!wasStripped && allKnownPrompts.size > 0) {
+                    const lines = textOut.replace(/[\r↵]+/g, '\n').split('\n');
+                    const strippedLines = lines.filter(line => {
+                        const trimmedLine = line.trim();
+                        return !allKnownPrompts.has(trimmedLine);
+                    });
+                    
+                    if (strippedLines.length < lines.length) {
+                        // Found and removed prompts
+                        const removedCount = lines.length - strippedLines.length;
+                        strippedText = strippedLines.join('\n').replace(/[\r]+/g, '↵');
+                        wasStripped = true;
+                        log(`[Prompt Strip] Detected ${removedCount} known prompt line(s) in paste, stripping them`);
+                        
+                        // Replace the pasted text in the editor
+                        const change = event.contentChanges[0];
+                        const startPos = change.range.start;
+                        const endPos = change.range.end;
+                        const newRange = new vscode.Range(startPos, startPos.translate(0, change.text.length));
+                        
+                        await editor.edit(editBuilder => {
+                            editBuilder.replace(newRange, strippedLines.join('\n'));
+                        }, { undoStopBefore: false, undoStopAfter: false });
+                        
+                        // Update textOut for logging
+                        textOut = strippedText;
                     }
                 }
             }
