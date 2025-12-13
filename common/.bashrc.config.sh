@@ -149,12 +149,13 @@ if [ -d $clevel_work_dir ]; then
         return $rc
     }
     tester() {
-        echo "" >> "$clevel_work_dir/tester.log"
-        echo "========================================" >> "$clevel_work_dir/tester.log"
-        echo "Test run: $(date '+%Y-%m-%d %H:%M:%S')" >> "$clevel_work_dir/tester.log"
-        echo "========================================" >> "$clevel_work_dir/tester.log"
-        echo "" >> "$clevel_work_dir/tester.log"
-        command tester "$@" 2>&1 | tee -a "$clevel_work_dir/tester.log"
+        command tester "$@" 2>&1 | tee "$clevel_work_dir/tester.log"
+        echo "" >> "$clevel_work_dir/.tester_hist.log"
+        echo "========================================" >> "$clevel_work_dir/.tester_hist.log"
+        echo "Test run: $(date '+%Y-%m-%d %H:%M:%S')" >> "$clevel_work_dir/.tester_hist.log"
+        echo "========================================" >> "$clevel_work_dir/.tester_hist.log"
+        echo "" >> "$clevel_work_dir/.tester_hist.log"
+        cat "$clevel_work_dir/tester.log" >> "$clevel_work_dir/.tester_hist.log"
     }
 
     alias bat='/usr/bin/batcat --pager=never'
