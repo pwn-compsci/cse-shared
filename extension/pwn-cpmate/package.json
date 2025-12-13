@@ -43,23 +43,6 @@
         "mac": "cmd+shift+q"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "pwn-requirements",
-          "title": "Requirements",
-          "icon": "requirements_icon.png"
-        }
-      ]
-    },
-    "views": {
-      "pwn-requirements": [
-        {
-          "id": "pwn-cpmate.requirementsView",
-          "name": "Challenge Requirements"
-        }
-      ]
-    },
     "menus": {
       "commandPalette": [
         {
