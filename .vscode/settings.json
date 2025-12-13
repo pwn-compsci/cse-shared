@@ -1,0 +1,5 @@
+{
+    "files.watcherExclude": {
+        "**/cse-shared/**": false
+    }
+}
