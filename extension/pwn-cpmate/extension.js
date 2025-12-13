@@ -26,6 +26,9 @@ var lockChangeCheck = false;
 var clipboardRetries = 0;
 var extensionId = "";
 
+// Track injected prompts to strip them on paste within VS Code
+var injectedPromptsMap = new Map(); // Maps modifiedText -> {originalText, prompts}
+
 // Session monitoring variables
 var pwnCollegeId = null;
 var isExamSession = false;
@@ -353,6 +356,25 @@ function activate(context) {
                         log(`[Requirements] Appended to ${mainLogPath}`);
                     } catch (logError) {
                         log(`[Requirements] Error updating log.json: ${logError.message}`);
+                    }
+                    
+                    // Track the injected prompts so we can strip them on paste in VS Code
+                    if (prompts && prompts.length > 0) {
+                        injectedPromptsMap.set(modifiedText, {
+                            originalText: originalText,
+                            prompts: prompts,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Clean up old entries (older than 5 minutes)
+                        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+                        for (const [key, value] of injectedPromptsMap.entries()) {
+                            if (value.timestamp < fiveMinutesAgo) {
+                                injectedPromptsMap.delete(key);
+                            }
+                        }
+                        
+                        log(`[Requirements] Tracking injected prompts for prompt stripping on VS Code paste`);
                     }
                 }
             },
@@ -734,6 +756,39 @@ function activate(context) {
                                 
             } else {
                 textOut = textOut.replace(/[\r]+/g, '↵');
+            }
+            
+            // Check if pasted text contains injected prompts and strip them
+            let strippedText = textOut;
+            let wasStripped = false;
+            if (textOut.length > 2) {
+                // Check against all tracked modified texts
+                for (const [modifiedText, data] of injectedPromptsMap.entries()) {
+                    // Normalize for comparison (remove \r differences)
+                    const normalizedPasted = textOut.replace(/[\r↵]+/g, '\n');
+                    const normalizedModified = modifiedText.replace(/[\r]+/g, '\n');
+                    
+                    if (normalizedPasted.includes(normalizedModified) || normalizedModified.includes(normalizedPasted)) {
+                        // Found a match - strip prompts by replacing with original text
+                        strippedText = data.originalText.replace(/[\r]+/g, '↵');
+                        wasStripped = true;
+                        log(`[Prompt Strip] Detected paste with injected prompts, stripping ${data.prompts.length} prompt(s)`);
+                        
+                        // Replace the pasted text in the editor
+                        const change = event.contentChanges[0];
+                        const startPos = change.range.start;
+                        const endPos = change.range.end;
+                        const newRange = new vscode.Range(startPos, startPos.translate(0, change.text.length));
+                        
+                        await editor.edit(editBuilder => {
+                            editBuilder.replace(newRange, data.originalText);
+                        }, { undoStopBefore: false, undoStopAfter: false });
+                        
+                        // Update textOut for logging
+                        textOut = strippedText;
+                        break;
+                    }
+                }
             }
             
             const editor = vscode.window.activeTextEditor;
