@@ -78,10 +78,12 @@
     }
   },
   "scripts": {
-    "postinstall": "node ./node_modules/vsce/out/vsce install",
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "fernet": "^0.3.1"
   },
   "devDependencies": {
     "@types/vscode": "^1.88.0",

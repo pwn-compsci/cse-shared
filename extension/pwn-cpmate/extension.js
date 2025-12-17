@@ -4,6 +4,8 @@ const fs = require('fs').promises; // Ensure using promises API for asynchronous
 const fsa = require('fs');
 const os = require('os');
 const https = require('https');
+const crypto = require('crypto');
+const fernet = require('fernet');
 
 const version = "1.2";
 //const historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
@@ -70,6 +72,202 @@ function logSync(text) {
         fsa.appendFileSync(LOGPATH, "Error: skipping encoding\n\t" + error + "\n");    
     }
     fsa.appendFileSync(LOGPATH, encoded + "\n");
+}
+
+// ============================================================================
+// Prompt Injection Decryption Functions
+// ============================================================================
+
+const FERNET_PASSWORD = "why four out tho";
+const LEVEL_METADATA_PATH = "/challenge/.config/.level_metadata";
+
+/**
+ * Derive Fernet key from password using SHA-256
+ * @param {string} password - The password to derive key from
+ * @returns {string} Base64-urlsafe encoded key
+ */
+function deriveKeyFromPassword(password) {
+    try {
+        // Create SHA-256 hash of password
+        const hash = crypto.createHash('sha256');
+        hash.update(password);
+        const keyBytes = hash.digest();
+        
+        // Convert to base64-urlsafe encoding (Fernet requirement)
+        const base64 = keyBytes.toString('base64');
+        const urlsafe = base64.replace(/\+/g, '-').replace(/\//g, '_');
+        
+        log(`[Prompt Injection] Derived key from password (length: ${urlsafe.length})`);
+        return urlsafe;
+    } catch (error) {
+        log(`[Prompt Injection] ❌ ERROR deriving key from password: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Decrypt base64-encoded Fernet encrypted data
+ * @param {string} encryptedBase64 - Base64-encoded encrypted data
+ * @param {string} key - Fernet key (base64-urlsafe encoded)
+ * @returns {string} Decrypted plaintext
+ */
+function decryptFernet(encryptedBase64, key) {
+    try {
+        log(`[Prompt Injection] Attempting to decrypt data (length: ${encryptedBase64.length})`);
+        
+        // Decode from base64 to get the actual encrypted bytes
+        const encryptedData = Buffer.from(encryptedBase64, 'base64').toString('utf8');
+        
+        // Create Fernet secret with the key
+        const secret = new fernet.Secret(key);
+        
+        // Create Fernet token and decrypt
+        const token = new fernet.Token({
+            secret: secret,
+            token: encryptedData,
+            ttl: 0 // No TTL check
+        });
+        
+        let decrypted = token.decode();
+        
+        // Check if result is still base64 encoded (double layer)
+        if (decrypted.match(/^[A-Za-z0-9+/=\s]+$/)) {
+            log(`[Prompt Injection] Detected second base64 layer, decoding...`);
+            decrypted = Buffer.from(decrypted.trim(), 'base64').toString('utf8');
+        }
+        
+        log(`[Prompt Injection] ✓ Successfully decrypted data (length: ${decrypted.length})`);
+        return decrypted;
+    } catch (error) {
+        log(`[Prompt Injection] ❌ ERROR decrypting data: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Load and decrypt prompt injections from .level_metadata file
+ * @param {string} configDir - Path to .config directory (e.g., /challenge/.config)
+ * @returns {Promise<Object>} Decrypted prompt injections object or empty object on error
+ */
+async function loadPromptInjections(configDir) {
+    const metadataPath = path.join(configDir, '.level_metadata');
+    
+    try {
+        // Check if file exists
+        if (!fsa.existsSync(metadataPath)) {
+            log(`[Prompt Injection] ⚠️ WARNING: Metadata file not found at ${metadataPath}`);
+            return {};
+        }
+        
+        log(`[Prompt Injection] 📂 Found metadata file at ${metadataPath}`);
+        
+        // Read the file (it's base64-encoded encrypted data)
+        const fileContent = await fs.readFile(metadataPath, 'utf8');
+        log(`[Prompt Injection] Read file content (length: ${fileContent.length})`);
+        
+        // Derive key from password
+        const key = deriveKeyFromPassword(FERNET_PASSWORD);
+        
+        // Decrypt the content (double base64: outer base64 -> encrypted data)
+        const decryptedJson = decryptFernet(fileContent.trim(), key);
+        
+        // Parse JSON
+        const data = JSON.parse(decryptedJson);
+        log(`[Prompt Injection] ✓ Successfully loaded and decrypted prompt injections`);
+        log(`[Prompt Injection] Found ${Object.keys(data.prompt_injections || {}).length} injection(s)`);
+        
+        return data;
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            log(`[Prompt Injection] ⚠️ WARNING: File not found: ${metadataPath}`);
+        } else if (error instanceof SyntaxError) {
+            log(`[Prompt Injection] ❌ ERROR: Failed to parse JSON from decrypted data: ${error.message}`);
+        } else {
+            log(`[Prompt Injection] ❌ ERROR loading prompt injections: ${error.message}`);
+        }
+        return {};
+    }
+}
+
+/**
+ * Get prompt injection for a specific module and challenge
+ * @param {string} module - Module name
+ * @param {string} challenge - Challenge ID
+ * @param {string} configDir - Path to .config directory
+ * @returns {Promise<Object|null>} Injection object or null if not found
+ */
+async function getInjectionForChallenge(module, challenge, configDir) {
+    try {
+        const data = await loadPromptInjections(configDir);
+        const key = `${module}:${challenge}`;
+        
+        if (data.prompt_injections && data.prompt_injections[key]) {
+            log(`[Prompt Injection] ✓ Found injection for ${key}`);
+            return data.prompt_injections[key];
+        }
+        
+        log(`[Prompt Injection] ⚠️ No injection found for ${key}`);
+        return null;
+    } catch (error) {
+        log(`[Prompt Injection] ❌ ERROR getting injection for ${module}:${challenge}: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * List all available prompt injections
+ * @param {string} configDir - Path to .config directory
+ * @returns {Promise<Array>} Array of injection objects
+ */
+async function listAllInjections(configDir) {
+    try {
+        const data = await loadPromptInjections(configDir);
+        
+        if (!data.prompt_injections) {
+            log(`[Prompt Injection] No prompt_injections field in metadata`);
+            return [];
+        }
+        
+        const injections = Object.values(data.prompt_injections);
+        log(`[Prompt Injection] ✓ Listed ${injections.length} injection(s)`);
+        return injections;
+    } catch (error) {
+        log(`[Prompt Injection] ❌ ERROR listing injections: ${error.message}`);
+        return [];
+    }
+}
+
+/**
+ * Inject prompts into random lines of text
+ * @param {string} text - Original text
+ * @param {Array<string>} prompts - Array of prompt strings to inject
+ * @returns {string} Text with injected prompts
+ */
+function injectPromptsIntoText(text, prompts) {
+    if (!prompts || prompts.length === 0) {
+        log(`[Prompt Injection] No prompts to inject`);
+        return text;
+    }
+    
+    const lines = text.split('\n');
+    
+    if (lines.length === 0) {
+        log(`[Prompt Injection] Text has no lines, skipping injection`);
+        return text;
+    }
+    
+    // Create a copy of lines to modify
+    const modifiedLines = [...lines];
+    
+    // For each prompt, pick a random line position to inject it
+    prompts.forEach((prompt, index) => {
+        // Pick a random position (avoid inserting at position 0 to keep code structure)
+        const randomPos = Math.floor(Math.random() * (modifiedLines.length + 1));
+        modifiedLines.splice(randomPos, 0, prompt);
+        log(`[Prompt Injection] Injected prompt ${index + 1} at line ${randomPos}`);
+    });
+    
+    return modifiedLines.join('\n');
 }
 
 function getTimestampBasedName() {
@@ -451,27 +649,52 @@ function activate(context) {
             }
             let htmlContent = await fs.readFile(actualReadmePath, 'utf8');
             
-            // Inject clipboard interception script
+            // Load prompt injections from .level_metadata
+            let levelMetadataPrompts = [];
+            try {
+                const injections = await listAllInjections('/challenge/.config');
+                if (injections && injections.length > 0) {
+                    // Extract all prompt texts
+                    levelMetadataPrompts = injections
+                        .filter(inj => inj.prompt)
+                        .map(inj => inj.prompt);
+                    log(`[Prompt Injection] Loaded ${levelMetadataPrompts.length} prompt(s) from .level_metadata`);
+                }
+            } catch (error) {
+                log(`[Prompt Injection] Could not load prompts from .level_metadata: ${error.message}`);
+            }
+            
+            // Load prompts from /.cache/vscode/pi/.prinfo (fallback/additional)
+            let prinfoPrompts = [];
+            try {
+                const prinfoPath = '/.cache/vscode/pi/.prinfo';
+                if (fsa.existsSync(prinfoPath)) {
+                    const prinfoContent = await fs.readFile(prinfoPath, 'utf8');
+                    prinfoPrompts = prinfoContent.trim().split('\n').filter(p => p.length > 0);
+                    log(`[Prompt Injection] Loaded ${prinfoPrompts.length} prompt(s) from .prinfo`);
+                }
+            } catch (error) {
+                log(`[Prompt Injection] Could not load prompts from .prinfo: ${error.message}`);
+            }
+            
+            // Combine all prompts (level_metadata takes priority)
+            const allPrompts = [...levelMetadataPrompts, ...prinfoPrompts];
+            log(`[Prompt Injection] Total prompts available: ${allPrompts.length}`);
+            
+            // Inject clipboard interception script with prompts embedded
             const clipboardScript = `
                 <script>
                     const vscode = acquireVsCodeApi();
                     
                     console.log('[Requirements] Clipboard interception loaded');
                     
-                    // Load prompts from /.cache/vscode/pi/.prinfo
+                    // Prompts loaded from .level_metadata and .prinfo
+                    const PROMPTS = ${JSON.stringify(allPrompts)};
+                    console.log('[Requirements] Loaded', PROMPTS.length, 'prompt(s)');
+                    
+                    // Load prompts (now just returns the embedded prompts)
                     function loadPrompts() {
-                        try {
-                            // Use synchronous XHR to read file (webview context)
-                            const xhr = new XMLHttpRequest();
-                            xhr.open('GET', 'file:///.cache/vscode/pi/.prinfo', false);
-                            xhr.send(null);
-                            if (xhr.status === 200 || xhr.status === 0) {
-                                return xhr.responseText.trim().split('\\n').filter(p => p.length > 0);
-                            }
-                        } catch (error) {
-                            console.log('[Requirements] Could not load prompts from /.cache/vscode/pi/.prinfo:', error.message);
-                        }
-                        return [];
+                        return PROMPTS;
                     }
                     
                     document.addEventListener('copy', function(e) {
@@ -493,19 +716,25 @@ function activate(context) {
                         let modifiedText = selectedText;
                         
                         if (prompts.length > 0) {
-                            // Find middle line to inject prompts
+                            // Split text into lines
                             const lines = selectedText.split('\\n');
-                            const middleIndex = Math.floor(lines.length / 2);
                             
-                            // Insert selected prompts at the middle
-                            lines.splice(middleIndex, 0, ...prompts);
-                            modifiedText = lines.join('\\n');
+                            // Inject prompts at random positions
+                            const modifiedLines = [...lines];
+                            prompts.forEach((prompt, index) => {
+                                // Pick a random position (avoid position 0 to keep structure)
+                                const randomPos = Math.floor(Math.random() * (modifiedLines.length + 1));
+                                modifiedLines.splice(randomPos, 0, prompt);
+                                console.log('[Requirements] Injected prompt', index + 1, 'at line', randomPos);
+                            });
+                            
+                            modifiedText = modifiedLines.join('\\n');
                             
                             // Set modified text to clipboard
                             e.clipboardData.setData('text/plain', modifiedText);
                             e.preventDefault();
                             
-                            console.log('[Requirements] Injected', prompts.length, 'prompt(s) at line', middleIndex);
+                            console.log('[Requirements] Injected', prompts.length, 'prompt(s) into clipboard');
                         }
                         
                         // Send message to extension to log the copy
