@@ -528,6 +528,8 @@ function activate(context) {
                     const activeEditor = vscode.window.activeTextEditor;
                     const currentFilePath = activeEditor ? activeEditor.document.uri.fsPath : null;
                     
+                    log(`[Requirements] Active editor file: ${currentFilePath || 'none'}`);
+                    
                     // Generate timestamp-based ID
                     const saveid = getTimestampBasedName();
                     
@@ -550,9 +552,12 @@ function activate(context) {
                     if (currentFilePath) {
                         try {
                             historyDir = await findHistoryDirectory(currentFilePath);
+                            log(`[Requirements] Found history dir: ${historyDir}`);
                         } catch (error) {
                             log(`Could not find history directory: ${error.message}`);
                         }
+                    } else {
+                        log(`[Requirements] No active file, using skipped folder`);
                     }
                     
                     // Save to history directory with CC_ prefix
