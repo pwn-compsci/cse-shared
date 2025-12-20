@@ -1,4 +1,4 @@
-#!/usr/bin/exec-suid -- /usr/bin/python3
+#!/usr/bin/exec-suid -- /run/dojo/bin/python3
 import argparse
 from cmath import log
 import grp

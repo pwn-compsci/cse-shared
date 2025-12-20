@@ -35,4 +35,4 @@ EOF
 ADD --chown=0:0 --chmod=6755 http://github.com/pwncollege/exec-suid/releases/latest/download/exec-suid /usr/bin/exec-suid
 
 
-RUN mkdir /lec_v6
+RUN mkdir /lec_v7
