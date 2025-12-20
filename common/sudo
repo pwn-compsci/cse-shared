@@ -1,10 +1,69 @@
 #!/usr/bin/exec-suid -- /usr/bin/python3
 import argparse
+from cmath import log
 import grp
 import os
 import pwd
 import shutil
 import sys
+
+
+flag = open("/flag").read().strip()
+
+import re
+import base64
+import json
+
+def extract_account_id_from_flag(flag):
+    """
+    Extract account_id from a pwn.college flag.
+    
+    Args:
+        flag: Full flag string like "pwn.college{...}" or just the serialized part
+        
+    Returns:
+        int: The account_id, or None if extraction fails
+    """
+    try:
+        # Extract the serialized part between braces if it's a full flag
+        if '{' in flag and '}' in flag:
+            serialized_part = re.sub(r".+?\{(.+)\}", r"\1", flag)
+        else:
+            serialized_part = flag
+        
+        # Reverse the serialized part (serialize_user_flag reverses it with [::-1])
+        unreversed = serialized_part[::-1]
+        
+        # Split at the dot to separate data from signature
+        parts = unreversed.split('.')
+        if len(parts) < 2:
+            return None
+            
+        data_part = parts[0]
+        
+        # Decode the base64 data part
+        padding = 4 - len(data_part) % 4
+        if padding != 4:
+            data_part += '=' * padding
+        
+        decoded_bytes = base64.urlsafe_b64decode(data_part)
+        decoded_str = decoded_bytes.decode('utf-8')
+        
+        # Parse the JSON array [account_id, challenge_id]
+        data = json.loads(decoded_str)
+        print(f"Decoded flag data: {data}", file=sys.stderr)
+        # Return the account_id (first element)
+        if isinstance(data, list) and len(data) >= 1:
+            return data[0]
+        else:
+            return None
+            
+    except Exception:
+        print("Error extracting account id from flag")
+        return None
+
+USER_ID = extract_account_id_from_flag(flag)
+
 
 
 def error(message):
@@ -22,8 +81,9 @@ def main():
 
     args = parser.parse_args()
 
-    user_info = open("/.user_info", "r").read()
-    if "pwn_college_id" in user_info and ("132329" in user_info or "97168" in user_info):
+    # user_info = open("/.user_info", "r").read() # don't use anymore use flag read 
+    print(f"USER_ID={USER_ID}", file=sys.stderr)
+    if USER_ID == 132329 or USER_ID == 97168 or USER_ID == 97169:
         privileged = 1
     else:
         privileged = int(open("/run/dojo/sys/workspace/privileged", "r").read())

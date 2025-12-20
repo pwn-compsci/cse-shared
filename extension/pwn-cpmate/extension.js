@@ -354,6 +354,19 @@ function activate(context) {
     
     // Requirements webview panel
     let requirementsPanel = null;
+    let lastActiveEditorFile = null;
+    
+    // Track the last active editor file
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor && editor.document.uri.scheme === 'file') {
+            lastActiveEditorFile = editor.document.uri.fsPath;
+        }
+    });
+    
+    // Initialize with current active editor if available
+    if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri.scheme === 'file') {
+        lastActiveEditorFile = vscode.window.activeTextEditor.document.uri.fsPath;
+    }
     
     // Function to find readme.html in priority order
     function findReadmePath() {
@@ -524,9 +537,9 @@ function activate(context) {
                 if (message.type === 'clipboardCopy') {
                     const { originalText, modifiedText, prompts } = message;
                     
-                    // Get active editor and file path
+                    // Get active editor and file path - use lastActiveEditorFile if no active editor
                     const activeEditor = vscode.window.activeTextEditor;
-                    const currentFilePath = activeEditor ? activeEditor.document.uri.fsPath : null;
+                    const currentFilePath = activeEditor ? activeEditor.document.uri.fsPath : lastActiveEditorFile;
                     
                     log(`[Requirements] Active editor file: ${currentFilePath || 'none'}`);
                     

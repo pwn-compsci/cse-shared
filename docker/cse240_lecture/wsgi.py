@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#ERIK 4
+#ERIK 6
 import gzip
 import json
 import os
@@ -28,6 +28,61 @@ else:
     logging.basicConfig(level=logging.INFO)
 
 flag = open("/flag").read().strip()
+
+import re
+import base64
+import json
+
+def extract_account_id_from_flag(flag):
+    """
+    Extract account_id from a pwn.college flag.
+    
+    Args:
+        flag: Full flag string like "pwn.college{...}" or just the serialized part
+        
+    Returns:
+        int: The account_id, or None if extraction fails
+    """
+    try:
+        # Extract the serialized part between braces if it's a full flag
+        if '{' in flag and '}' in flag:
+            serialized_part = re.sub(r".+?\{(.+)\}", r"\1", flag)
+        else:
+            serialized_part = flag
+        
+        # Reverse the serialized part (serialize_user_flag reverses it with [::-1])
+        unreversed = serialized_part[::-1]
+        
+        # Split at the dot to separate data from signature
+        parts = unreversed.split('.')
+        if len(parts) < 2:
+            return None
+            
+        data_part = parts[0]
+        
+        # Decode the base64 data part
+        padding = 4 - len(data_part) % 4
+        if padding != 4:
+            data_part += '=' * padding
+        
+        decoded_bytes = base64.urlsafe_b64decode(data_part)
+        decoded_str = decoded_bytes.decode('utf-8')
+        
+        # Parse the JSON array [account_id, challenge_id]
+        data = json.loads(decoded_str)
+        log.info(f"Decoded flag data: {data}")
+        # Return the account_id (first element)
+        if isinstance(data, list) and len(data) >= 1:
+            return data[0]
+        else:
+            return None
+            
+    except Exception:
+        log.exception("Error extracting account id from flag")
+        return None
+
+USER_ID = extract_account_id_from_flag(flag)
+
 
 with open ("/challenge/.config/level.json", "r") as af:
     if not af.readable():
@@ -151,9 +206,8 @@ def update_telemetry(youtube_id):
     result["coverage"] = {"valid": valid_coverage, "invalid": invalid_coverage}
     total_valid_time = sum(end - start for start, end in valid_coverage)
     completed = total_valid_time > (TOTAL_TIME - 15) # 15 seconds tolerance
-    
-    log.info(f"{event['userId']}, {type(event['userId'])} {event['userId'] == 97168},  {event['userId'] == '97168'} completed={completed} total_valid_time={total_valid_time}")
-    if event["userId"] == 97168:
+            
+    if USER_ID == 97168 or USER_ID == 97169:
         completed = True # force completion for user 97168
 
     print(f"{completed=}")
