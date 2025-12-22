@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#ERIK 4
+#ERIK 10
 import gzip
 import json
 import os
@@ -28,6 +28,61 @@ else:
     logging.basicConfig(level=logging.INFO)
 
 flag = open("/flag").read().strip()
+
+import re
+import base64
+import json
+
+def extract_account_id_from_flag(flag):
+    """
+    Extract account_id from a pwn.college flag.
+    
+    Args:
+        flag: Full flag string like "pwn.college{...}" or just the serialized part
+        
+    Returns:
+        int: The account_id, or None if extraction fails
+    """
+    try:
+        # Extract the serialized part between braces if it's a full flag
+        if '{' in flag and '}' in flag:
+            serialized_part = re.sub(r".+?\{(.+)\}", r"\1", flag)
+        else:
+            serialized_part = flag
+        
+        # Reverse the serialized part (serialize_user_flag reverses it with [::-1])
+        unreversed = serialized_part[::-1]
+        
+        # Split at the dot to separate data from signature
+        parts = unreversed.split('.')
+        if len(parts) < 2:
+            return None
+            
+        data_part = parts[0]
+        
+        # Decode the base64 data part
+        padding = 4 - len(data_part) % 4
+        if padding != 4:
+            data_part += '=' * padding
+        
+        decoded_bytes = base64.urlsafe_b64decode(data_part)
+        decoded_str = decoded_bytes.decode('utf-8')
+        
+        # Parse the JSON array [account_id, challenge_id]
+        data = json.loads(decoded_str)
+        log.info(f"Decoded flag data: {data}")
+        # Return the account_id (first element)
+        if isinstance(data, list) and len(data) >= 1:
+            return data[0]
+        else:
+            return None
+            
+    except Exception:
+        log.exception("Error extracting account id from flag")
+        return None
+
+USER_ID = extract_account_id_from_flag(flag)
+
 
 with open ("/challenge/.config/level.json", "r") as af:
     if not af.readable():
@@ -105,6 +160,31 @@ def lecture(youtube_id):
             
     return render_template("lecture.html", **lecture_context)
 
+@app.route("/<youtube_id>/active-module", methods=["GET"])
+def active_module(youtube_id):
+    """Return limited level.json data with only module, challenge, module_name, and challenge_name"""
+    try:
+        level_config_path = Path("/challenge/.config/level.json")
+        if not level_config_path.exists():
+            return {"error": "Level configuration not found"}, 404
+        
+        with open(level_config_path, 'r') as f:
+            level_data = json.load(f)
+        
+        # Return only the specified fields
+        filtered_data = {
+            "module": level_data.get("module"),
+            "challenge": level_data.get("challenge"),
+            "module_name": level_data.get("module_name"),
+            "challenge_name": level_data.get("challenge_name")
+        }
+        
+        return filtered_data, 200
+        
+    except Exception as e:
+        log.error(f"Error reading level configuration: {e}")
+        return {"error": "Failed to read level configuration"}, 500
+
 @app.route("/<youtube_id>/telemetry_reset", methods=["GET", "POST"]) 
 def reset_telemetry(youtube_id):
     global timeline_file, timeline, answer_attempts
@@ -151,9 +231,8 @@ def update_telemetry(youtube_id):
     result["coverage"] = {"valid": valid_coverage, "invalid": invalid_coverage}
     total_valid_time = sum(end - start for start, end in valid_coverage)
     completed = total_valid_time > (TOTAL_TIME - 15) # 15 seconds tolerance
-    
-    log.info(f"{event['userId']}, {type(event['userId'])} {event['userId'] == 97168},  {event['userId'] == '97168'} completed={completed} total_valid_time={total_valid_time}")
-    if event["userId"] == 97168:
+            
+    if USER_ID == 97168 or USER_ID == 97169:
         completed = True # force completion for user 97168
 
     print(f"{completed=}")
@@ -293,5 +372,57 @@ def resolve_timeline_coverage(timeline):
     invalid_coverage = subtract_intervals(invalid_coverage, valid_coverage)
 
     return valid_coverage, invalid_coverage
+
+@app.route("/<youtube_id>/copy_detected", methods=["POST"])
+def copy_detected(youtube_id):
+    """Handle detection of copy events in MCQ questions"""
+    try:
+        data = request.json
+        if not data:
+            return {"error": "No data provided"}, 400
+        
+        # Generate unique timestamp-based identifier (similar to extension.js pattern)
+        timestamp_ms = int(time.time() * 1000)
+        unique_id = f"{timestamp_ms:016x}"  # 16-character hex timestamp
+        
+        # Create base directory structure
+        base_dir = Path("/home/hacker/cse240")
+        copies_dir = base_dir / ".kc_copies"
+        copies_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Read level configuration
+        level_config = {}
+        level_config_path = Path("/challenge/.config/level.json")
+        if level_config_path.exists():
+            with open(level_config_path, 'r') as f:
+                level_config = json.load(f)
+        
+        # Prepare copy event data
+        copy_data = {
+            "timestamp": data.get("timestamp"),
+            "timestamp_ms": timestamp_ms,
+            "user_id": data.get("user_id"),
+            "copied_text": data.get("copied_text"),
+            "url": data.get("url"),
+            "module": level_config.get("module"),
+            "challenge": level_config.get("challenge"),
+            "hw": level_config.get("hw"),
+            "level": level_config.get("level")
+        }
+        
+        # Save to uniquely named file
+        filename = f"LecCopy_{unique_id}.json"
+        filepath = copies_dir / filename
+        
+        with open(filepath, 'w') as f:
+            json.dump(copy_data, f, indent=2)
+        
+        log.info(f"Copy detected and saved: {filename}, user_id={data.get('user_id')}, text_length={len(data.get('copied_text', ''))}")
+        
+        return {"status": "recorded"}, 200
+        
+    except Exception as e:
+        log.error(f"Error handling copy detection: {e}")
+        return {"error": "Failed to record copy event"}, 500
 
 application = app

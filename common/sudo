@@ -51,7 +51,7 @@ def extract_account_id_from_flag(flag):
         
         # Parse the JSON array [account_id, challenge_id]
         data = json.loads(decoded_str)
-        print(f"Decoded flag data: {data}", file=sys.stderr)
+        # print(f"Decoded flag data: {data}", file=sys.stderr)
         # Return the account_id (first element)
         if isinstance(data, list) and len(data) >= 1:
             return data[0]
@@ -82,7 +82,7 @@ def main():
     args = parser.parse_args()
 
     # user_info = open("/.user_info", "r").read() # don't use anymore use flag read 
-    print(f"USER_ID={USER_ID}", file=sys.stderr)
+    # print(f"USER_ID={USER_ID}", file=sys.stderr)
     if USER_ID == 132329 or USER_ID == 97168 or USER_ID == 97169:
         privileged = 1
     else:

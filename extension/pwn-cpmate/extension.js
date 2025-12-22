@@ -38,11 +38,29 @@ var isExamSession = false;
 var sessionCheckInterval = null;
 const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
+const courseCode = "cse240"
+
+// Global level configuration loaded from /challenge/.config/level.json
+var levelConfig = {
+    cLevelWorkDir: null,
+    hw: null,
+    hwid: null,
+    labid: null,
+    level: null,
+    initialFiles: null,
+    isExam: false,
+    courseCode: "cse240",
+    module: null,
+    challenge: null,
+    module_name: null,
+    challenge_name: null
+};
+
 const PWN_STATUS_FILE = "/home/hacker/.local/share/ultima/pexs.dat"
-const BASEDIR = "/home/hacker/cse240/.vscode/"
+const BASEDIR = `/home/hacker/${courseCode}/.vscode/`
 const LOGPATH = `${BASEDIR}cp.dat`
 const CB_LOG_PATH = `${BASEDIR}cbinfo.dat`
-const DB_PATH = `/home/hacker/cse240/.vscode/trdb.db`
+const DB_PATH = `/home/hacker/${courseCode}/.vscode/trdb.db`
 
 async function log(text) {
     try {
@@ -293,7 +311,7 @@ function activate(context) {
     extensionId = context.extension.id;
     
     // Load configuration on startup and start session monitoring if needed
-    loadSessionConfiguration().then(() => {
+    Promise.all([loadLevelConfig(), loadSessionConfiguration()]).then(() => {
         log(`Session configuration loaded: isExam=${isExamSession}, pwnCollegeId=${pwnCollegeId}`);
         
         // Check if session already dead on startup
@@ -546,19 +564,10 @@ function activate(context) {
                     // Generate timestamp-based ID
                     const saveid = getTimestampBasedName();
                     
-                    // Load level config for hwid, labid, level
-                    let hwid = null, labid = null, level = null;
-                    try {
-                        const configPath = '/challenge/.config/level.json';
-                        if (fsa.existsSync(configPath)) {
-                            const configData = JSON.parse(await fs.readFile(configPath, 'utf8'));
-                            hwid = configData.hwid;
-                            labid = configData.labid;
-                            level = configData.level;
-                        }
-                    } catch (error) {
-                        log(`[Requirements] Could not load level config: ${error.message}`);
-                    }
+                    // Use global level config (already loaded)
+                    const hwid = levelConfig.hwid;
+                    const labid = levelConfig.labid;
+                    const level = levelConfig.level;
                     
                     // Find history directory for current file
                     let historyDir = "/home/hacker/.local/share/ultima/skipped";
@@ -1382,7 +1391,7 @@ function activate(context) {
         fsa.appendFileSync(PWN_STATUS_FILE, "Activated\n");        
 
         let statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
-        statusBarItem.text = `Welcome to pwn.college's CSE240 🦆${version}`;
+        statusBarItem.text = `Welcome to pwn.college's ${levelConfig.courseCode}... ${version}`;
         statusBarItem.show();
 
         // Hide the message after 15 seconds
@@ -1395,27 +1404,17 @@ function activate(context) {
 
         //log(`clevelWorkDir=${cLevelWorkDir} ${fsa.existsSync(cLevelWorkDir)} ${activeEditor}`);
         
-        // Add any startup logic here
-        const configPath = '/challenge/.config/level.json';
-        let configData;
-        try {
-            // Check if the config file exists
-            if (fsa.existsSync(configPath)) {
-                const data = await fs.readFile(configPath, 'utf8');
-                configData = JSON.parse(data);
-                //log("config data=" + configData); // Or handle the config object as needed
-            }
-        } catch (error) {
-            console.error('Failed to read or parse level.json:', error);
-        }
-        const cLevelWorkDir = `${configData["hwdir"]}/${configData["level"]}`;
-        const hw = configData;
-        const hwid = configData["hwid"];
-        const labid = configData["labid"];
-        const level = configData["level"];
-        const initialFiles = configData["initial_files"]
+        // Use global level config (already loaded at startup)
+        const cLevelWorkDir = levelConfig.cLevelWorkDir;
+        const hw = levelConfig.hw;
+        const hwid = levelConfig.hwid;
+        const labid = levelConfig.labid;
+        const level = levelConfig.level;
+        const initialFiles = levelConfig.initialFiles;
         const activeEditor = vscode.window.activeTextEditor;
-        const isExam = typeof configData["examLevel"] === "string" && configData["examLevel"].length > 4;
+        const isExam = levelConfig.isExam;
+        const courseCode = levelConfig.courseCode;
+        
 
         if (isExam){
             historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server-exam', 'User', 'History');
@@ -1423,7 +1422,7 @@ function activate(context) {
 
         // Editor: close files from other projects and open files for this project
         // TODO: add fields to /challenge/.config/level.json that tells this process which files to open up
-        const baseCSE240Path = "/home/hacker/cse240/";
+        const baseCSEPath = `/home/hacker/${courseCode}/`;
         var found = false;
 
         let workdirExists = fsa.existsSync(cLevelWorkDir);
@@ -1435,7 +1434,7 @@ function activate(context) {
         
         log(`Automatically closing files opened from other projects ${activeEditor} ${workdirExists}`)
         if (activeEditor && workdirExists) {
-            found = await processTabs(baseCSE240Path, cLevelWorkDir);
+            found = await processTabs(baseCSEPath, cLevelWorkDir);
         }
                 
         // Open main.c/.cpp/.rkt/.pl if exists
@@ -1594,6 +1593,44 @@ function deactivate() {
 //         console.error('Error accessing .bashrc:', err);
 //         logSync(`Error accessing .bashrc: ${err}`);
 //     }
+}
+
+/**
+ * Load level configuration from /challenge/.config/level.json
+ * Populates the global levelConfig object with challenge details
+ * @returns {Promise<boolean>} True if config was loaded successfully
+ */
+async function loadLevelConfig() {
+    const configPath = '/challenge/.config/level.json';
+    try {
+        if (!fsa.existsSync(configPath)) {
+            log('Level config not found at ' + configPath);
+            return false;
+        }
+        
+        const data = await fs.readFile(configPath, 'utf8');
+        const configData = JSON.parse(data);
+        
+        // Populate global levelConfig object
+        levelConfig.hw = configData;
+        levelConfig.hwid = configData.hwid;
+        levelConfig.labid = configData.labid;
+        levelConfig.level = configData.level;
+        levelConfig.initialFiles = configData.initial_files;
+        levelConfig.isExam = typeof configData.examLevel === "string" && configData.examLevel.length > 4;
+        levelConfig.courseCode = configData.course_code || "cse240";
+        levelConfig.cLevelWorkDir = `${configData.hwdir}/${configData.level}`;
+        levelConfig.module = configData.module;
+        levelConfig.challenge = configData.challenge;
+        levelConfig.module_name = configData.module_name;
+        levelConfig.challenge_name = configData.challenge_name;
+        
+        log(`Level config loaded: ${levelConfig.challenge_name} (${levelConfig.module_name})`);
+        return true;
+    } catch (error) {
+        log(`Error loading level config: ${error.message}`);
+        return false;
+    }
 }
 
 /**

@@ -27,7 +27,7 @@ python3 /opt/redirector.py -d -p 6080 >> /var/log/redirector.log 2>&1
 export PYTHONDONTWRITEBYTECODE=1
 mkdir -p /var/log/gunicorn
 cd /opt/lecture
-gunicorn --daemon
+gunicorn --daemon --reload
 EOF
 
 
@@ -35,4 +35,4 @@ EOF
 ADD --chown=0:0 --chmod=6755 http://github.com/pwncollege/exec-suid/releases/latest/download/exec-suid /usr/bin/exec-suid
 
 
-RUN mkdir /lec_v7
+RUN mkdir /lec_v10

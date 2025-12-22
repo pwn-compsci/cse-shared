@@ -1,10 +1,17 @@
+#!/usr/bin/env bash
 echo "Starting...." |tee -a /tmp/push.log;
-cd /cse/intro-to-programming-languages/_web_dev; 
-cp wsgi.py /cse/cse-shared/docker/cse240_lecture/wsgi.py; 
-cp lecture.html /cse/cse-shared/docker/cse240_lecture/templates/lecture.html; 
-cd /cse/cse-shared/docker/cse240_lecture; 
 
+read -p "Do you want to copy from intro-to-programming-languages? (y/n): " answer
+if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+  cd /cse/intro-to-programming-languages/_web_dev
+  cp wsgi.py /cse/cse-shared/docker/cse240_lecture/wsgi.py; 
+  cp lecture.html /cse/cse-shared/docker/cse240_lecture/templates/lecture.html; 
+  cd /cse/cse-shared/docker/cse240_lecture; 
+fi
+
+echo "Copying redirector.py from cse-shared/common/redirector.py"
 cp ../../common/redirector.py /cse/cse-shared/docker/cse240_lecture/redirector.py;
+
 
 docker build -t tricke/cse240-lecture . | tee -a /tmp/push.log 2>&1
 
