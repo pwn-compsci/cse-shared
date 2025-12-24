@@ -3,9 +3,23 @@
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd $SCRIPTS_DIR
+
+# Run obfuscation build
+echo "Obfuscating code..."
+npm run build
+if [ $? -ne 0 ]; then
+    echo "Failed to obfuscate code"
+    exit 1
+fi
+
 vsce package 
 ret=$?
-if [ $? -ne 0 ]; then 
+
+# Restore original code after packaging (for continued development)
+echo "Restoring original code..."
+node restore-original.js
+
+if [ $ret -ne 0 ]; then 
     echo "Failed to package extension" 
     exit 1
 fi

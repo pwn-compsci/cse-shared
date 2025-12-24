@@ -70,7 +70,10 @@
         },
         "pwn-cpmate.requirementsPaneMode": {
           "type": "string",
-          "enum": ["split", "single"],
+          "enum": [
+            "split",
+            "single"
+          ],
           "default": "split",
           "description": "Display requirements in split pane or single pane (overlays code)"
         }
@@ -80,17 +83,21 @@
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "build": "node build-obfuscate.js",
+    "restore": "node restore-original.js",
+    "package": "npm run build && vsce package && npm run restore"
   },
   "dependencies": {
     "fernet": "^0.3.1"
   },
   "devDependencies": {
-    "@types/vscode": "^1.88.0",
     "@types/mocha": "^10.0.9",
     "@types/node": "20.x",
-    "eslint": "^9.13.0",
+    "@types/vscode": "^1.88.0",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.13.0",
+    "terser": "^5.36.0"
   }
 }
