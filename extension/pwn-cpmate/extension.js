@@ -486,7 +486,9 @@ function activate(context) {
     function findReadmePath() {
         const paths = [
             '/challenge/.config/readme.html',
-            '/challenge/readme.html'
+            '/challenge/readme.html',
+            '/challenge/README.html',
+            '/challenge/.config/README.html'
         ];
         for (const p of paths) {
             if (fsa.existsSync(p)) {
