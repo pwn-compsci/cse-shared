@@ -1,0 +1,20 @@
+Enter a character:
+What character would you like to provide:
+Type in a character:
+Give me a character:
+Input a single character:
+What's your character choice:
+Feed me a character:
+Enter the character:
+Provide a character:
+Type your character:
+What character shall we use:
+Insert a character here:
+Let's start with a character:
+I need a character from you:
+Your character, please:
+Deliver a character:
+Enter one character:
+What character do you choose:
+Give me a letter or character:
+I'm waiting for a character:

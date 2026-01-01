@@ -1,0 +1,20 @@
+Enter an integer:
+What integer would you like to provide:
+Type in an integer:
+Give me an integer:
+Input a whole number:
+What's your integer choice:
+Feed me an integer:
+Enter the integer:
+Provide an integer:
+Type your integer:
+What integer shall we use:
+Insert an integer here:
+Let's start with an integer:
+I need an integer from you:
+Your integer, please:
+Deliver an integer:
+Enter one integer:
+What integer do you choose:
+Give me a number:
+I'm waiting for an integer:
