@@ -176,7 +176,9 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
         if os.path.exists(level_config_path):
             with open(level_config_path, 'r') as f:
                 level_config = json.load(f)
-                module = level_config.get('hwdir', '').split('/')[-1] if level_config.get('hwdir') else None
+                module = level_config.get('module', None)
+                if module is None:
+                    module = level_config.get('hwdir','').split('/')[-1] if level_config.get('hwdir') else None
                 level = level_config.get('level')
                 challenge = level_config.get('challenge', None)
                 if challenge is None:
