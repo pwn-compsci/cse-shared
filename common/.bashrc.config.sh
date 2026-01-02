@@ -89,6 +89,20 @@ if [ -d $clevel_work_dir ]; then
     clevel_work_dir=$(realpath $clevel_work_dir)
 
     hw_id=$(jq -r '.hw' /challenge/.config/level.json)
+    
+    # Helper function to trim compile.log if it exceeds 100KB
+    trim_compile_log() {
+        local log_file="$clevel_work_dir/compile.log"
+        if [ -f "$log_file" ]; then
+            local file_size=$(stat -c%s "$log_file" 2>/dev/null || stat -f%z "$log_file" 2>/dev/null)
+            if [ "$file_size" -gt 102400 ]; then
+                # Keep last 80KB to have buffer before next limit
+                tail -c 81920 "$log_file" > "$log_file.tmp"
+                mv "$log_file.tmp" "$log_file"
+            fi
+        fi
+    }
+    
     # Use only the alias for gcc to avoid function/alias conflicts and syntax errors
     gcc() {
         rm -f main.bi*.gc??
@@ -112,12 +126,18 @@ if [ -d $clevel_work_dir ]; then
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        command gcc $all_flags "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+        # Log both original and final commands with timestamp (append)
+        echo "" >> "$clevel_work_dir/compile.log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: gcc $*" >> "$clevel_work_dir/compile.log"
+        echo "Final:    gcc $all_flags $*" >> "$clevel_work_dir/compile.log"
+        
+        command gcc $all_flags "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
-            printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
+            printf "\033[32mCompilation successful!\033[0m\n" >> "$clevel_work_dir/compile.log"
         fi
         save_compile "gcc" "gcc $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        trim_compile_log
         return $rc
     }
 
@@ -143,50 +163,63 @@ if [ -d $clevel_work_dir ]; then
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        command g++ $all_flags "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+        # Log both original and final commands with timestamp (append)
+        echo "" >> "$clevel_work_dir/compile.log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: g++ $*" >> "$clevel_work_dir/compile.log"
+        echo "Final:    g++ $all_flags $*" >> "$clevel_work_dir/compile.log"
+        
+        command g++ $all_flags "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
-            printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
+            printf "\033[32mCompilation successful!\033[0m\n" >> "$clevel_work_dir/compile.log"
         fi
         save_compile "g++" "g++ $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        trim_compile_log
         return $rc
     }
     make() {
-        # Use script with -e to preserve exit code and -q for quiet (no headers)
-        # The -c flag runs the command and captures both stdout and stderr with TTY emulation
-        # Output is shown to user AND saved to compile.log with colors preserved
-        script -q -e -c "make $*" "$clevel_work_dir/compile.log"
-        local rc=$?
-        if [ "$rc" -eq 0 ]; then
-            printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
-        fi
-        # Try to detect compiler from Makefile
+        # Log make command with timestamp (append mode)
+        echo "" >> "$clevel_work_dir/compile.log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: make $*" >> "$clevel_work_dir/compile.log"
+        
+        # Try to detect compiler and files from Makefile
         local detected_compiler="make"
+        local detected_files=""
         if [ -f "Makefile" ]; then
             # Extract object files from OBJS variable if it exists
             local objs=$(grep -oP '^\s*OBJS\s*[?:+]?=\s*\K.*' Makefile | tr '\n' ' ')
-            local detected_files=""
             if [ -n "$objs" ]; then
                 # Convert .o files to .c/.cpp files
                 detected_files=$(echo "$objs" | sed 's/\.o/\.c/g; s/\.o/\.cpp/g')
             fi
             
+            # Detect compiler type
             if grep -q "^\s*CC\s*=\s*gcc" Makefile || grep -q "gcc" Makefile; then
                 detected_compiler="make(gcc)"
             elif grep -q "^\s*CC\s*=\s*g++" Makefile || grep -q "^\s*CXX\s*=\s*g++" Makefile || grep -q "g++" Makefile; then
                 detected_compiler="make(g++)"
             fi
             
-            # Update the make command in save_compile call to include detected files
-            local make_command="make $*"
+            # Log detected files to compile.log
             if [ -n "$detected_files" ]; then
-                make_command="make $* (objects: $detected_files)"
+                echo "Detected files: $detected_files" >> "$clevel_work_dir/compile.log"
             fi
-            save_compile "$detected_compiler" "$make_command" "$rc" >> /tmp/save_compile.log 2>&1 || true
-            return $rc
         fi
-        save_compile "$detected_compiler" "make $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
-        return $rc
+        
+        # Run make and append output to compile.log
+        command make "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+        local rc=${PIPESTATUS[0]}
+        
+        if [ "$rc" -eq 0 ]; then
+            printf "\033[32mCompilation successful!\033[0m\n" >> "$clevel_work_dir/compile.log"
+        fi
+        
+        # Update the make command in save_compile call to include detected files
+        local make_command="make $*"
+        if [ -n "$detected_files" ]; then
+            make_command="make $* (objects: $detected_files)"
+        fi
+        save_compile "$detected_compiler" "$make_command" "$rc" >> /tmp/save_compile.log 2>&1 || true        trim_compile_log        return $rc
     }
     tester() {
         command tester "$@" 2>&1 | tee "$clevel_work_dir/tester.log"
