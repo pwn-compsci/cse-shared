@@ -91,24 +91,64 @@ if [ -d $clevel_work_dir ]; then
     hw_id=$(jq -r '.hw' /challenge/.config/level.json)
     # Use only the alias for gcc to avoid function/alias conflicts and syntax errors
     gcc() {
-        rm -f main.bi*.gc??        
-        command gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+        rm -f main.bi*.gc??
+        
+        # Check level.json for compilation flags
+        local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        local include_profile_flags=$(jq -r 'if .include_profile_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        
+        # Build flags
+        local base_flags="-O0 -g -fdiagnostics-color=always"
+        local strict_flags=""
+        local profile_flags=""
+        
+        if [ "$limited_gcc_flags" != "true" ]; then
+            strict_flags="-Wall -Werror"
+        fi
+        
+        if [ "$include_profile_flags" == "true" ]; then
+            profile_flags="-ftest-coverage -fprofile-arcs"
+        fi
+        
+        local all_flags="$base_flags $strict_flags $profile_flags"
+        
+        command gcc $all_flags "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
-        save_compile "gcc" "gcc -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        save_compile "gcc" "gcc $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
 
     g++() {
         rm -f main.bi*.gc??
-        command g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
+        
+        # Check level.json for compilation flags
+        local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        local include_profile_flags=$(jq -r 'if .include_profile_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        
+        # Build flags
+        local base_flags="-O0 -g -fdiagnostics-color=always"
+        local strict_flags=""
+        local profile_flags=""
+        
+        if [ "$limited_gcc_flags" != "true" ]; then
+            strict_flags="-Wall -Werror"
+        fi
+        
+        if [ "$include_profile_flags" == "true" ]; then
+            profile_flags="-ftest-coverage -fprofile-arcs"
+        fi
+        
+        local all_flags="$base_flags $strict_flags $profile_flags"
+        
+        command g++ $all_flags "$@" 2>&1 | tee "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
             printf "\033[32mCompilation successful!\033[0m\n" > "$clevel_work_dir/compile.log"
         fi
-        save_compile "g++" "g++ -O0 -g -fdiagnostics-color=always -Wall -Werror -ftest-coverage -fprofile-arcs $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+        save_compile "g++" "g++ $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
         return $rc
     }
     make() {
