@@ -178,6 +178,9 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
                 level_config = json.load(f)
                 module = level_config.get('hwdir', '').split('/')[-1] if level_config.get('hwdir') else None
                 level = level_config.get('level')
+                challenge = level_config.get('challenge', None)
+                if challenge is None:
+                    challenge = level 
         
         # Read pwn_college_id from /.user_info
         user_info_path = "/.user_info"
@@ -204,6 +207,7 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
         data = {
             'module': module,
             'level': str(level),
+            'challenge': challenge,
             'pwn_college_id': pwn_college_id,
             'passed_all_tests': str(passed_all_tests).lower(),
             'test_message': test_message,

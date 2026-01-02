@@ -186,14 +186,17 @@ chown root:root /flag
 
 # if [ ! -d /home/me ] && ! grep -q "digital god" /.admin_access; then
 if [ ! -d /home/me ] ; then
-    level=$(jq -r '.level' /challenge/.config/level.json)    
+    challenge=$(jq -r '.challenge' /challenge/.config/level.json)    
+    if [ "$challenge" == "null" ] || [ -z "$challenge" ]; then
+        challenge=$(jq -r '.level' /challenge/.config/level.json)
+    fi
     module=$(jq -r '.module' /challenge/.config/level.json)    
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
     pwn_college_id=$(grep "pwn_college_id=" /.user_info | cut -d"'" -f2 | tr -d '[:space:]')
     pwn_flag=$(cat /flag)
     curl --max-time 10  "https://api.cse545.com/is_student" \
          -H "Content-Type: application/json" \
-         -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\", \"flag\": \"$pwn_flag\"}" \
+         -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$challenge\", \"flag\": \"$pwn_flag\"}" \
          > /.student &            
 fi
 
