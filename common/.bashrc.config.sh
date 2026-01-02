@@ -95,7 +95,7 @@ if [ -d $clevel_work_dir ]; then
         
         # Check level.json for compilation flags
         local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
-        local include_profile_flags=$(jq -r 'if .include_profile_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        local codecoverage=$(jq -r 'if .codecoverage then .codecoverage else 0 end' /challenge/.config/level.json 2>/dev/null || echo "0")
         
         # Build flags
         local base_flags="-O0 -g -fdiagnostics-color=always"
@@ -106,7 +106,7 @@ if [ -d $clevel_work_dir ]; then
             strict_flags="-Wall -Werror"
         fi
         
-        if [ "$include_profile_flags" == "true" ]; then
+        if [ "$codecoverage" -gt 0 ]; then
             profile_flags="-ftest-coverage -fprofile-arcs"
         fi
         
@@ -126,7 +126,7 @@ if [ -d $clevel_work_dir ]; then
         
         # Check level.json for compilation flags
         local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
-        local include_profile_flags=$(jq -r 'if .include_profile_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        local codecoverage=$(jq -r 'if .codecoverage then .codecoverage else 0 end' /challenge/.config/level.json 2>/dev/null || echo "0")
         
         # Build flags
         local base_flags="-O0 -g -fdiagnostics-color=always"
@@ -137,7 +137,7 @@ if [ -d $clevel_work_dir ]; then
             strict_flags="-Wall -Werror"
         fi
         
-        if [ "$include_profile_flags" == "true" ]; then
+        if [ "$codecoverage" -gt 0 ]; then
             profile_flags="-ftest-coverage -fprofile-arcs"
         fi
         
