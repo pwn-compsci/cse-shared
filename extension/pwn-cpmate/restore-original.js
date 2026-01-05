@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const BACKUP_FILE = path.join(__dirname, 'extension.js.original');
+const BACKUP_FILE = path.join(__dirname, 'extension.js.backup');
 const OUTPUT_FILE = path.join(__dirname, 'extension.js');
 
 function restore() {

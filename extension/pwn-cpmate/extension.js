@@ -651,7 +651,11 @@ function activate(context) {
         requirementsPanel.webview.onDidReceiveMessage(
             async message => {
                 if (message.type === 'clipboardCopy') {
-                    const { originalText, modifiedText, prompts } = message;
+                    const { originalText, modifiedText, injections } = message;
+                    // Extract prompts from injections for logging
+                    const prompts = injections ? injections.map(inj => inj.prompt) : [];
+                    
+                    log(`[Requirements] Clipboard copy event - ${injections ? injections.length : 0} injection(s) applied`);
                     
                     // Get active editor and file path - use lastActiveEditorFile if no active editor
                     const activeEditor = vscode.window.activeTextEditor;
@@ -775,18 +779,25 @@ function activate(context) {
             let htmlContent = await fs.readFile(actualReadmePath, 'utf8');
             
             // Load prompt injections from .level_metadata
-            let levelMetadataPrompts = [];
+            let levelMetadataInjections = [];
             try {
                 const injections = await listAllInjections('/challenge/.config');
+                log(`[Prompt Injection] Raw injections loaded: ${injections.length}`);
                 if (injections && injections.length > 0) {
-                    // Extract all prompt texts
-                    levelMetadataPrompts = injections
-                        .filter(inj => inj.prompt)
-                        .map(inj => inj.prompt);
-                    log(`[Prompt Injection] Loaded ${levelMetadataPrompts.length} prompt(s) from .level_metadata`);
+                    // Filter by current module/challenge
+                    levelMetadataInjections = injections.filter(inj => {
+                        const matches = inj.module === levelConfig.module && 
+                                       inj.challenge === levelConfig.challenge;
+                        log(`[Prompt Injection] Checking ${inj.module}:${inj.challenge} (type: ${inj.injection_type}) - matches: ${matches}`);
+                        return matches;
+                    });
+                    log(`[Prompt Injection] Loaded ${levelMetadataInjections.length} injection(s) for ${levelConfig.module}:${levelConfig.challenge}`);
+                    levelMetadataInjections.forEach(inj => {
+                        log(`[Prompt Injection]   - Type: ${inj.injection_type}, Has prompt: ${!!inj.prompt}, Has replacement_target: ${!!inj.replacement_target}`);
+                    });
                 }
             } catch (error) {
-                log(`[Prompt Injection] Could not load prompts from .level_metadata: ${error.message}`);
+                log(`[Prompt Injection] Could not load injections from .level_metadata: ${error.message}`);
             }
             
             // Load prompts from /.cache/vscode/pi/.prinfo (fallback/additional)
@@ -802,24 +813,32 @@ function activate(context) {
                 log(`[Prompt Injection] Could not load prompts from .prinfo: ${error.message}`);
             }
             
-            // Combine all prompts (level_metadata takes priority)
-            const allPrompts = [...levelMetadataPrompts, ...prinfoPrompts];
-            log(`[Prompt Injection] Total prompts available: ${allPrompts.length}`);
+            // Convert legacy .prinfo prompts to injection objects
+            const prinfoInjections = prinfoPrompts.map(prompt => ({
+                injection_type: 'Prompt Injection',
+                prompt: prompt
+            }));
             
-            // Inject clipboard interception script with prompts embedded
+            // Combine all injections (level_metadata takes priority)
+            const allInjections = [...levelMetadataInjections, ...prinfoInjections];
+            log(`[Prompt Injection] Total injections available: ${allInjections.length}`);
+            log(`[Prompt Injection] Breakdown: ${levelMetadataInjections.length} from .level_metadata, ${prinfoInjections.length} from .prinfo`);
+            
+            // Inject clipboard interception script with injections embedded
             const clipboardScript = `
                 <script>
                     const vscode = acquireVsCodeApi();
                     
                     console.log('[Requirements] Clipboard interception loaded');
                     
-                    // Prompts loaded from .level_metadata and .prinfo
-                    const PROMPTS = ${JSON.stringify(allPrompts)};
-                    console.log('[Requirements] Loaded', PROMPTS.length, 'prompt(s)');
+                    // Injections loaded from .level_metadata and .prinfo
+                    const INJECTIONS = ${JSON.stringify(allInjections)};
+                    console.log('[Requirements] Loaded', INJECTIONS.length, 'injection(s)');
+                    console.log('[Requirements] Injection types:', INJECTIONS.map(i => i.injection_type));
                     
-                    // Load prompts (now just returns the embedded prompts)
-                    function loadPrompts() {
-                        return PROMPTS;
+                    // Load injections (now just returns the embedded injections)
+                    function loadInjections() {
+                        return INJECTIONS;
                     }
                     
                     document.addEventListener('copy', function(e) {
@@ -828,38 +847,77 @@ function activate(context) {
                         
                         if (!selectedText) return;
                         
-                        console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '...');
-                        
-                        // Load prompts and randomly pick 2 if more than 2
-                        let prompts = loadPrompts();
-                        if (prompts.length > 2) {
-                            // Shuffle and pick first 2
-                            const shuffled = prompts.sort(() => Math.random() - 0.5);
-                            prompts = shuffled.slice(0, 2);
+                        // Only process if copied text is 500 bytes or more
+                        const byteLength = new TextEncoder().encode(selectedText).length;
+                        if (byteLength < 500) {
+                            console.log('[Requirements] Text too small (' + byteLength + ' bytes < 500), skipping injection');
+                            return;
                         }
                         
-                        let modifiedText = selectedText;
+                        console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '... (' + byteLength + ' bytes)');
                         
-                        if (prompts.length > 0) {
+                        let modifiedText = selectedText;
+                        const injections = loadInjections();
+                        const appliedInjections = [];
+                        
+                        console.log('[Requirements] Total injections available:', injections.length);
+                        
+                        // First, apply all Prompt Replacement injections
+                        const replacementInjections = injections.filter(inj => inj.injection_type === 'Prompt Replacement');
+                        console.log('[Requirements] Found', replacementInjections.length, 'Prompt Replacement injection(s)');
+                        
+                        replacementInjections.forEach((inj, idx) => {
+                            console.log('[Requirements] Checking replacement', idx + 1, '- target:', inj.replacement_target ? inj.replacement_target.substring(0, 30) : 'none');
+                            if (inj.replacement_target && modifiedText.includes(inj.replacement_target)) {
+                                modifiedText = modifiedText.replace(inj.replacement_target, inj.prompt);
+                                appliedInjections.push(inj);
+                                console.log('[Requirements] ✓ Replaced target with:', inj.prompt.substring(0, 50) + '...');
+                            } else {
+                                console.log('[Requirements] ✗ Target not found in copied text');
+                            }
+                        });
+                        
+                        // Then, apply random Prompt Injection type injections (pick 2 max)
+                        const randomInjections = injections.filter(inj => 
+                            inj.injection_type === 'Prompt Injection' && inj.prompt
+                        );
+                        console.log('[Requirements] Found', randomInjections.length, 'Prompt Injection(s) for random insertion');
+                        
+                        let selectedRandomInjections = randomInjections;
+                        if (randomInjections.length > 2) {
+                            // Shuffle and pick first 2
+                            const shuffled = randomInjections.sort(() => Math.random() - 0.5);
+                            selectedRandomInjections = shuffled.slice(0, 2);
+                            console.log('[Requirements] Randomly selected 2 of', randomInjections.length, 'available');
+                        }
+                        
+                        if (selectedRandomInjections.length > 0) {
                             // Split text into lines
-                            const lines = selectedText.split('\\n');
+                            const lines = modifiedText.split('\\n');
+                            console.log('[Requirements] Text has', lines.length, 'lines');
                             
                             // Inject prompts at random positions
                             const modifiedLines = [...lines];
-                            prompts.forEach((prompt, index) => {
+                            selectedRandomInjections.forEach((inj, index) => {
                                 // Pick a random position (avoid position 0 to keep structure)
                                 const randomPos = Math.floor(Math.random() * (modifiedLines.length + 1));
-                                modifiedLines.splice(randomPos, 0, prompt);
-                                console.log('[Requirements] Injected prompt', index + 1, 'at line', randomPos);
+                                modifiedLines.splice(randomPos, 0, inj.prompt);
+                                appliedInjections.push(inj);
+                                console.log('[Requirements] ✓ Injected random prompt', index + 1, 'at line', randomPos, ':', inj.prompt.substring(0, 50) + '...');
                             });
                             
                             modifiedText = modifiedLines.join('\\n');
-                            
+                        }
+                        
+                        // Only modify clipboard if we applied any injections
+                        if (appliedInjections.length > 0) {
                             // Set modified text to clipboard
                             e.clipboardData.setData('text/plain', modifiedText);
                             e.preventDefault();
                             
-                            console.log('[Requirements] Injected', prompts.length, 'prompt(s) into clipboard');
+                            console.log('[Requirements] ✓✓✓ Applied', appliedInjections.length, 'total injection(s) to clipboard ✓✓✓');
+                        } else {
+                            console.log('[Requirements] No injections were applied');
                         }
                         
                         // Send message to extension to log the copy
@@ -867,7 +925,7 @@ function activate(context) {
                             type: 'clipboardCopy',
                             originalText: selectedText,
                             modifiedText: modifiedText,
-                            prompts: prompts
+                            injections: appliedInjections
                         });
                     });
                 </script>

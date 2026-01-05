@@ -9,8 +9,8 @@ const path = require('path');
 const { minify } = require('terser');
 
 const SOURCE_FILE = path.join(__dirname, 'extension.js');
-const BACKUP_FILE = path.join(__dirname, 'extension.js.original');
-const OUTPUT_FILE = path.join(__dirname, 'extension.js');
+const BACKUP_FILE = path.join(__dirname, 'extension.js.backup');
+const BUILD_FILE = path.join(__dirname, 'extension.js.build');
 
 async function obfuscate() {
     console.log('Starting code obfuscation...');
@@ -19,11 +19,9 @@ async function obfuscate() {
         // Read source file
         const sourceCode = fs.readFileSync(SOURCE_FILE, 'utf8');
         
-        // Backup original if not already backed up
-        if (!fs.existsSync(BACKUP_FILE)) {
-            console.log('Creating backup of original extension.js...');
-            fs.writeFileSync(BACKUP_FILE, sourceCode);
-        }
+        // Always backup the current source before obfuscating
+        console.log('Creating backup of original extension.js...');
+        fs.writeFileSync(BACKUP_FILE, sourceCode);
         
         // Obfuscate with terser
         console.log('Minifying and obfuscating code...');
@@ -54,8 +52,12 @@ async function obfuscate() {
             throw result.error;
         }
         
-        // Write obfuscated code
-        fs.writeFileSync(OUTPUT_FILE, result.code);
+        // Write obfuscated code to build file
+        fs.writeFileSync(BUILD_FILE, result.code);
+        
+        // Swap: move source to backup, move build to source
+        fs.renameSync(SOURCE_FILE, BACKUP_FILE);
+        fs.renameSync(BUILD_FILE, SOURCE_FILE);
         
         const originalSize = sourceCode.length;
         const obfuscatedSize = result.code.length;
