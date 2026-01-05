@@ -205,6 +205,8 @@ fi
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
+date --iso-8601=seconds > /tmp/.start
+
 if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
     echo "No argument supplied" | tee -a $STARTUP_LOG    
