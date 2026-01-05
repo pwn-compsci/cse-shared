@@ -55,6 +55,11 @@ async function obfuscate() {
         // Write obfuscated code to build file
         fs.writeFileSync(BUILD_FILE, result.code);
         
+        // Remove old backup if it exists
+        if (fs.existsSync(BACKUP_FILE)) {
+            fs.unlinkSync(BACKUP_FILE);
+        }
+        
         // Swap: move source to backup, move build to source
         fs.renameSync(SOURCE_FILE, BACKUP_FILE);
         fs.renameSync(BUILD_FILE, SOURCE_FILE);

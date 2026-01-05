@@ -784,23 +784,17 @@ function activate(context) {
                 const injections = await listAllInjections('/challenge/.config');
                 log(`[Prompt Injection] Raw injections loaded: ${injections.length}`);
                 if (injections && injections.length > 0) {
-                    // Filter by current module/challenge (supports multiple injections per module:challenge)
+                    // Filter by current module/challenge
                     levelMetadataInjections = injections.filter(inj => {
                         const matches = inj.module === levelConfig.module && 
                                        inj.challenge === levelConfig.challenge;
-                        log(`[Prompt Injection] Checking ${inj.module}:${inj.challenge}${inj.id ? ':' + inj.id : ''} (type: ${inj.injection_type}) - matches: ${matches}`);
+                        log(`[Prompt Injection] Checking ${inj.module}:${inj.challenge} (type: ${inj.injection_type}) - matches: ${matches}`);
                         return matches;
                     });
-                    log(`[Prompt Injection] ✓ Loaded ${levelMetadataInjections.length} injection(s) for ${levelConfig.module}:${levelConfig.challenge}`);
-                    
-                    // Count by type
-                    const byType = {};
+                    log(`[Prompt Injection] Loaded ${levelMetadataInjections.length} injection(s) for ${levelConfig.module}:${levelConfig.challenge}`);
                     levelMetadataInjections.forEach(inj => {
-                        const type = inj.injection_type || 'Unknown';
-                        byType[type] = (byType[type] || 0) + 1;
-                        log(`[Prompt Injection]   - ID: ${inj.id || 'none'}, Type: ${type}, Prompt: ${inj.prompt ? inj.prompt.substring(0, 40) + '...' : 'none'}, Target: ${inj.replacement_target || 'none'}`);
+                        log(`[Prompt Injection]   - Type: ${inj.injection_type}, Has prompt: ${!!inj.prompt}, Has replacement_target: ${!!inj.replacement_target}`);
                     });
-                    log(`[Prompt Injection] Breakdown by type: ${JSON.stringify(byType)}`);
                 }
             } catch (error) {
                 log(`[Prompt Injection] Could not load injections from .level_metadata: ${error.message}`);
@@ -875,19 +869,9 @@ function activate(context) {
                         replacementInjections.forEach((inj, idx) => {
                             console.log('[Requirements] Checking replacement', idx + 1, '- target:', inj.replacement_target ? inj.replacement_target.substring(0, 30) : 'none');
                             if (inj.replacement_target && modifiedText.includes(inj.replacement_target)) {
-                                // Count occurrences before replacing
-                                const target = inj.replacement_target;
-                                let count = 0;
-                                let pos = modifiedText.indexOf(target);
-                                while (pos !== -1) {
-                                    count++;
-                                    pos = modifiedText.indexOf(target, pos + 1);
-                                }
-                                
-                                // Replace ALL occurrences using replaceAll
-                                modifiedText = modifiedText.replaceAll(inj.replacement_target, inj.prompt);
+                                modifiedText = modifiedText.replace(inj.replacement_target, inj.prompt);
                                 appliedInjections.push(inj);
-                                console.log('[Requirements] ✓ Replaced', count, 'occurrence(s) of target with:', inj.prompt.substring(0, 50) + '...');
+                                console.log('[Requirements] ✓ Replaced target with:', inj.prompt.substring(0, 50) + '...');
                             } else {
                                 console.log('[Requirements] ✗ Target not found in copied text');
                             }

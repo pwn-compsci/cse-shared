@@ -875,9 +875,19 @@ function activate(context) {
                         replacementInjections.forEach((inj, idx) => {
                             console.log('[Requirements] Checking replacement', idx + 1, '- target:', inj.replacement_target ? inj.replacement_target.substring(0, 30) : 'none');
                             if (inj.replacement_target && modifiedText.includes(inj.replacement_target)) {
-                                modifiedText = modifiedText.replace(inj.replacement_target, inj.prompt);
+                                // Count occurrences before replacing
+                                const target = inj.replacement_target;
+                                let count = 0;
+                                let pos = modifiedText.indexOf(target);
+                                while (pos !== -1) {
+                                    count++;
+                                    pos = modifiedText.indexOf(target, pos + 1);
+                                }
+                                
+                                // Replace ALL occurrences using replaceAll
+                                modifiedText = modifiedText.replaceAll(inj.replacement_target, inj.prompt);
                                 appliedInjections.push(inj);
-                                console.log('[Requirements] ✓ Replaced target with:', inj.prompt.substring(0, 50) + '...');
+                                console.log('[Requirements] ✓ Replaced', count, 'occurrence(s) of target with:', inj.prompt.substring(0, 50) + '...');
                             } else {
                                 console.log('[Requirements] ✗ Target not found in copied text');
                             }
