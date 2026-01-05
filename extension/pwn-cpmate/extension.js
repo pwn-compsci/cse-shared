@@ -784,17 +784,23 @@ function activate(context) {
                 const injections = await listAllInjections('/challenge/.config');
                 log(`[Prompt Injection] Raw injections loaded: ${injections.length}`);
                 if (injections && injections.length > 0) {
-                    // Filter by current module/challenge
+                    // Filter by current module/challenge (supports multiple injections per module:challenge)
                     levelMetadataInjections = injections.filter(inj => {
                         const matches = inj.module === levelConfig.module && 
                                        inj.challenge === levelConfig.challenge;
-                        log(`[Prompt Injection] Checking ${inj.module}:${inj.challenge} (type: ${inj.injection_type}) - matches: ${matches}`);
+                        log(`[Prompt Injection] Checking ${inj.module}:${inj.challenge}${inj.id ? ':' + inj.id : ''} (type: ${inj.injection_type}) - matches: ${matches}`);
                         return matches;
                     });
-                    log(`[Prompt Injection] Loaded ${levelMetadataInjections.length} injection(s) for ${levelConfig.module}:${levelConfig.challenge}`);
+                    log(`[Prompt Injection] ✓ Loaded ${levelMetadataInjections.length} injection(s) for ${levelConfig.module}:${levelConfig.challenge}`);
+                    
+                    // Count by type
+                    const byType = {};
                     levelMetadataInjections.forEach(inj => {
-                        log(`[Prompt Injection]   - Type: ${inj.injection_type}, Has prompt: ${!!inj.prompt}, Has replacement_target: ${!!inj.replacement_target}`);
+                        const type = inj.injection_type || 'Unknown';
+                        byType[type] = (byType[type] || 0) + 1;
+                        log(`[Prompt Injection]   - ID: ${inj.id || 'none'}, Type: ${type}, Prompt: ${inj.prompt ? inj.prompt.substring(0, 40) + '...' : 'none'}, Target: ${inj.replacement_target || 'none'}`);
                     });
+                    log(`[Prompt Injection] Breakdown by type: ${JSON.stringify(byType)}`);
                 }
             } catch (error) {
                 log(`[Prompt Injection] Could not load injections from .level_metadata: ${error.message}`);
