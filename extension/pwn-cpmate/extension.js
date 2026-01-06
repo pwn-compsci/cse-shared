@@ -7,7 +7,7 @@ const https = require('https');
 const crypto = require('crypto');
 const fernet = require('fernet');
 
-const version = "1.2";
+const version = "1.3";
 //const historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
 var historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
 var historyMap = new Map(); // Cache to store file paths and their corresponding history directories
@@ -38,7 +38,24 @@ var isExamSession = false;
 var sessionCheckInterval = null;
 const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
-const courseCode = "cse240"
+// Resolve course code dynamically to avoid hardcoded paths
+function resolveCourseCode() {
+    try {
+        if (levelConfig && levelConfig.courseCode) {
+            return levelConfig.courseCode;
+        }
+        const levelJsonPath = '/challenge/.config/level.json';
+        if (fsa.existsSync(levelJsonPath)) {
+            const data = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
+            if (data && typeof data.course_code === 'string' && data.course_code.length > 0) {
+                return data.course_code;
+            }
+        }
+    } catch (e) {
+        // fall through to default
+    }
+    return 'cse240';
+}
 
 // Global level configuration loaded from /challenge/.config/level.json
 var levelConfig = {
@@ -57,10 +74,18 @@ var levelConfig = {
 };
 
 const PWN_STATUS_FILE = "/home/hacker/.local/share/ultima/pexs.dat"
-const BASEDIR = `/home/hacker/${courseCode}/.vscode/`
-const LOGPATH = `${BASEDIR}cp.dat`
-const CB_LOG_PATH = `${BASEDIR}cbinfo.dat`
-const DB_PATH = `/home/hacker/${courseCode}/.vscode/trdb.db`
+function getBaseDir() {
+    return `/home/hacker/${resolveCourseCode()}/.vscode/`;
+}
+function getLogPath() {
+    return `${getBaseDir()}cp.dat`;
+}
+function getCBLogPath() {
+    return `${getBaseDir()}cbinfo.dat`;
+}
+function getDbPath() {
+    return `/home/hacker/${resolveCourseCode()}/.vscode/trdb.db`;
+}
 
 async function log(text) {
     try {
@@ -75,9 +100,9 @@ async function log(text) {
     try {        
         encoded = Buffer.from(text).toString('base64');
     } catch (error){
-        await fs.appendFile(LOGPATH, "Error: skipping encoding\n\t" + error + "\n");    
+        await fs.appendFile(getLogPath(), "Error: skipping encoding\n\t" + error + "\n");    
     }
-    await fs.appendFile(LOGPATH, encoded + "\n");
+    await fs.appendFile(getLogPath(), encoded + "\n");
 }
 function logSync(text) {
     if (typeof text !== 'string') {
@@ -87,9 +112,9 @@ function logSync(text) {
     try {        
         encoded = Buffer.from(text).toString('base64');
     } catch (error){
-        fsa.appendFileSync(LOGPATH, "Error: skipping encoding\n\t" + error + "\n");    
+        fsa.appendFileSync(getLogPath(), "Error: skipping encoding\n\t" + error + "\n");    
     }
-    fsa.appendFileSync(LOGPATH, encoded + "\n");
+    fsa.appendFileSync(getLogPath(), encoded + "\n");
 }
 
 // ============================================================================
