@@ -28,6 +28,35 @@ var lockChangeCheck = false;
 var clipboardRetries = 0;
 var extensionId = "";
 
+// Admin and debug controls
+var isAdminUser = false;
+var DO_DEBUG = false; // Set to true to enable console logging for non-admins
+const _origConsoleLog = console.log;
+const _origConsoleWarn = console.warn;
+const _origConsoleError = console.error;
+
+function initAdminAccessAndConfigureLogging() {
+    try {
+        if (fsa.existsSync('/.admin_access')) {
+            const content = fsa.readFileSync('/.admin_access', 'utf8');
+            if (typeof content === 'string' && content.includes('digital god')) {
+                isAdminUser = true;
+            }
+        }
+    } catch (e) {
+        // If reading fails, default to non-admin
+        isAdminUser = false;
+    }
+
+    const enabled = isAdminUser || DO_DEBUG === true;
+    console.log = enabled ? _origConsoleLog : () => {};
+    console.warn = enabled ? _origConsoleWarn : () => {};
+    console.error = enabled ? _origConsoleError : () => {};
+}
+
+// Initialize admin access and console gating immediately
+initAdminAccessAndConfigureLogging();
+
 // Track injected prompts to strip them on paste within VS Code
 var injectedPromptsMap = new Map(); // Maps modifiedText -> {originalText, prompts}
 var allKnownPrompts = new Set(); // All prompts from .prinfo and data-hide elements
