@@ -38,6 +38,12 @@ var isExamSession = false;
 var sessionCheckInterval = null;
 const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
+// Container runtime monitoring variables
+var runtimeCheckInterval = null;
+const RUNTIME_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+var oneHourNotificationShown = false;
+var shutdownHtmlCreated = false;
+
 // Resolve course code dynamically to avoid hardcoded paths
 function resolveCourseCode() {
     try {
@@ -331,6 +337,183 @@ function getTimestampBasedName() {
 }
 
 
+/**
+ * Container Runtime Monitoring Functions
+ */
+async function checkContainerRuntime(context) {
+    try {
+        // Read the start timestamp from /tmp/.start (ISO-8601, with timezone offset)
+        if (!fsa.existsSync('/tmp/.start')) {
+            log('[Runtime Monitor] /tmp/.start not found; skipping check');
+            return;
+        }
+        const startTimeStr = (await fs.readFile('/tmp/.start', 'utf8')).trim();
+        const startTime = new Date(startTimeStr);
+        if (isNaN(startTime.getTime())) {
+            log(`[Runtime Monitor] Invalid timestamp in /tmp/.start: ${startTimeStr}`);
+            return;
+        }
+
+        // Current time (same timezone semantics handled by Date parsing)
+        const now = new Date();
+        const runtimeMs = now.getTime() - startTime.getTime();
+        const runtimeMinutes = Math.floor(runtimeMs / (60 * 1000));
+        const runtimeHours = Math.floor(runtimeMinutes / 60);
+        const remainingMinutesPart = runtimeMinutes % 60;
+
+        // Report runtime to /tmp/.runtime in H:MM format
+        const runtimeStr = `${runtimeHours}:${String(remainingMinutesPart).padStart(2, '0')}`;
+        await fs.writeFile('/tmp/.runtime', runtimeStr);
+        log(`[Runtime Monitor] Runtime ${runtimeStr} (${runtimeMinutes} min)`);
+
+        // At ~1 hour (within ±5 minutes), show status bar message of remaining time (6h - elapsed)
+        if (!oneHourNotificationShown && runtimeMinutes >= 55 && runtimeMinutes <= 65) {
+            oneHourNotificationShown = true;
+
+            const totalMinutes = 6 * 60;
+            const remaining = Math.max(0, totalMinutes - runtimeMinutes);
+            const remH = Math.floor(remaining / 60);
+            const remM = remaining % 60;
+
+            const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -1000);
+            status.text = `$(clock) Container available ~ ${remH}h ${remM}m`;
+            status.tooltip = 'Container runtime notice';
+            status.show();
+            // Auto-hide after 30 seconds
+            setTimeout(() => { try { status.hide(); status.dispose(); } catch {} }, 30000);
+            context.subscriptions.push(status);
+            log(`[Runtime Monitor] 1-hour notice: ~ ${remH}h ${remM}m remaining`);
+        }
+
+        // At 5:50 (350 minutes), create shutdown HTML and display it
+        if (!shutdownHtmlCreated && runtimeMinutes >= 350) {
+            shutdownHtmlCreated = true;
+            const html = await createShutdownHtml();
+            await closeAllFilesAndShowShutdown(context, html);
+            log('[Runtime Monitor] Shutdown notice displayed');
+        }
+    } catch (error) {
+        log(`[Runtime Monitor] Error: ${error}`);
+    }
+}
+
+async function createShutdownHtml() {
+    // Try to load shared CSS; fallback to minimal CSS
+    let sharedCss = '';
+    try {
+        sharedCss = await fs.readFile('/challenge/shared-readme.css', 'utf8');
+    } catch (e) {
+        sharedCss = `
+            body { font-family: system-ui, sans-serif; padding: 24px; background:#fff3cd; color:#333; }
+            .shutdown-container { max-width: 900px; margin: 0 auto; background:#fff; border:3px solid #ff6b6b; border-radius:12px; padding: 32px; box-shadow:0 6px 18px rgba(0,0,0,.15); }
+            h1 { color:#d9534f; font-size:2.2em; margin:0 0 12px; }
+            .timer { font-size:2em; color:#d9534f; font-weight:700; font-family: monospace; }
+            .warning-text { font-size:1.2em; font-weight:600; }
+            .info-text { font-size:1.05em; line-height:1.6; }
+            .action-box { background:#e3f2fd; border:2px solid #2196f3; border-radius:8px; padding:18px; margin:18px 0; }
+            .action-title { font-size:1.2em; color:#1976d2; font-weight:700; }
+            .action-steps li { margin:8px 0; }
+        `;
+    }
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Shutting Down</title>
+    <link rel="stylesheet" href="/challenge/shared-readme.css">
+    <style>${sharedCss}</style>
+    <style>
+        .shutdown-icon { font-size:72px; margin-bottom:16px; }
+    </style>
+    </head>
+<body>
+    <div class="shutdown-container">
+        <div class="shutdown-icon">⚠️</div>
+        <h1>Server Shutting Down Soon</h1>
+        <div class="timer">~10 Minutes Remaining</div>
+        <p class="warning-text">This VS Code will disconnect shortly.</p>
+        <p class="info-text"><strong>IMPORTANT:</strong> Any updates made after shutdown will NOT be saved, even if the VS Code window does not immediately close.</p>
+        <div class="action-box">
+            <div class="action-title">To continue working:</div>
+            <ol class="action-steps">
+                <li>Save all your work NOW.</li>
+                <li>Refresh the current page in your browser.</li>
+                <li>Click "Start" for your current level.</li>
+                <li>Wait for the container to restart.</li>
+            </ol>
+        </div>
+        <p class="info-text">You must restart the container to continue. Refresh and press Start on your current level.</p>
+    </div>
+    </body>
+</html>`;
+
+    try {
+        await fs.writeFile('/tmp/.shutdown.html', htmlContent);
+        log('[Runtime Monitor] Wrote /tmp/.shutdown.html');
+    } catch (e) {
+        log(`[Runtime Monitor] Failed to write /tmp/.shutdown.html: ${e}`);
+    }
+    return htmlContent;
+}
+
+async function closeAllFilesAndShowShutdown(context, htmlContent) {
+    try {
+        // Close Welcome and all tabs on all groups
+        const tabGroups = vscode.window.tabGroups.all;
+        for (const group of tabGroups) {
+            if (group.tabs.length > 0) {
+                await vscode.window.tabGroups.close(group.tabs);
+            }
+        }
+    } catch (e) {
+        log(`[Runtime Monitor] Error closing tabs: ${e}`);
+    }
+
+    try {
+        // Show a webview with the shutdown HTML
+        const panel = vscode.window.createWebviewPanel('pwnShutdown', 'Shutdown Notice', vscode.ViewColumn.Active, {
+            enableScripts: false,
+            retainContextWhenHidden: true
+        });
+        panel.webview.html = htmlContent;
+        context.subscriptions.push(panel);
+        log('[Runtime Monitor] Displayed shutdown webview');
+    } catch (e) {
+        log(`[Runtime Monitor] Error showing shutdown webview: ${e}`);
+        // Fallback: attempt to open the file directly
+        try {
+            const shutdownUri = vscode.Uri.file('/tmp/.shutdown.html');
+            await vscode.commands.executeCommand('vscode.open', shutdownUri);
+        } catch {}
+    }
+}
+
+function startRuntimeMonitoring(context) {
+    log('[Runtime Monitor] Starting container runtime monitoring (5-minute interval)');
+    // Immediate check
+    checkContainerRuntime(context);
+    // Interval
+    if (runtimeCheckInterval) {
+        clearInterval(runtimeCheckInterval);
+    }
+    runtimeCheckInterval = setInterval(() => {
+        checkContainerRuntime(context);
+    }, RUNTIME_CHECK_INTERVAL_MS);
+
+    context.subscriptions.push({
+        dispose: () => {
+            if (runtimeCheckInterval) {
+                clearInterval(runtimeCheckInterval);
+                runtimeCheckInterval = null;
+                log('[Runtime Monitor] Interval disposed');
+            }
+        }
+    });
+}
+
+
 function activate(context) {
     //vscode.window.showInformationMessage(`Welcome to pwn.college's CSE240 🦆`);
     extensionId = context.extension.id;
@@ -350,6 +533,9 @@ function activate(context) {
         if (isExamSession && pwnCollegeId) {
             startSessionMonitoring(context);
         }
+        
+        // Start container runtime monitoring
+        startRuntimeMonitoring(context);
         
         // Only initialize environment if session is not dead
         initEnvironment();
@@ -1745,6 +1931,13 @@ function deactivate() {
         clearInterval(sessionCheckInterval);
         sessionCheckInterval = null;
         logSync('Stopped session monitoring interval');
+    }
+
+    // Stop runtime monitoring
+    if (runtimeCheckInterval !== null) {
+        clearInterval(runtimeCheckInterval);
+        runtimeCheckInterval = null;
+        logSync('Stopped runtime monitoring interval');
     }
 
     // Clear timeout
