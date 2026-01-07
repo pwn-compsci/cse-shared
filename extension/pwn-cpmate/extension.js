@@ -2038,7 +2038,22 @@ async function loadLevelConfig() {
         levelConfig.initialFiles = configData.initial_files;
         levelConfig.isExam = typeof configData.examLevel === "string" && configData.examLevel.length > 4;
         levelConfig.courseCode = configData.course_code || "cse240";
-        levelConfig.cLevelWorkDir = `${configData.hwdir}/${configData.level}`;
+        
+        // Support both hwdir (legacy, absolute path) and module (new format, relative)
+        if (configData.hwdir) {
+            // hwdir is already an absolute path like "/home/hacker/cse240/21-proj-c-intro-vars"
+            levelConfig.cLevelWorkDir = `${configData.hwdir}/${configData.level}`;
+        } else if (configData.module) {
+            // module is just the directory name like "lab03-reversing", construct full path
+            const courseCode = configData.course_code || "cse240";
+            levelConfig.cLevelWorkDir = `/home/hacker/${courseCode}/${configData.module}/${configData.level}`;
+        } else {
+            // Fallback (shouldn't happen)
+            log('[Config] WARNING: Neither hwdir nor module found in level.json');
+            const courseCode = configData.course_code || "cse240";
+            levelConfig.cLevelWorkDir = `/home/hacker/${courseCode}/unknown/${configData.level}`;
+        }
+        
         levelConfig.module = configData.module;
         levelConfig.challenge = configData.challenge;
         levelConfig.module_name = configData.module_name;
