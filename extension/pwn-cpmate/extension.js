@@ -416,10 +416,17 @@ async function checkContainerRuntime(context) {
 
         // At 5:50 (350 minutes), create shutdown HTML and display it
         if (!shutdownHtmlCreated && runtimeMinutes >= 350) {
+            log(`[Runtime Monitor] *** SHUTDOWN TIME REACHED: ${runtimeMinutes} minutes >= 350 ***`);
             shutdownHtmlCreated = true;
-            const html = await createShutdownHtml();
-            await closeAllFilesAndShowShutdown(context, html);
-            log('[Runtime Monitor] Shutdown notice displayed');
+            try {
+                const html = await createShutdownHtml();
+                log('[Runtime Monitor] Shutdown HTML created, now displaying to user...');
+                await closeAllFilesAndShowShutdown(context, html);
+                log('[Runtime Monitor] Shutdown notice displayed successfully');
+            } catch (shutdownError) {
+                log(`[Runtime Monitor] ERROR during shutdown sequence: ${shutdownError}`);
+                log(`[Runtime Monitor] Shutdown error stack: ${shutdownError.stack}`);
+            }
         }
     } catch (error) {
         log(`[Runtime Monitor] Error: ${error}`);
@@ -427,23 +434,27 @@ async function checkContainerRuntime(context) {
 }
 
 async function createShutdownHtml() {
-    // Try to load shared CSS; fallback to minimal CSS
+    // Load shared CSS from /challenge/shared-readme.css
     let sharedCss = '';
     try {
         sharedCss = await fs.readFile('/challenge/shared-readme.css', 'utf8');
     } catch (e) {
-        sharedCss = `
-            body { font-family: system-ui, sans-serif; padding: 24px; background:#fff3cd; color:#333; }
-            .shutdown-container { max-width: 900px; margin: 0 auto; background:#fff; border:3px solid #ff6b6b; border-radius:12px; padding: 32px; box-shadow:0 6px 18px rgba(0,0,0,.15); }
-            h1 { color:#d9534f; font-size:2.2em; margin:0 0 12px; }
-            .timer { font-size:2em; color:#d9534f; font-weight:700; font-family: monospace; }
-            .warning-text { font-size:1.2em; font-weight:600; }
-            .info-text { font-size:1.05em; line-height:1.6; }
-            .action-box { background:#e3f2fd; border:2px solid #2196f3; border-radius:8px; padding:18px; margin:18px 0; }
-            .action-title { font-size:1.2em; color:#1976d2; font-weight:700; }
-            .action-steps li { margin:8px 0; }
-        `;
+        // Minimal fallback if shared CSS is not available
+        sharedCss = `body { font-family: system-ui, sans-serif; padding: 24px; }`;
     }
+
+    // Calculate shutdown time in Phoenix time (Arizona - MST, no DST)
+    const now = new Date();
+    // Convert current time to Phoenix time (UTC-7)
+    const phoenixTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Phoenix' }));
+    // Add 10 minutes (approximate remaining time at shutdown trigger)
+    phoenixTime.setMinutes(phoenixTime.getMinutes() + 10);
+    const shutdownTimeStr = phoenixTime.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        timeZone: 'America/Phoenix'
+    });
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -451,31 +462,35 @@ async function createShutdownHtml() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Container Shutting Down</title>
-    <link rel="stylesheet" href="/challenge/shared-readme.css">
     <style>${sharedCss}</style>
     <style>
-        .shutdown-icon { font-size:72px; margin-bottom:16px; }
+        .shutdown-notice { margin: 40px 0; }
+        .shutdown-notice h1 { font-size: 2em; margin: 20px 0; }
+        .shutdown-timer { font-size: 1.8em; font-weight: bold; font-family: monospace; margin: 20px 0; }
+        .shutdown-time { font-size: 1.2em; margin: 15px 0; padding: 10px; background-color: rgba(255, 107, 107, 0.1); border-left: 4px solid #ff6b6b; }
+        .shutdown-actions { margin: 30px 0; }
+        .shutdown-actions ol { margin: 15px 0; padding-left: 25px; }
+        .shutdown-actions li { margin: 10px 0; }
     </style>
-    </head>
+</head>
 <body>
-    <div class="shutdown-container">
-        <div class="shutdown-icon">⚠️</div>
-        <h1>Server Shutting Down Soon</h1>
-        <div class="timer">~10 Minutes Remaining</div>
-        <p class="warning-text">This VS Code will disconnect shortly.</p>
-        <p class="info-text"><strong>IMPORTANT:</strong> Any updates made after shutdown will NOT be saved, even if the VS Code window does not immediately close.</p>
-        <div class="action-box">
-            <div class="action-title">To continue working:</div>
-            <ol class="action-steps">
-                <li>Save all your work NOW.</li>
-                <li>Refresh the current page in your browser.</li>
-                <li>Click "Start" for your current level.</li>
+    <div class="shutdown-notice">
+        <h1>⚠️ Server Shutting Down Soon</h1>
+        <div class="shutdown-timer">~10 Minutes Remaining</div>
+        <div class="shutdown-time"><strong>Shutdown Time (Phoenix):</strong> ${shutdownTimeStr}</div>
+        <p><strong>IMPORTANT:</strong> Any updates made after shutdown will NOT be saved, even if the VS Code window does not immediately close.</p>
+        <div class="shutdown-actions">
+            <p><strong>To continue working:</strong></p>
+            <ol>
+                <li>Your work up until the shutdown should be automatically saved.</li>
+                <li>Refresh the current page in your browser (button next to url bar).</li>
+                <li>Open the current level, click "Start" for your current level.</li>
                 <li>Wait for the container to restart.</li>
             </ol>
         </div>
-        <p class="info-text">You must restart the container to continue. Refresh and press Start on your current level.</p>
+        <p>You must restart the container to continue. Refresh and press Start on your current level.</p>
     </div>
-    </body>
+</body>
 </html>`;
 
     try {
@@ -489,33 +504,60 @@ async function createShutdownHtml() {
 
 async function closeAllFilesAndShowShutdown(context, htmlContent) {
     try {
+        log('[Runtime Monitor] Starting shutdown sequence...');
+        
         // Close Welcome and all tabs on all groups
-        const tabGroups = vscode.window.tabGroups.all;
-        for (const group of tabGroups) {
-            if (group.tabs.length > 0) {
-                await vscode.window.tabGroups.close(group.tabs);
+        try {
+            log('[Runtime Monitor] Closing all open tabs...');
+            const tabGroups = vscode.window.tabGroups.all;
+            for (const group of tabGroups) {
+                if (group.tabs.length > 0) {
+                    await vscode.window.tabGroups.close(group.tabs);
+                    log(`[Runtime Monitor] Closed ${group.tabs.length} tab(s)`);
+                }
+            }
+        } catch (e) {
+            log(`[Runtime Monitor] Error closing tabs: ${e}`);
+        }
+
+        // Give a moment for tabs to close
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        try {
+            // Show a webview with the shutdown HTML
+            log('[Runtime Monitor] Creating shutdown webview panel...');
+            const panel = vscode.window.createWebviewPanel('pwnShutdown', 'Shutdown Notice', vscode.ViewColumn.Active, {
+                enableScripts: false,
+                retainContextWhenHidden: true,
+                enableFindWidget: false
+            });
+            
+            panel.webview.html = htmlContent;
+            log('[Runtime Monitor] Set webview HTML content');
+            
+            // Focus the panel to make sure it's visible
+            panel.reveal(vscode.ViewColumn.Active, false);
+            log('[Runtime Monitor] Revealed shutdown webview panel');
+            
+            context.subscriptions.push(panel);
+            log('[Runtime Monitor] Displayed shutdown webview - SHUTDOWN NOTICE VISIBLE');
+        } catch (e) {
+            log(`[Runtime Monitor] Error showing shutdown webview: ${e}`);
+            log(`[Runtime Monitor] Error details: ${e.stack}`);
+            
+            // Fallback: attempt to open the file directly
+            try {
+                log('[Runtime Monitor] Attempting fallback: opening /tmp/.shutdown.html directly');
+                const shutdownUri = vscode.Uri.file('/tmp/.shutdown.html');
+                await vscode.commands.executeCommand('vscode.open', shutdownUri, vscode.ViewColumn.Active);
+                log('[Runtime Monitor] Opened shutdown HTML file via fallback');
+            } catch (fallbackError) {
+                log(`[Runtime Monitor] Fallback also failed: ${fallbackError}`);
             }
         }
     } catch (e) {
-        log(`[Runtime Monitor] Error closing tabs: ${e}`);
-    }
-
-    try {
-        // Show a webview with the shutdown HTML
-        const panel = vscode.window.createWebviewPanel('pwnShutdown', 'Shutdown Notice', vscode.ViewColumn.Active, {
-            enableScripts: false,
-            retainContextWhenHidden: true
-        });
-        panel.webview.html = htmlContent;
-        context.subscriptions.push(panel);
-        log('[Runtime Monitor] Displayed shutdown webview');
-    } catch (e) {
-        log(`[Runtime Monitor] Error showing shutdown webview: ${e}`);
-        // Fallback: attempt to open the file directly
-        try {
-            const shutdownUri = vscode.Uri.file('/tmp/.shutdown.html');
-            await vscode.commands.executeCommand('vscode.open', shutdownUri);
-        } catch {}
+        log(`[Runtime Monitor] Fatal error in closeAllFilesAndShowShutdown: ${e}`);
+        log(`[Runtime Monitor] Error stack: ${e.stack}`);
     }
 }
 
