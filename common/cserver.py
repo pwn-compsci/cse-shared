@@ -124,11 +124,13 @@ class CommandServer:
         
         if base_command == "tester":
             return self.execute_tester()
+        elif base_command == "kill":
+            return self.execute_kill()
         elif base_command == "quit" or base_command == "exit":
             return "Goodbye\n"
         else:
             logger.warning(f"Unknown command received: '{base_command}' (original: '{command}')")
-            return f"ERROR: Unknown command '{base_command}'. Available commands: tester, quit, exit\n"
+            return f"ERROR: Unknown command '{base_command}'. Available commands: tester, kill, quit, exit\n"
     
     def execute_tester(self) -> str:
         """Execute /challenge/tester and return all output with ANSI encoding preserved"""
@@ -185,6 +187,108 @@ class CommandServer:
             error_msg = f"ERROR: Failed to execute tester: {str(e)}\n"
             logger.error(error_msg.strip())
             return error_msg
+    
+    def execute_kill(self) -> str:
+        """Kill all main.bin processes with retry logic"""
+        try:
+            logger.info("Attempting to kill all main.bin processes")
+            
+            max_retries = 5
+            retry_delay = 1
+            signal = "TERM"
+            attempt = 1
+            killed_count = 0
+            
+            while attempt <= max_retries:
+                # Find all main.bin processes using pgrep
+                try:
+                    pgrep_result = subprocess.run(
+                        ["pgrep", "-f", "main\\.bin"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=5
+                    )
+                    
+                    pids = pgrep_result.stdout.strip().split('\n') if pgrep_result.stdout.strip() else []
+                    pids = [p for p in pids if p]  # Remove empty strings
+                    
+                except subprocess.TimeoutExpired:
+                    logger.error("pgrep command timed out")
+                    return "ERROR: pgrep command timed out\n"
+                
+                if not pids:
+                    if attempt == 1:
+                        logger.info("No main.bin processes found")
+                        return "INFO: No main.bin processes found\n"
+                    else:
+                        logger.info(f"Successfully killed all {killed_count} main.bin process(es)")
+                        return f"SUCCESS: Killed {killed_count} main.bin process(es)\n"
+                
+                count = len(pids)
+                logger.warning(f"Attempt {attempt}/{max_retries}: Found {count} main.bin process(es)")
+                
+                if attempt == 1:
+                    killed_count = count
+                
+                # Kill processes with current signal
+                for pid in pids:
+                    try:
+                        subprocess.run(
+                            ["kill", f"-{signal}", pid],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=5
+                        )
+                        logger.info(f"Sent {signal} to PID {pid}")
+                    except subprocess.TimeoutExpired:
+                        logger.error(f"kill command timed out for PID {pid}")
+                    except Exception as e:
+                        logger.error(f"Failed to kill PID {pid}: {e}")
+                
+                # Wait before checking if processes are still alive
+                if attempt < max_retries:
+                    logger.info(f"Waiting {retry_delay}s before retry...")
+                    import time
+                    time.sleep(retry_delay)
+                
+                # Escalate to SIGKILL on final attempt
+                if attempt == max_retries - 1:
+                    logger.warning("Final attempt will use SIGKILL")
+                    signal = "KILL"
+                
+                attempt += 1
+            
+            # Final check
+            try:
+                final_check = subprocess.run(
+                    ["pgrep", "-f", "main\\.bin"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=5
+                )
+                remaining_pids = final_check.stdout.strip().split('\n') if final_check.stdout.strip() else []
+                remaining_pids = [p for p in remaining_pids if p]
+                
+                if remaining_pids:
+                    error_msg = f"ERROR: {len(remaining_pids)} main.bin process(es) still running after {max_retries} attempts: {', '.join(remaining_pids)}\n"
+                    logger.error(error_msg.strip())
+                    return error_msg
+                else:
+                    success_msg = f"SUCCESS: Successfully killed all {killed_count} main.bin process(es) after {attempt-1} attempt(s)\n"
+                    logger.info(success_msg.strip())
+                    return success_msg
+                    
+            except subprocess.TimeoutExpired:
+                logger.error("Final pgrep check timed out")
+                return "ERROR: Final process check timed out\n"
+            
+        except Exception as e:
+            error_msg = f"ERROR: Failed to kill main.bin processes: {str(e)}\n"
+            logger.error(error_msg.strip())
+            return error_msg
+
     
     def stop(self):
         """Stop the server gracefully"""
