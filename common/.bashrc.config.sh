@@ -332,7 +332,7 @@ if [ -d /home/other/cse240 ] && [ -f /challenge/bin/checker ]; then
 fi 
 
 # if exam or pretest then add tester alias
-if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240/pretest* ]]; then
+if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240/pretest* ]] || [[ "$clevel_work_dir" == *cse240/pex* ]]; then
     alias tester="/challenge/bin/exam_tester.sh"    
 else 
     if tail -n 10 /home/hacker/.bashrc | grep -qE 'CSE240_PS1' && \
