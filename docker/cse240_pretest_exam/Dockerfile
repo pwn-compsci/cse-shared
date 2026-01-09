@@ -14,7 +14,18 @@ EOF
 
 RUN rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED
 
-RUN mkdir /cse240_test_v1
+# Install Java extension for pretest module
+RUN <<EOF    
+    
+    $(which code-server) \
+    --auth=none \
+    --disable-telemetry \
+    --extensions-dir=/run/challenge/share/code/extensions \
+    --install-extension vscjava.vscode-java-pack
+
+EOF
+
+RUN mkdir /cse240_test_v2
 
 
 
