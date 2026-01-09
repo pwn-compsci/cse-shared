@@ -68,8 +68,8 @@ generate_java_run_task() {
 # Generate Java compile args
 generate_java_args() {
     local work_dir="$1"
-    # Compile all Java files in the directory
-    printf '"-d", "%s", "%s"/*.java' "$work_dir" "$work_dir"
+    # Compile all Java files in the directory - use wildcard that shell will expand
+    printf '"-d", "%s", "%s/*.java"' "$work_dir" "$work_dir"
 }
 
 # Set up the working directory
@@ -91,9 +91,8 @@ generate_java_launch() {
     local main_class="$1"
     local cwd="$2"
     printf '{
-    "name": "Run Java Program",
-    "type": "java",
     "name": "Launch %s",
+    "type": "java",
     "request": "launch",
     "mainClass": "%s",
     "projectName": "pretest",
