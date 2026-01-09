@@ -91,14 +91,14 @@ generate_java_launch() {
     local main_class="$1"
     local cwd="$2"
     printf '{
-    "name": "Launch %s",
+    "name": "Debug %s",
     "type": "java",
     "request": "launch",
     "mainClass": "%s",
-    "projectName": "pretest",
     "cwd": "%s",
+    "classPaths": [ "%s" ],
     "console": "integratedTerminal"
-  }\n' "$main_class" "$main_class" "$cwd"
+  }\n' "$main_class" "$main_class" "$cwd" "$cwd"
 }
 
 if [ -n "$main_class" ]; then
