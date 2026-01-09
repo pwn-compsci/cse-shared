@@ -562,132 +562,151 @@ if [ -f /challenge/.levelinit ]; then
     start_time=$(date +%s)
 fi 
 
-echo "Starting workspace build$(date) in pid=$$" | tee -a $STARTUP_LOG 
-# ###################################################################################################################### #
-# vvvv Build Tasks and Launcher for workspace vvvv                                                                       #
-# Creates 4 tasks for workspace file                                                                                     #
-# Creates one launch for the current level based on whether Makefile, main.cpp, or main.c exist                          #
-# ###################################################################################################################### #
-if [ -f /challenge/model/Makefile ]; then 
-    builder="build-make"
-elif [ -f /challenge/model/main.cpp ]; then 
-    builder="build-g++"
-else
-    builder="build-gcc"
-fi 
-problem_matcher='$gcc'
+# Load .javainit if module is pretest (Java-based problems)
+if [ "$module" = "pretest" ] && [ -f /challenge/.javainit ]; then
+    source /challenge/.javainit
+    end_time=$(date +%s)
+    execution_time=$((end_time - start_time))
+    echo "Completed .javainit in .init in $execution_time seconds" >> "$STARTUP_LOG"
+    start_time=$(date +%s)
+    # Set launch and tasks to use Java configuration for workspace
+    if [ -n "$java_launch" ]; then
+        launch="$java_launch"
+    fi
+    if [ -n "$java_tasks" ]; then
+        tasks="$java_tasks"
+    fi
+fi
 
-generate_task() {
-  local label="$1"
-  local command="$2"
-  local args="$3"
-  local task_work_dir="$4"
-  printf '{
-    "type": "shell",
-    "label": "%s",
-    "command": "%s",
-    "args": [ %s ],
-    "options": { "cwd": "%s" },
-    "problemMatcher": [ "%s" ],
-    "group": "build",
-    "detail": "compiler: %s"
-  }' "$label" "$command" "$args" "$task_work_dir" "$problem_matcher" "$command"
-}
+if [ "$module" != "pretest" ]; then
+    echo "Starting workspace build$(date) in pid=$$" | tee -a $STARTUP_LOG 
+    # ###################################################################################################################### #
+    # vvvv Build Tasks and Launcher for workspace vvvv                                                                       #
+    # Creates 4 tasks for workspace file                                                                                     #
+    # Creates one launch for the current level based on whether Makefile, main.cpp, or main.c exist                          #
+    # For Java (pretest module), build tasks are configured in .javainit                                                     #
+    # ###################################################################################################################### #
+    if [ -f /challenge/model/Makefile ]; then 
+        builder="build-make"
+    elif [ -f /challenge/model/main.cpp ]; then 
+        builder="build-g++"
+    else
+        builder="build-gcc"
+    fi 
+    problem_matcher='$gcc'
 
-generate_terminal_task() {
-  local task_dir="$1"
-  printf '{
-    "label": "Open Default Terminal",
-    "type": "shell",
-    "command": "%s",
-    "args": ["-l", "-i"],
-    "options": { "cwd": "%s" },
-    "presentation": { "echo": true, "reveal": "always", "focus": true, "panel": "shared" },
-    "problemMatcher": [],
-    "runOptions": { "runOn": "folderOpen" },
-    "isBackground": true, 
-    "dependsOn": "close editor groups"    
-  }' "$SHELL" "$task_dir" 
-}
+    generate_task() {
+    local label="$1"
+    local command="$2"
+    local args="$3"
+    local task_work_dir="$4"
+        printf '{
+            "type": "shell",
+            "label": "%s",
+            "command": "%s",
+            "args": [ %s ],
+            "options": { "cwd": "%s" },
+            "problemMatcher": [ "%s" ],
+            "group": "build",
+            "detail": "compiler: %s"
+        }' "$label" "$command" "$args" "$task_work_dir" "$problem_matcher" "$command"
+    }
 
-generate_close_command(){
+    generate_terminal_task() {
+        local task_dir="$1"
+        printf '{
+            "label": "Open Default Terminal",
+            "type": "shell",
+            "command": "%s",
+            "args": ["-l", "-i"],
+            "options": { "cwd": "%s" },
+            "presentation": { "echo": true, "reveal": "always", "focus": true, "panel": "shared" },
+            "problemMatcher": [],
+            "runOptions": { "runOn": "folderOpen" },
+            "isBackground": true, 
+            "dependsOn": "close editor groups"    
+        }' "$SHELL" "$task_dir" 
+    }
+
+    generate_close_command(){
+        printf '{
+            "label": "close editor groups",
+            "command": "${command:workbench.action.closeAllGroups}",
+            "runOptions": { "runOn": "folderOpen" },
+            "presentation": { "echo": false, "reveal": "never", "focus": false,"panel": "shared", "showReuseMessage": false, "clear": false }
+        }'
+
+    }
+
+    generate_args() {
+        printf '"-fdiagnostics-color=always", "-g", "%s/main.c", "-Wall", "-Werror", "-o", "%s/main.bin"' "$clevel_work_dir" "$clevel_work_dir"
+    }
+
+    ## SETTING UP ADMIN WORK AREA THE CURRENT CODER IF /home/other exists
+    task_work_dir="$clevel_work_dir"
+
+    task_make=$(generate_task "build-make" "/usr/bin/make" "\"\"" "$task_work_dir")
+    task_gpp=$(generate_task "build-g++" "/usr/bin/g++" "$(generate_args)" "$task_work_dir")
+    task_gcc=$(generate_task "build-gcc" "/usr/bin/gcc" "$(generate_args)" "$task_work_dir")
+
+    #task_terminal=$(generate_terminal_task "$task_work_dir")
+
+    if grep -q "$clevel_work_dir" "$ENVFILE"; then   # we find current dir in ENVFILE then do not close everything.
+        printf "NOT going to generate the close editor windows b/c \n$clevel_work_dir $(cat $ENVFILE)\n\n" | tee -a $STARTUP_LOG
+        #tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
+        tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
+    else
+        printf "generating close \n$clevel_work_dir" | tee -a $STARTUP_LOG
+        #cat "$ENVFILE" | tee -a $STARTUP_LOG
+        printf "\n\n" | tee -a $STARTUP_LOG
+        task_close=$(generate_close_command )
+        #tasks=$(printf '[ %s, %s, %s, %s, %s ]' "$task_close" "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
+        #tasks=$(printf '[ %s, %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
+        tasks=$(printf '[ %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )   
+        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
+        echo "$tasks" | tee -a $STARTUP_LOG 
+        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
+    fi 
+
+    # To pretty-print for debugging
+    #echo "$tasks" | jq '.' >  /challenge/pretty_vscode.json
+
+    # Generate the launch configuration for running the developer's programs
+    generate_launch() {
+    local name="$1"
+    local type="$2"
+    local preLaunchTask="$3"
+    local program="$4"
+    local cwd="$5"
+    local miDebuggerPath="$6"
     printf '{
-        "label": "close editor groups",
-        "command": "${command:workbench.action.closeAllGroups}",
-        "runOptions": { "runOn": "folderOpen" },
-        "presentation": { "echo": false, "reveal": "never", "focus": false,"panel": "shared", "showReuseMessage": false, "clear": false }
-    }'
+        "name": "%s",
+        "type": "%s",
+        "preLaunchTask": "%s",
+        "request": "launch",
+        "program": "%s",
+        "args": [],
+        "cwd": "%s",
+        "environment": [],
+        "MIMode": "gdb",
+        "setupCommands": [ { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true } ],
+        "miDebuggerPath": "%s",
+        "logging": { "trace": false, "traceResponse": false, "engineLogging": false }
+    }\n' "$name" "$type" "$preLaunchTask" "$program" "$cwd" "$miDebuggerPath"
+    }
 
-}
+    launch=$(generate_launch "Debug ws /main.bin" "cppdbg" "$builder" "$task_work_dir/main.bin" "$task_work_dir" "/usr/bin/gdb")
 
-generate_args() {
-  printf '"-fdiagnostics-color=always", "-g", "%s/main.c", "-Wall", "-Werror", "-o", "%s/main.bin"' "$clevel_work_dir" "$clevel_work_dir"
-}
+    # To pretty-print for debugging
+    #echo "$launch" | jq '.' >> /challenge/pretty_vscode.json
 
-## SETTING UP ADMIN WORK AREA THE CURRENT CODER IF /home/other exists
-task_work_dir="$clevel_work_dir"
+    find /home/hacker/.local/share/code-server ! -user hacker -exec chown hacker:hacker {} +
+    find /home/hacker/.config ! -user hacker -exec chown hacker:hacker {} + 
 
-task_make=$(generate_task "build-make" "/usr/bin/make" "\"\"" "$task_work_dir")
-task_gpp=$(generate_task "build-g++" "/usr/bin/g++" "$(generate_args)" "$task_work_dir")
-task_gcc=$(generate_task "build-gcc" "/usr/bin/gcc" "$(generate_args)" "$task_work_dir")
-
-#task_terminal=$(generate_terminal_task "$task_work_dir")
-
-if grep -q "$clevel_work_dir" "$ENVFILE"; then   # we find current dir in ENVFILE then do not close everything.
-    printf "NOT going to generate the close editor windows b/c \n$clevel_work_dir $(cat $ENVFILE)\n\n" | tee -a $STARTUP_LOG
-    #tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
-    tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
-else
-    printf "generating close \n$clevel_work_dir" | tee -a $STARTUP_LOG
-    #cat "$ENVFILE" | tee -a $STARTUP_LOG
-    printf "\n\n" | tee -a $STARTUP_LOG
-    task_close=$(generate_close_command )
-    #tasks=$(printf '[ %s, %s, %s, %s, %s ]' "$task_close" "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
-    #tasks=$(printf '[ %s, %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
-    tasks=$(printf '[ %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )   
-    echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
-    echo "$tasks" | tee -a $STARTUP_LOG 
-    echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
-fi 
-
-# To pretty-print for debugging
-#echo "$tasks" | jq '.' >  /challenge/pretty_vscode.json
-
-# Generate the launch configuration for running the developer's programs
-generate_launch() {
-  local name="$1"
-  local type="$2"
-  local preLaunchTask="$3"
-  local program="$4"
-  local cwd="$5"
-  local miDebuggerPath="$6"
-  printf '{
-    "name": "%s",
-    "type": "%s",
-    "preLaunchTask": "%s",
-    "request": "launch",
-    "program": "%s",
-    "args": [],
-    "cwd": "%s",
-    "environment": [],
-    "MIMode": "gdb",
-    "setupCommands": [ { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true } ],
-    "miDebuggerPath": "%s",
-    "logging": { "trace": false, "traceResponse": false, "engineLogging": false }
-  }\n' "$name" "$type" "$preLaunchTask" "$program" "$cwd" "$miDebuggerPath"
-}
-
-launch=$(generate_launch "Debug ws /main.bin" "cppdbg" "$builder" "$task_work_dir/main.bin" "$task_work_dir" "/usr/bin/gdb")
-
-# To pretty-print for debugging
-#echo "$launch" | jq '.' >> /challenge/pretty_vscode.json
-
-find /home/hacker/.local/share/code-server ! -user hacker -exec chown hacker:hacker {} +
-find /home/hacker/.config ! -user hacker -exec chown hacker:hacker {} + 
-
-# ###################################################################################################################### #
-# ^^^^ END Build Tasks and Launcher for workspace ^^^^                                                                   #
-# ###################################################################################################################### #
+    # ###################################################################################################################### #
+    # ^^^^ END Build Tasks and Launcher for workspace ^^^^                                                                   #
+    # ###################################################################################################################### #
+fi  # End of C/C++ build section (skip for Java/pretest module)
 
 echo "[+] Starting environment config for VSCode"
 # if the user does not want autoload (likely me) then do not automatically change environment
@@ -746,8 +765,8 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
             }    
         }\n' "$dirs_to_open" "$launch" "$tasks" > $tmpfile
         # { "name": "Open Terminal on Start", "preLaunchTask": "Open Default Terminal" }
-        cat $tmpfile > /challenge/workspace.debug
-        echo "workspace json file written to /challenge/workspace.debug" | tee -a $STARTUP_LOG
+        # cat $tmpfile > /challenge/workspace.debug
+        # echo "workspace json file written to /challenge/workspace.debug" | tee -a $STARTUP_LOG
         
         jq '.' $tmpfile > "$wsname" 2| tee -a $STARTUP_LOG
         

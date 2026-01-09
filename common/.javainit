@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+
+# Java initialization script for pretest module
+# This script sets up Java compilation and execution for the pretest levels
+
+echo "[i] Starting Java workspace initialization" >> "$STARTUP_LOG"
+
+# Get the current level info from level.json
+level=$(jq -r '.level' /challenge/.config/level.json 2>/dev/null)    
+module=$(jq -r '.module' /challenge/.config/level.json 2>/dev/null)    
+
+echo "[i] Java setup: level=$level, module=$module" >> "$STARTUP_LOG"
+
+# Get all Java source files from the model directory
+if [ -d /challenge/model ]; then
+    java_sources=$(find /challenge/model -name "*.java" -type f | xargs -I {} basename {} | tr '\n' ' ')
+    echo "[i] Found Java sources: $java_sources" >> "$STARTUP_LOG"
+    
+    # Get the main class name (usually the one with main method)
+    # For pretest, this is typically the last file or a specific pattern
+    main_class=""
+    if [ -f /challenge/model/Hello.java ]; then
+        main_class="Hello"
+    elif [ -f /challenge/model/LOTRCharacters.java ]; then
+        main_class="LOTRCharacters"
+    else
+        # Get the first Java file as main class
+        main_class=$(find /challenge/model -name "*.java" -type f | head -1 | xargs basename | sed 's/.java//')
+    fi
+    
+    echo "[i] Main class: $main_class" >> "$STARTUP_LOG"
+fi
+
+# Generate Java compilation tasks
+generate_java_task() {
+    local label="$1"
+    local command="$2"
+    local args="$3"
+    local task_work_dir="$4"
+    printf '{
+    "type": "shell",
+    "label": "%s",
+    "command": "%s",
+    "args": [ %s ],
+    "options": { "cwd": "%s" },
+    "problemMatcher": [ "$javac" ],
+    "group": "build",
+    "detail": "compiler: %s"
+  }' "$label" "$command" "$args" "$task_work_dir" "$command"
+}
+
+# Generate Java execution task
+generate_java_run_task() {
+    local main_class="$1"
+    local task_work_dir="$2"
+    printf '{
+    "type": "shell",
+    "label": "run-java",
+    "command": "java",
+    "args": [ "-cp", "%s", "%s" ],
+    "options": { "cwd": "%s" },
+    "presentation": { "echo": true, "reveal": "always", "focus": true, "panel": "shared" },
+    "problemMatcher": [],
+    "dependsOn": "build-javac"
+  }' "$task_work_dir" "$main_class" "$task_work_dir"
+}
+
+# Generate Java compile args
+generate_java_args() {
+    local work_dir="$1"
+    # Compile all Java files in the directory
+    printf '"-d", "%s", "%s"/*.java' "$work_dir" "$work_dir"
+}
+
+# Set up the working directory
+task_work_dir="$clevel_work_dir"
+
+# Create Java build tasks
+task_javac=$(generate_java_task "build-javac" "/usr/bin/javac" "$(generate_java_args "$task_work_dir")" "$task_work_dir")
+if [ -n "$main_class" ]; then
+    task_run=$(generate_java_run_task "$main_class" "$task_work_dir")
+    java_tasks=$(printf '[ %s, %s ]' "$task_javac" "$task_run")
+else
+    java_tasks=$(printf '[ %s ]' "$task_javac")
+fi
+
+echo "[i] Java tasks configured" >> "$STARTUP_LOG"
+
+# Generate Java launch configuration
+generate_java_launch() {
+    local main_class="$1"
+    local cwd="$2"
+    printf '{
+    "name": "Run Java Program",
+    "type": "java",
+    "name": "Launch %s",
+    "request": "launch",
+    "mainClass": "%s",
+    "projectName": "pretest",
+    "cwd": "%s",
+    "console": "integratedTerminal"
+  }\n' "$main_class" "$main_class" "$cwd"
+}
+
+if [ -n "$main_class" ]; then
+    java_launch=$(generate_java_launch "$main_class" "$task_work_dir")
+else
+    java_launch='{}'
+fi
+
+echo "[i] Java workspace initialization completed" >> "$STARTUP_LOG"
+
