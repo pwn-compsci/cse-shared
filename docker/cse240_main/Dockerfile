@@ -35,7 +35,6 @@ FROM essentials AS vscoder
 RUN mkdir -p /run/challenge/share/code/extensions
 
 COPY pwn-cpmate-0.0.2.vsix /run/challenge/share/code/extensions
-COPY AmauryRabouan.new-vsc-prolog-1.1.12.vsix /run/challenge/share/code/extensions
 
 RUN curl -fsSL https://code-server.dev/install.sh | bash
 RUN  /bin/wget -P /run/challenge/share/code/extensions 'https://github.com/microsoft/vscode-cpptools/releases/download/v1.20.5/cpptools-linux.vsix'
@@ -46,11 +45,8 @@ RUN <<EOF
     --auth=none \
     --disable-telemetry \
     --extensions-dir=/run/challenge/share/code/extensions \
-    --install-extension ms-python.python \
     --install-extension /run/challenge/share/code/extensions/cpptools-linux.vsix \
-    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix \
-    --install-extension evzen-wybitul.magic-racket \
-    --install-extension /run/challenge/share/code/extensions/AmauryRabouan.new-vsc-prolog-1.1.12.vsix
+    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix
 
 EOF
 
@@ -226,7 +222,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v69 && touch "/cse240_v69/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v73 && touch "/cse240_v73/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final

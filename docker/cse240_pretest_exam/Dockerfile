@@ -14,18 +14,21 @@ EOF
 
 RUN rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED
 
-# Install Java extension for pretest module
+# Install code-server for pretest module
+RUN curl -fsSL https://code-server.dev/install.sh | bash
+
+# Install Java language support
 RUN <<EOF    
     
     $(which code-server) \
     --auth=none \
     --disable-telemetry \
     --extensions-dir=/run/challenge/share/code/extensions \
-    --install-extension vscjava.vscode-java-pack
+    --install-extension redhat.java
 
 EOF
 
-RUN mkdir /cse240_test_v2
+RUN mkdir /cse240_test_v6
 
 
 
