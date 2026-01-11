@@ -233,6 +233,8 @@ if [ -f /usr/bin/exec-suid ]; then
     chmod 6755 /usr/bin/exec-suid || true
 fi 
 
+
+
 echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
 mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
 
@@ -494,7 +496,21 @@ else
         #    ln -s $(dirname "$clevel_work_dir")/01 $clevel_work_dir
         #fi
     fi 
+    
+    # Copy REFERENCE.md if it exists
+    if [ -f /challenge/REFERENCE.md ]; then     
+        cp /challenge/REFERENCE.md $clevel_work_dir/REFERENCE.md
+        echo "[i] Found REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
+    fi
+    
+    # Copy EXAM_REFERENCE.md if it exists
+    if [ -f /challenge/EXAM_REFERENCE.md ]; then     
+        cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
+        echo "[i] Found EXAM_REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
+    fi
+
     chown hacker:hacker -R $clevel_work_dir
+    
 fi
 
 # END Exam Setup

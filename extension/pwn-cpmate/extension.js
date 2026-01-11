@@ -468,9 +468,17 @@ async function createShutdownHtml() {
         .shutdown-notice h1 { font-size: 2em; margin: 20px 0; }
         .shutdown-timer { font-size: 1.8em; font-weight: bold; font-family: monospace; margin: 20px 0; }
         .shutdown-time { font-size: 1.2em; margin: 15px 0; padding: 10px; background-color: rgba(255, 107, 107, 0.1); border-left: 4px solid #ff6b6b; }
-        .shutdown-actions { margin: 30px 0; }
+        .shutdown-actions { 
+            margin: 30px 0; 
+            padding: 20px; 
+            background-color: rgba(255, 193, 7, 0.15); 
+            border: 2px solid #ffc107; 
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+        }
+        .shutdown-actions p { font-size: 1.1em; font-weight: bold; color: #ff9800; margin-top: 0; }
         .shutdown-actions ol { margin: 15px 0; padding-left: 25px; }
-        .shutdown-actions li { margin: 10px 0; }
+        .shutdown-actions li { margin: 10px 0; font-size: 1.05em; }
     </style>
 </head>
 <body>
@@ -588,6 +596,11 @@ function startRuntimeMonitoring(context) {
 function activate(context) {
     //vscode.window.showInformationMessage(`Welcome to pwn.college's CSE240 🦆`);
     extensionId = context.extension.id;
+    
+    // Notify users about ephemeral nature of changes
+    vscode.window.showWarningMessage(
+        '⚠️ Important: This VS Code instance allows file editing, but all changes will be lost when the server shuts down (e.g., overnight). Save your work elsewhere if needed.'
+    );
     
     // Load configuration on startup and start session monitoring if needed
     Promise.all([loadLevelConfig(), loadSessionConfiguration()]).then(() => {
