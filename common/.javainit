@@ -43,7 +43,7 @@ generate_java_task() {
     "command": "%s",
     "args": [ %s ],
     "options": { "cwd": "%s" },
-    "problemMatcher": [ "$javac" ],
+    "problemMatcher": [],
     "group": "build",
     "detail": "compiler: %s"
   }' "$label" "$command" "$args" "$task_work_dir" "$command"
