@@ -4,6 +4,7 @@
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
 mkdir -p /home/hacker/cse240/.vscode/logs
+mkdir -p /home/hacker/.cache 
 chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
 
 # Generate log filename based on current date/time
@@ -427,8 +428,16 @@ if [ -f /challenge/.config/ed.dat ]; then
     if [ -d /home/me ]; then 
         pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
     fi 
-    echo "pwn college id = '$pwn_college_id'" | tee -a $STARTUP_LOG 
-    grep -Poh ".*${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
+    echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log 
+    grep -Poh "^${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
+    if [ ! -s /challenge/.config/info.dat ]; then
+        echo "[i] No entry found for pwn_college_id=$pwn_college_id in ed.dat, trying partial match" >> /challenge/startup.log
+        grep -Poh ".{0,6}${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
+        if [ ! -s /challenge/.config/info.dat ]; then
+            echo "[i] No entry found for pwn_college_id=$pwn_college_id in ed.dat using partial match" >> /challenge/startup.log            
+        fi
+    fi
+
     cat /challenge/.config/info.dat | tee -a $STARTUP_LOG
     if [ ! -d /home/me ]; then 
         rm -f /challenge/.config/ed.dat
@@ -510,7 +519,7 @@ else
     fi
 
     chown hacker:hacker -R $clevel_work_dir
-    
+
 fi
 
 # END Exam Setup
