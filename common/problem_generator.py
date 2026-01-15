@@ -161,23 +161,28 @@ context['word']  = random.sample(varnames, 70)
 
 # Process each file
 for filename in args.files:
-    print(f"[pg] Processing: {filename}")
-    with open(filename, 'r') as f:
-        template = Template(f.read())
-        # print("Context keys:", [key for key in context.keys() if 'str' in key])
-        rendered = template.render(**context)
+    try:
+        print(f"[pg] Processing: {filename}")
+        with open(filename, 'r') as f:
+            template = Template(f.read())
+            # print("Context keys:", [key for key in context.keys() if 'str' in key])
+            rendered = template.render(**context)
 
-    if filename.endswith('.j2'):
-        old_filename = filename
-        filename = filename[:-3]
-        try:
-            print("[pg] Removing old file:", old_filename)
-            os.remove(old_filename)
-        except Exception as e:
-            print(f"[pg] Failed to remove {old_filename}: {e}")            
-        
-    with open(filename, 'w') as f:
-        f.write(rendered)
+        if filename.endswith('.j2'):
+            old_filename = filename
+            filename = filename[:-3]
+            try:
+                print("[pg] Removing old file:", old_filename)
+                os.remove(old_filename)
+            except Exception as e:
+                print(f"[pg] Failed to remove {old_filename}: {e}")            
+            
+        with open(filename, 'w') as f:
+            f.write(rendered)
 
-    print(f"[pg] Rendered: {filename}")
+        print(f"[pg] Rendered: {filename}")
+    except FileNotFoundError:
+        print(f"[pg] File not found: {filename} - skipping")
+    except Exception as e:
+        print(f"[pg] Error processing {filename}: {e} - skipping")
 
