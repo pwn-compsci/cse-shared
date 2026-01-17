@@ -1147,6 +1147,7 @@ def run_reset_commands(reset_commands):
 def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_failure=False, case_sensitive=False, hidden_test=False, skip_template_diffs=False):
 
     test = os.path.splitext(os.path.basename(test_json_file))[0]
+    failed_test_info = {'test': test, 'test_name': '', 'missing_output': ''}
     working_dir = source_dir
     try:
         with open(test_json_file, "r") as tjf:
@@ -1288,10 +1289,12 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
 
     test_name = test_name.replace("<testfilename>", os.path.basename(target_path))
     test_description = test_description.replace("<testfilename>", os.path.basename(target_path))
+    
+    failed_test_info['test_name'] = test_name
 
     if not test_json.get("allow_nonprintable_chars", True) and not nonprintable_test(target_path, args, input_data, test_name, test_description, actual_output, start_time=start_time):
        send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - non-printable characters", test_failed=test, missing_output="")
-       return False
+       return (False, failed_test_info)
 
     if test_type == "output_size":
         if len(actual_output) < test_json["max_size"]:
@@ -1301,7 +1304,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output)}b, the maximum allowed is {test_json['max_size']}b. Please remove extra prints and resubmit.")
             send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - output too large", test_failed=test, missing_output="")
-            return False
+            return (False, failed_test_info)
     elif test_type == "output_lines":
         if len(actual_output.splitlines()) < test_json["max_lines"]:
             print(f"{GREEN}\u2714 PASS{RESET_COLOR} {test_name} ran in {time.time()-start_time:.2f}s")
@@ -1310,7 +1313,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output.splitlines())} lines, the maximum allowed is {test_json['max_lines']} lines. Please remove extra prints and resubmit.")
             send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - too many output lines", test_failed=test, missing_output="")
-            return False
+            return (False, failed_test_info)
     else:
         actual_output_list = actual_output.splitlines()
         check_file = test_json.get("checkFile", {})
@@ -1329,8 +1332,9 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             if (not file_out_report["passed"]):
                 file_output_failed_test_information(target_path, test, args, input_data, expected_file_out_list, test_name, test_description, check_filepath, actual_lines_in_file_list, file_out_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
                 missing_output_str = ', '.join(file_out_report.get("missing", []))
+                failed_test_info['missing_output'] = missing_output_str
                 send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
-                return False
+                return (False, failed_test_info)
 
         out_match_report = match_output(expected_output_list, actual_output_list,  test_json.get("unexpectedOutput",[]), output_type, case_sensitive=case_sensitive)
 
@@ -1343,9 +1347,10 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         else:
             output_failed_test_information(target_path, test, args, input_data, expected_output_list, test_name, test_description, actual_output_list, out_match_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
             missing_output_str = ', '.join(out_match_report.get("missing", []))
+            failed_test_info['missing_output'] = missing_output_str
             send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
-            return False
-    return False
+            return (False, failed_test_info)
+    return (False, failed_test_info)
 
 #
 def verify_user_tests_unique(user_test_paths, test_dir):
@@ -1429,6 +1434,7 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
     passes = 0
     failures = 0
     skipped = 0
+    failed_tests_info = []
     test_count = len(test_cases)
     for test_json_file in test_cases:
         hidden_test = False
@@ -1437,8 +1443,11 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
         result = run_test(source_dir, test_dir, test_json_file, case_sensitive=case_sensitive, hidden_test=hidden_test, skip_template_diffs=skip_template_diffs)
         if result == "skipped":
             skipped += 1
-        elif result:
+        elif result == True:
             passes += 1
+        elif isinstance(result, tuple) and result[0] == False:
+            failures += 1
+            failed_tests_info.append(result[1])
         else:
             failures += 1
             if os.getenv("TEST_ALL", "") == "":
@@ -1449,9 +1458,9 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
                     print(f"Skipped {skipped} template diff tests")
                 print(f"{RED}Failed System Test {os.path.basename(test_json_file)} {RESET_COLOR} ")
 
-                return failures, passes, test_json_file
+                return failures, passes, test_json_file, failed_tests_info
 
-    return failures, passes, None
+    return failures, passes, None, failed_tests_info
 
 
 def is_elf_binary(file_path):
@@ -1745,6 +1754,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
     total_failures = 0
     total_passes = 0
+    all_failed_tests_info = []
 
     compile_success = False
     compiled_users_code = False
@@ -1827,10 +1837,13 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             if len(usertests) > 0:
                 print("---------------[  User Tests  ]---------------")
 
+            total_user_tests = len(usertests) * 3  # Each user test runs 3 sub-tests (modelBad, modelGood, user's main)
             for ut in usertests:
-                resfail, respass = run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_sensitive=case_sensitive)
+                resfail, respass, user_failed_info = run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_sensitive=case_sensitive)
                 total_failures += resfail
                 total_passes += respass
+                if user_failed_info is not None:
+                    all_failed_tests_info.append(user_failed_info)
             if len(usertests) > 0:
                 print("")
 
@@ -1838,10 +1851,27 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
     if compile_success and os.path.exists(SYSTEM_TESTS_DIR):
         print("---------------[ System Tests ]---------------")
         skip_template_diffs = args.use_current_dir
-        resfail, respass, last_test_json_fp = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive, skip_template_diffs=skip_template_diffs)
+        resfail, respass, last_test_json_fp, failed_tests_info = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive, skip_template_diffs=skip_template_diffs)
         total_failures += resfail
         total_passes += respass
+        all_failed_tests_info.extend(failed_tests_info)
 
+    # Calculate total tests and not executed count
+    total_user_tests = 0
+    total_system_tests = 0
+    
+    if level_config is not None and not args.disable_user_tests:
+        usertests = level_config.get("requiredUserTests", [])
+        total_user_tests = len(usertests) * 3  # Each user test runs 3 sub-tests
+    
+    if compile_success and os.path.exists(SYSTEM_TESTS_DIR):
+        system_test_files = [f for f in os.listdir(SYSTEM_TESTS_DIR) if f.startswith("stest") and f.endswith(".json")]
+        total_system_tests = len(system_test_files)
+    
+    total_tests = total_user_tests + total_system_tests
+    tests_executed = total_passes + total_failures
+    not_executed = max(0, total_tests - tests_executed)
+    
     if user_created_system_test:
         print('Flag will be in output of program, test case must include `"print_output": true`')
     elif args.disable_user_tests:
@@ -1863,7 +1893,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             # Send success results to API for ED environment
             send_test_results(
                 passed_all_tests=True,
-                test_message=f"All {total_passes} tests passed",
+                test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
                 flag_value=ed_credit_string
             )
         else:
@@ -1879,7 +1909,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                         # Send success results to API with actual flag
                         send_test_results(
                             passed_all_tests=True,
-                            test_message=f"All {total_passes} tests passed",
+                            test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
                             flag_value=flag.strip()
                         )
                 else:
@@ -1887,7 +1917,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                     print("If you are currently attending a testing session, please ask the proctor for help")
                     send_test_results(
                             passed_all_tests=True,
-                            test_message=f"All {total_passes} tests passed, no flag session not active",
+                            test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed} (no flag - session not active)",
                             flag_value=""
                         )
             else:
@@ -1897,7 +1927,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 # Send success results to API without flag
                 send_test_results(
                     passed_all_tests=True,
-                    test_message=f"All {total_passes} tests passed",
+                    test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
                     flag_value="pwn.college{...}"
                 )
             save_results(source_dir, total_passes, total_failures, initial_files, module_id, level_id, flag)
@@ -1916,11 +1946,20 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
         print(f"{RED}Too many failures{RESET_COLOR} to receive flag, recording results")
         
-        # Send failure results to API
+        # Send failure results to API with first failed test info
+        test_failed = ""
+        missing_output = ""
+        if len(all_failed_tests_info) > 0:
+            first_failed = all_failed_tests_info[0]
+            test_failed = first_failed.get('test', '')
+            missing_output = first_failed.get('missing_output', '')
+        
         send_test_results(
             passed_all_tests=False,
-            test_message=f"{total_passes} tests passed, {total_failures} tests failed",
-            flag_value=""
+            test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
+            flag_value="",
+            test_failed=test_failed,
+            missing_output=missing_output
         )
         
         save_results(source_dir, total_passes, total_failures, initial_files, module_id, level_id, last_test_json_fp=last_test_json_fp)
@@ -1932,6 +1971,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_sensitive=False):
     failures = 0
     passes = 0
+    failed_test_info = None
     module_num, level_num, test_num = extract_numbers(ut)
     model_good = os.path.join(CHALLENGE_DIR, "modelGood.bin")
     model_bad = os.path.join(CHALLENGE_DIR, f"modelBad{module_num}.{level_num}.{test_num}.bin")
@@ -1943,23 +1983,39 @@ def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_se
 
     # the expectation is that the test will fail when running with model_bad, so we invert using expect_failure
     # User tests never skip template diffs
-    if run_test(source_dir, os.path.dirname(ut), ut, model_bad, expect_failure=True, case_sensitive=case_sensitive, skip_template_diffs=False):
+    # Note: run_test returns True on success, or (False, failed_test_info) on failure, or "skipped"
+    result = run_test(source_dir, os.path.dirname(ut), ut, model_bad, expect_failure=True, case_sensitive=case_sensitive, skip_template_diffs=False)
+    if result == True:
         passes += 1
+    elif isinstance(result, tuple) and result[0] == False:
+        failures += 1
+        failed_test_info = result[1]
     else:
         failures += 1
 
-    if run_test(source_dir, os.path.dirname(ut), ut, model_good, case_sensitive=case_sensitive, skip_template_diffs=False):
+    result = run_test(source_dir, os.path.dirname(ut), ut, model_good, case_sensitive=case_sensitive, skip_template_diffs=False)
+    if result == True:
         passes += 1
+    elif isinstance(result, tuple) and result[0] == False:
+        failures += 1
+        if failed_test_info is None:
+            failed_test_info = result[1]
     else:
         failures += 1
+        
     if compile_success and compiled_users_code:
         users_main_bin = os.path.join(source_dir, "main.bin")
-        if run_test(source_dir, os.path.dirname(ut), ut, users_main_bin, case_sensitive=case_sensitive, skip_template_diffs=False):
+        result = run_test(source_dir, os.path.dirname(ut), ut, users_main_bin, case_sensitive=case_sensitive, skip_template_diffs=False)
+        if result == True:
             passes += 1
+        elif isinstance(result, tuple) and result[0] == False:
+            failures += 1
+            if failed_test_info is None:
+                failed_test_info = result[1]
         else:
             failures += 1
 
-    return failures, passes
+    return failures, passes, failed_test_info
 
 
 def main():
