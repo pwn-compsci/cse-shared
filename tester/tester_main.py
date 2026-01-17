@@ -71,50 +71,50 @@ SYSTEM_TESTS_DIR = f"{CHALLENGE_DIR}/system_tests"
 LEVEL_CONFIG_FP = os.path.join(CHALLENGE_DIR, ".config", "level.json")
 ED_ENV = False
 
-if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
-    BASE_HOME_DIR = "/home/"
-    BASE_CSE240_DIR = f"{BASE_HOME_DIR}"
-    DATABASE = None
-    CHALLENGE_DIR = BASE_HOME_DIR
-    SYSTEM_TESTS_DIR = f"{CHALLENGE_DIR}/system_tests"
-    LEVEL_CONFIG_FP = os.path.join(CHALLENGE_DIR, ".config", "level.json")
-    with open(LEVEL_CONFIG_FP, 'r') as f:
-        labnum = json.load(f).get("labid", "")
-        if labnum == "":
-            labnum = json.load(f).get("hw", "")
+# if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
+#     BASE_HOME_DIR = "/home/"
+#     BASE_CSE240_DIR = f"{BASE_HOME_DIR}"
+#     DATABASE = None
+#     CHALLENGE_DIR = BASE_HOME_DIR
+#     SYSTEM_TESTS_DIR = f"{CHALLENGE_DIR}/system_tests"
+#     LEVEL_CONFIG_FP = os.path.join(CHALLENGE_DIR, ".config", "level.json")
+#     with open(LEVEL_CONFIG_FP, 'r') as f:
+#         labnum = json.load(f).get("labid", "")
+#         if labnum == "":
+#             labnum = json.load(f).get("hw", "")
 
-    # script is having difficulty removing the .fuse file on ed lessons
-    # the extra steps are an attempt to work around this issue and 
-    # still perform the renewal of the stest files.
-    if os.path.exists(SYSTEM_TESTS_DIR):
-        for root, dirs, files in os.walk(SYSTEM_TESTS_DIR, topdown=False):
-            for name in files + dirs:
-                full_path = os.path.join(root, name)
-                try:
-                    if os.path.isfile(full_path) or os.path.islink(full_path):
-                        os.remove(full_path)
-                    elif os.path.isdir(full_path):
-                        shutil.rmtree(full_path)
-                except Exception as e:
-                    print(f"Error deleting {full_path}: {e}")
-        try:
-            shutil.rmtree(SYSTEM_TESTS_DIR)
-        except:
-            pass
+#     # script is having difficulty removing the .fuse file on ed lessons
+#     # the extra steps are an attempt to work around this issue and 
+#     # still perform the renewal of the stest files.
+#     if os.path.exists(SYSTEM_TESTS_DIR):
+#         for root, dirs, files in os.walk(SYSTEM_TESTS_DIR, topdown=False):
+#             for name in files + dirs:
+#                 full_path = os.path.join(root, name)
+#                 try:
+#                     if os.path.isfile(full_path) or os.path.islink(full_path):
+#                         os.remove(full_path)
+#                     elif os.path.isdir(full_path):
+#                         shutil.rmtree(full_path)
+#                 except Exception as e:
+#                     print(f"Error deleting {full_path}: {e}")
+#         try:
+#             shutil.rmtree(SYSTEM_TESTS_DIR)
+#         except:
+#             pass
     
-    if os.path.exists(SYSTEM_TESTS_DIR):
-        if os.path.exists(f"/course/grouplab{labnum}/system_tests"):
-            for item in os.listdir(f"/course/grouplab{labnum}/system_tests"):
-                s = os.path.join(f"/course/grouplab{labnum}/system_tests", item)
-                d = os.path.join(SYSTEM_TESTS_DIR, item)
-                if os.path.isdir(s):
-                    shutil.copytree(s, d, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(s, d)
-    else:
-        shutil.copytree(f"/course/grouplab{labnum}/system_tests", SYSTEM_TESTS_DIR)
+#     if os.path.exists(SYSTEM_TESTS_DIR):
+#         if os.path.exists(f"/course/grouplab{labnum}/system_tests"):
+#             for item in os.listdir(f"/course/grouplab{labnum}/system_tests"):
+#                 s = os.path.join(f"/course/grouplab{labnum}/system_tests", item)
+#                 d = os.path.join(SYSTEM_TESTS_DIR, item)
+#                 if os.path.isdir(s):
+#                     shutil.copytree(s, d, dirs_exist_ok=True)
+#                 else:
+#                     shutil.copy2(s, d)
+#     else:
+#         shutil.copytree(f"/course/grouplab{labnum}/system_tests", SYSTEM_TESTS_DIR)
 
-    ED_ENV = True
+#     ED_ENV = True
 
 
 def chown_recursive(path, uid, gid):
@@ -229,8 +229,6 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
             },
             method='POST'
         )
-        # Set a 5 second timeout for the request
-        response = urllib.request.urlopen(req, timeout=10)
         
         # Send request
         with urllib.request.urlopen(req, timeout=30) as response:
@@ -1688,11 +1686,21 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         if level_config.get("requireUsersMain", False):
             if not verify_users_main(source_dir):
                 save_results(source_dir, -1,-1, initial_files, module_id, level_id, "No main.bin found")
+                send_test_results(
+                    passed_all_tests=False,
+                    test_message="No main.bin found - file does not exist or is not compiled",
+                    flag_value=""
+                )
                 sys.exit(123)
 
         if checkForExecution:
             if not check_for_execution(source_dir):
                 save_results(source_dir, -1,-1, initial_files, module_id, level_id, "No execution done between calls")
+                send_test_results(
+                    passed_all_tests=False,
+                    test_message="No execution detected - program must be executed before running tester",
+                    flag_value=""
+                )
                 if os.path.exists(os.path.join(source_dir, "Makefile")):
                     if os.path.exists(os.path.join(source_dir, "main.bin-main.gcda")) or os.path.exists(os.path.join(source_dir, "main.bin-data.gcda")):
                         print(f"{RED}An error with detecting the program's execution has occurred. Please follow the instructions above to resolve this error.  {RESET_COLOR}")    
@@ -1707,6 +1715,11 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 # all good, continue on little soldier
             else:
                 save_results(source_dir, -1,-1, initial_files, module_id, level_id, "code coverage check failed")
+                send_test_results(
+                    passed_all_tests=False,
+                    test_message="Code coverage check failed - minimum coverage not met",
+                    flag_value=""
+                )
                 sys.exit(221)
 
     else:
@@ -1786,6 +1799,11 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             if not verify_user_tests_unique(usertests, system_test_dir):
                 print("Please fix user test case")
                 save_results(source_dir, -1, -1, initial_files, module_id, level_id, "")
+                send_test_results(
+                    passed_all_tests=False,
+                    test_message="User test case validation failed - test matches system test",
+                    flag_value=""
+                )
                 sys.exit(192)
 
             if len(usertests) > 0:
