@@ -1434,7 +1434,7 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
     passes = 0
     failures = 0
     skipped = 0
-    failed_tests_info = []
+    failed_test_info = None
     test_count = len(test_cases)
     for test_json_file in test_cases:
         hidden_test = False
@@ -1447,7 +1447,17 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
             passes += 1
         elif isinstance(result, tuple) and result[0] == False:
             failures += 1
-            failed_tests_info.append(result[1])
+            failed_test_info = result[1]
+            # Stop on first failure
+            if os.getenv("TEST_ALL", "") == "":
+                print("")
+                if passes > 0:
+                    print(f"The program passed {passes} tests of {test_count - skipped}")
+                if skipped > 0:
+                    print(f"Skipped {skipped} template diff tests")
+                print(f"{RED}Failed System Test {os.path.basename(test_json_file)} {RESET_COLOR} ")
+
+                return failures, passes, test_json_file, failed_test_info
         else:
             failures += 1
             if os.getenv("TEST_ALL", "") == "":
@@ -1458,9 +1468,9 @@ def run_system_tests_on_user_bin(source_dir, test_dir, show_flag=False, case_sen
                     print(f"Skipped {skipped} template diff tests")
                 print(f"{RED}Failed System Test {os.path.basename(test_json_file)} {RESET_COLOR} ")
 
-                return failures, passes, test_json_file, failed_tests_info
+                return failures, passes, test_json_file, failed_test_info
 
-    return failures, passes, None, failed_tests_info
+    return failures, passes, None, failed_test_info
 
 
 def is_elf_binary(file_path):
@@ -1754,7 +1764,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
 
     total_failures = 0
     total_passes = 0
-    all_failed_tests_info = []
+    failed_test_info = None
 
     compile_success = False
     compiled_users_code = False
@@ -1843,18 +1853,21 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 total_failures += resfail
                 total_passes += respass
                 if user_failed_info is not None:
-                    all_failed_tests_info.append(user_failed_info)
+                    failed_test_info = user_failed_info
+                    # Stop on first failure
+                    break
             if len(usertests) > 0:
                 print("")
 
     last_test_json_fp = ""
-    if compile_success and os.path.exists(SYSTEM_TESTS_DIR):
+    if compile_success and os.path.exists(SYSTEM_TESTS_DIR) and total_failures == 0:
         print("---------------[ System Tests ]---------------")
         skip_template_diffs = args.use_current_dir
-        resfail, respass, last_test_json_fp, failed_tests_info = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive, skip_template_diffs=skip_template_diffs)
+        resfail, respass, last_test_json_fp, system_failed_info = run_system_tests_on_user_bin(source_dir, system_test_dir, case_sensitive=case_sensitive, skip_template_diffs=skip_template_diffs)
         total_failures += resfail
         total_passes += respass
-        all_failed_tests_info.extend(failed_tests_info)
+        if system_failed_info is not None and failed_test_info is None:
+            failed_test_info = system_failed_info
 
     # Calculate total tests and not executed count
     total_user_tests = 0
@@ -1894,7 +1907,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             send_test_results(
                 passed_all_tests=True,
                 test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
-                flag_value=ed_credit_string
+                flag_value=ed_credit_string,
+                test_failed="",
+                missing_output=""
             )
         else:
             log_test_run(total_passes, total_passes+total_failures)
@@ -1910,7 +1925,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                         send_test_results(
                             passed_all_tests=True,
                             test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
-                            flag_value=flag.strip()
+                            flag_value=flag.strip(),
+                            test_failed="",
+                            missing_output=""
                         )
                 else:
                     print("No flag, you are not currently marked as attending a testing session.")
@@ -1918,7 +1935,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                     send_test_results(
                             passed_all_tests=True,
                             test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed} (no flag - session not active)",
-                            flag_value=""
+                            flag_value="",
+                            test_failed="",
+                            missing_output=""
                         )
             else:
                 print("pwn.college{...")
@@ -1928,7 +1947,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 send_test_results(
                     passed_all_tests=True,
                     test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
-                    flag_value="pwn.college{...}"
+                    flag_value="pwn.college{...}",
+                    test_failed="",
+                    missing_output=""
                 )
             save_results(source_dir, total_passes, total_failures, initial_files, module_id, level_id, flag)
     elif total_failures == 0 and total_passes == 0:
@@ -1938,7 +1959,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         send_test_results(
             passed_all_tests=False,
             test_message="No failures or passes recorded, likely a bug",
-            flag_value=""
+            flag_value="",
+            test_failed="",
+            missing_output=""
         )
     else:
         print(f"\nSummary: {total_passes} tests passed, {RED}{total_failures} {RESET_COLOR}tests failed")
@@ -1949,10 +1972,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         # Send failure results to API with first failed test info
         test_failed = ""
         missing_output = ""
-        if len(all_failed_tests_info) > 0:
-            first_failed = all_failed_tests_info[0]
-            test_failed = first_failed.get('test', '')
-            missing_output = first_failed.get('missing_output', '')
+        if failed_test_info is not None:
+            test_failed = failed_test_info.get('test', '')
+            missing_output = failed_test_info.get('missing_output', '')
         
         send_test_results(
             passed_all_tests=False,
@@ -1990,18 +2012,21 @@ def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_se
     elif isinstance(result, tuple) and result[0] == False:
         failures += 1
         failed_test_info = result[1]
+        return failures, passes, failed_test_info
     else:
         failures += 1
+        return failures, passes, failed_test_info
 
     result = run_test(source_dir, os.path.dirname(ut), ut, model_good, case_sensitive=case_sensitive, skip_template_diffs=False)
     if result == True:
         passes += 1
     elif isinstance(result, tuple) and result[0] == False:
         failures += 1
-        if failed_test_info is None:
-            failed_test_info = result[1]
+        failed_test_info = result[1]
+        return failures, passes, failed_test_info
     else:
         failures += 1
+        return failures, passes, failed_test_info
         
     if compile_success and compiled_users_code:
         users_main_bin = os.path.join(source_dir, "main.bin")
@@ -2010,10 +2035,11 @@ def run_user_tests(source_dir, compile_success, compiled_users_code, ut, case_se
             passes += 1
         elif isinstance(result, tuple) and result[0] == False:
             failures += 1
-            if failed_test_info is None:
-                failed_test_info = result[1]
+            failed_test_info = result[1]
+            return failures, passes, failed_test_info
         else:
             failures += 1
+            return failures, passes, failed_test_info
 
     return failures, passes, failed_test_info
 
