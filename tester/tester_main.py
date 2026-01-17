@@ -1293,7 +1293,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
     failed_test_info['test_name'] = test_name
 
     if not test_json.get("allow_nonprintable_chars", True) and not nonprintable_test(target_path, args, input_data, test_name, test_description, actual_output, start_time=start_time):
-       send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - non-printable characters", test_failed=test, missing_output="")
+       failed_test_info['missing_output'] = 'non-printable characters'
        return (False, failed_test_info)
 
     if test_type == "output_size":
@@ -1303,7 +1303,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         else:
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output)}b, the maximum allowed is {test_json['max_size']}b. Please remove extra prints and resubmit.")
-            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - output too large", test_failed=test, missing_output="")
+            failed_test_info['missing_output'] = 'output too large'
             return (False, failed_test_info)
     elif test_type == "output_lines":
         if len(actual_output.splitlines()) < test_json["max_lines"]:
@@ -1312,7 +1312,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         else:
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output.splitlines())} lines, the maximum allowed is {test_json['max_lines']} lines. Please remove extra prints and resubmit.")
-            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - too many output lines", test_failed=test, missing_output="")
+            failed_test_info['missing_output'] = 'too many output lines'
             return (False, failed_test_info)
     else:
         actual_output_list = actual_output.splitlines()
@@ -1333,7 +1333,6 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
                 file_output_failed_test_information(target_path, test, args, input_data, expected_file_out_list, test_name, test_description, check_filepath, actual_lines_in_file_list, file_out_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
                 missing_output_str = ', '.join(file_out_report.get("missing", []))
                 failed_test_info['missing_output'] = missing_output_str
-                send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
                 return (False, failed_test_info)
 
         out_match_report = match_output(expected_output_list, actual_output_list,  test_json.get("unexpectedOutput",[]), output_type, case_sensitive=case_sensitive)
@@ -1348,7 +1347,6 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             output_failed_test_information(target_path, test, args, input_data, expected_output_list, test_name, test_description, actual_output_list, out_match_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
             missing_output_str = ', '.join(out_match_report.get("missing", []))
             failed_test_info['missing_output'] = missing_output_str
-            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
             return (False, failed_test_info)
     return (False, failed_test_info)
 
@@ -1971,14 +1969,23 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         
         # Send failure results to API with first failed test info
         test_failed = ""
+        test_name = ""
         missing_output = ""
         if failed_test_info is not None:
             test_failed = failed_test_info.get('test', '')
+            test_name = failed_test_info.get('test_name', '')
             missing_output = failed_test_info.get('missing_output', '')
+        
+        # Format: Passed: X, Not executed: Y, Failed: Z (test name)
+        failed_suffix = f"{total_failures}"
+        if test_name:
+            failed_suffix = f"{total_failures} ({test_failed}{test_name})"
+        elif test_failed:
+            failed_suffix = f"{total_failures} ({test_failed})"
         
         send_test_results(
             passed_all_tests=False,
-            test_message=f"Passed: {total_passes}, Failed: {total_failures}, Not executed: {not_executed}",
+            test_message=f"Passed: {total_passes}, Not executed: {not_executed}, Failed: {failed_suffix}",
             flag_value="",
             test_failed=test_failed,
             missing_output=missing_output
