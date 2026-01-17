@@ -153,7 +153,7 @@ def calculate_md5(file_path):
     return md5.hexdigest()
 
 
-def send_test_results(passed_all_tests, test_message, flag_value=""):
+def send_test_results(passed_all_tests, test_message, flag_value="", test_failed="", missing_output=""):
     """
     Send test results to the API endpoint https://api.cse545.com/testresult
     
@@ -161,6 +161,8 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
         passed_all_tests (bool): Whether all tests passed
         test_message (str): Message about the test results
         flag_value (str): The flag value to submit
+        test_failed (str): The name/identifier of the test that failed
+        missing_output (str): The expected output that was not found
     """
     try:
         if os.path.exists("/home/me"):
@@ -213,7 +215,9 @@ def send_test_results(passed_all_tests, test_message, flag_value=""):
             'pwn_college_id': pwn_college_id,
             'passed_all_tests': str(passed_all_tests).lower(),
             'test_message': test_message,
-            'flag_value': flag_value
+            'flag_value': flag_value,
+            'test_failed': test_failed,
+            'missing_output': missing_output
         }
         
         # Encode data as JSON for POST request
@@ -270,6 +274,7 @@ def compile_program(source_dir, other_compile_args=[], alt_target_name=""):
             result = subprocess.run(clean_command, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             print(f"make clean failed with return code {e.returncode}\n{e.stdout}\n{e.stderr}")
+            send_test_results(passed_all_tests=False, test_message=f"make clean failed: {e.stdout} {e.stderr}")
             sys.exit(101)
 
         compile_command = ["make", "-j", "10", "-C", source_dir]
@@ -1131,6 +1136,7 @@ def run_reset_commands(reset_commands):
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             print(f"Failed reset command {cmd} with return code {e.returncode}\n{e.stdout}\n{e.stderr}")
+            send_test_results(passed_all_tests=False, test_message=f"Failed reset command: {cmd}")
             sys.exit(102)
 
 
@@ -1145,6 +1151,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
     except json.decoder.JSONDecodeError as jde:
         print(f"An error was encountered reading the test case {test_json_file}")
         print(jde)
+        send_test_results(passed_all_tests=False, test_message=f"Malformed test JSON: {test_json_file}")
         sys.exit(27)
 
     # Check if this is a template diff test that should be skipped
@@ -1280,6 +1287,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
     test_description = test_description.replace("<testfilename>", os.path.basename(target_path))
 
     if not test_json.get("allow_nonprintable_chars", True) and not nonprintable_test(target_path, args, input_data, test_name, test_description, actual_output, start_time=start_time):
+       send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - non-printable characters", test_failed=test, missing_output="")
        return False
 
     if test_type == "output_size":
@@ -1289,6 +1297,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         else:
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output)}b, the maximum allowed is {test_json['max_size']}b. Please remove extra prints and resubmit.")
+            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - output too large", test_failed=test, missing_output="")
             return False
     elif test_type == "output_lines":
         if len(actual_output.splitlines()) < test_json["max_lines"]:
@@ -1297,6 +1306,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         else:
             failed_test_message(target_path, args, input_data, test_name, test_description, start_time, hidden_test=hidden_test, output_type="")
             print(f"Output was too large {len(actual_output.splitlines())} lines, the maximum allowed is {test_json['max_lines']} lines. Please remove extra prints and resubmit.")
+            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name} - too many output lines", test_failed=test, missing_output="")
             return False
     else:
         actual_output_list = actual_output.splitlines()
@@ -1315,6 +1325,8 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             # if failed test then print error and exit
             if (not file_out_report["passed"]):
                 file_output_failed_test_information(target_path, test, args, input_data, expected_file_out_list, test_name, test_description, check_filepath, actual_lines_in_file_list, file_out_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
+                missing_output_str = ', '.join(file_out_report.get("missing", []))
+                send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
                 return False
 
         out_match_report = match_output(expected_output_list, actual_output_list,  test_json.get("unexpectedOutput",[]), output_type, case_sensitive=case_sensitive)
@@ -1327,6 +1339,8 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
             return True
         else:
             output_failed_test_information(target_path, test, args, input_data, expected_output_list, test_name, test_description, actual_output_list, out_match_report, case_sensitive=case_sensitive, start_time=start_time, hidden_test=hidden_test,output_type=output_type)
+            missing_output_str = ', '.join(out_match_report.get("missing", []))
+            send_test_results(passed_all_tests=False, test_message=f"Test failed: {test_name}", test_failed=test, missing_output=missing_output_str)
             return False
     return False
 
@@ -1661,6 +1675,7 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
             show_flag = False
             if not os.path.exists(system_test_dir):
                 print(f"Error: Provided system test directory does not exist: {system_test_dir}")
+                send_test_results(passed_all_tests=False, test_message=f"Test directory does not exist: {system_test_dir}")
                 sys.exit(99)
             print(f"System test dir is {system_test_dir=}")
         else:
