@@ -291,7 +291,7 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, c
             'challenge': challenge
         }
         
-        log.info(f"Syncing {filename} for {module}/{level} to server...")
+        log.info(f"Syncing {filename} for {module}/{level} {challenge} to server...")
         
         response = requests.post(url, json=payload, timeout=10)
         
