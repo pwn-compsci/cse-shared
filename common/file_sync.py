@@ -252,7 +252,7 @@ def extract_pwn_college_id():
         log.info(f"Error reading /.user_info file: {str(e)}")
         return None
 
-def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, compileLog, testerLog):
+def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, compileLog, testerLog, challenge):
     """
     Sends the file content, module, level, pwn_college_id, and isZipped to the sync API
     
@@ -265,6 +265,7 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, c
         isZipped (bool): If the passed in filename is a zip file, this value will be true, else false.
         compileLog (str): Contents of compile.log if the file exists, a default string if not.
         testerLog (str): COntents of tester.log if the file exists, a default string if not
+        challenge (str): Challenge identifier from level.json
 
     Returns:
         bool: True if sync was successful, False otherwise
@@ -286,7 +287,8 @@ def sync_to_server(filename, content, module, level, pwn_college_id, isZipped, c
             'pwn_college_id': pwn_college_id,
             'isZipped': isZipped,
             'compile_log': compileLog,
-            'tester_log': testerLog
+            'tester_log': testerLog,
+            'challenge': challenge
         }
         
         log.info(f"Syncing {filename} for {module}/{level} to server...")
@@ -337,6 +339,7 @@ def main():
         module = config.get('module', 'module_unknown')
         level = config.get('level', 'level_unknown')
         hwdir = config.get('hwdir', 'hwdir_unknown')
+        challenge = config.get('challenge', 'challenge_unknown')
         
         currentDirectory = os.path.join(hwdir, level)
         # Adds the current directory to a list so it can look at a subdirectories (for pokemud or bfs)
@@ -398,7 +401,7 @@ def main():
                     file_contents = ""
                     with open(syncTheseFiles[0], "r") as f:
                         file_contents = f.read()
-                    sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False, compileLog, testerLog)
+                    sync_result = sync_to_server(os.path.basename(syncTheseFiles[0]), file_contents, module, level, pwn_college_id, False, compileLog, testerLog, challenge)
                 elif len(syncTheseFiles) > 1:
                     zipName = f'{pwn_college_id}_{module}_{level}.zip'
                     with ZipFile(zipName, 'w') as zip:
@@ -417,7 +420,7 @@ def main():
                         zip_contents = zip.read()
 
                     zip_encoded = base64.b64encode(zip_contents).decode('utf-8')
-                    sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True, compileLog, testerLog)
+                    sync_result = sync_to_server(zipName, zip_encoded, module, level, pwn_college_id, True, compileLog, testerLog, challenge)
 
                     os.remove(f'{pwn_college_id}_{module}_{level}.zip') # deletes the zip file.
 
