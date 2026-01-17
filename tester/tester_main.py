@@ -220,6 +220,9 @@ def send_test_results(passed_all_tests, test_message, flag_value="", test_failed
             'missing_output': missing_output
         }
         
+        # Log the data being sent
+        logger.info(f"Sending to API: {json.dumps(data, indent=2)}")
+        
         # Encode data as JSON for POST request
         json_data = json.dumps(data).encode('utf-8')
         
