@@ -33,23 +33,70 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
+# Global variable to hold the workdir log file
+_workdir_log_file = None
+
+class TeeOutput:
+    """
+    A class that writes to both the original stdout/stderr and a log file.
+    This captures all print() output to the tester.log file in the work directory.
+    """
+    def __init__(self, original_stream, log_file):
+        self.original_stream = original_stream
+        self.log_file = log_file
+        
+    def write(self, text):
+        self.original_stream.write(text)
+        if self.log_file and not self.log_file.closed:
+            try:
+                # Strip ANSI color codes for the log file
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                clean_text = ansi_escape.sub('', text)
+                self.log_file.write(clean_text)
+                self.log_file.flush()
+            except:
+                pass  # Don't let log writing errors break the program
+                
+    def flush(self):
+        self.original_stream.flush()
+        if self.log_file and not self.log_file.closed:
+            try:
+                self.log_file.flush()
+            except:
+                pass
+
 def add_workdir_log_handler(work_directory):
     """
     Add an additional file handler to write tester.log in the work directory.
     This allows file_sync.py to read and sync the log file.
+    Also redirects stdout/stderr to capture all print statements.
     
     Args:
         work_directory (str): Path to the work directory (source_dir/hwdir)
     """
+    global _workdir_log_file
+    
     try:
         if work_directory and os.path.exists(work_directory):
             workdir_log_path = os.path.join(work_directory, "tester.log")
-            # Check if handler already exists to avoid duplicates
+            
+            # Open log file for writing
+            _workdir_log_file = open(workdir_log_path, "w", encoding="utf-8")
+            
+            # Add timestamp header
+            _workdir_log_file.write(f"=== Tester Run at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
+            _workdir_log_file.flush()
+            
+            # Redirect stdout and stderr to also write to the log file
+            sys.stdout = TeeOutput(sys.__stdout__, _workdir_log_file)
+            sys.stderr = TeeOutput(sys.__stderr__, _workdir_log_file)
+            
+            # Also add a logging handler
             for handler in logger.handlers:
                 if isinstance(handler, logging.FileHandler) and handler.baseFilename == os.path.abspath(workdir_log_path):
                     return  # Handler already exists
             
-            workdir_handler = logging.FileHandler(workdir_log_path, mode="w", encoding="utf-8")
+            workdir_handler = logging.FileHandler(workdir_log_path, mode="a", encoding="utf-8")
             workdir_handler.setFormatter(formatter)
             logger.addHandler(workdir_handler)
             logger.info(f"Added work directory log handler: {workdir_log_path}")
