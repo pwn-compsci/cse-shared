@@ -1724,6 +1724,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
         else:
             if os.path.exists(level_config.get('testdir',"")):
                 system_test_dir = level_config["testdir"]
+            elif system_test_dir is None:
+                # Default to SYSTEM_TESTS_DIR if no testdir is specified
+                system_test_dir = SYSTEM_TESTS_DIR
 
 
         # if source_dir is provided in level.json then use it otherwise use hwdir + level
