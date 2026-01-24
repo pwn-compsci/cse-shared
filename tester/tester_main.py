@@ -290,8 +290,11 @@ def send_test_results(passed_all_tests, test_message, flag_value="", test_failed
             'missing_output': missing_output
         }
         
-        # Log the data being sent
-        logger.info(f"Sending to API: {json.dumps(data, indent=2)}")
+        # Log the data being sent (mask flag value for security)
+        log_data = data.copy()
+        if flag_value and len(flag_value) > 0:
+            log_data['flag_value'] = '***REDACTED***'
+        logger.info(f"Sending to API: {json.dumps(log_data, indent=2)}")
         
         # Encode data as JSON for POST request
         json_data = json.dumps(data).encode('utf-8')
