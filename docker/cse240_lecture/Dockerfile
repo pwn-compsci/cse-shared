@@ -2,7 +2,7 @@
 
 FROM python:3.13-slim
 
-RUN pip install --no-cache-dir flask gunicorn
+RUN pip install --no-cache-dir flask gunicorn requests
 
 RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
 ADD redirector.py /opt/redirector.py
@@ -35,4 +35,4 @@ EOF
 ADD --chown=0:0 --chmod=6755 http://github.com/pwncollege/exec-suid/releases/latest/download/exec-suid /usr/bin/exec-suid
 
 
-RUN mkdir /lec_v10
+RUN mkdir /lec_v11

@@ -192,7 +192,7 @@ def read_level_config():
 
 def get_all_files(directory):
     """
-    Find all the .c, .cpp, .h, .rkt, .pl files in the provided directory and return a list of the files name that has been modified in the past 2 minutes.
+    Find all the .c, .cpp, .h, .rkt, .pl, .dat, .json, .log files and Makefile in the provided directory and return a list of the files name that has been modified in the past 2 minutes.
     
     Args:
         directory (str): Path to the directory to search in.
@@ -206,18 +206,22 @@ def get_all_files(directory):
             log.info(f"Error: Directory '{directory}' does not exist")
             return None
         
-        # Get all .c, .cpp, .h, .rkt, and .pl files
+        # Get all .c, .cpp, .h, .rkt, .pl, .dat, .json, .log files and Makefile
         c_files = glob.glob(os.path.join(directory, "*.c"))
         cpp_files = glob.glob(os.path.join(directory, "*.cpp"))
         h_files = glob.glob(os.path.join(directory, "*.h"))
         rkt_files = glob.glob(os.path.join(directory, "*.rkt"))
         pl_files = glob.glob(os.path.join(directory, "*.pl"))
-        all_files = c_files + cpp_files + h_files + rkt_files + pl_files
+        dat_files = glob.glob(os.path.join(directory, "*.dat"))
+        json_files = glob.glob(os.path.join(directory, "*.json"))
+        log_files = glob.glob(os.path.join(directory, "*.log"))
+        makefile = glob.glob(os.path.join(directory, "Makefile"))
+        all_files = c_files + cpp_files + h_files + rkt_files + pl_files + dat_files + json_files + log_files + makefile
         
         threshold = time.time() - 120 # The current time - 2 minutes ago.
 
         if not all_files:
-            log.info(f"No .c, .cpp, .h, .rkt, or .pl files found in '{directory}'")
+            log.info(f"No .c, .cpp, .h, .rkt, .pl, .dat, .json, .log files or Makefile found in '{directory}'")
             return None
             
         return [file for file in all_files if os.path.getmtime(file) >= threshold]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#ERIK 10
+#ERIK 11
 import gzip
 import json
 import os
@@ -10,6 +10,7 @@ import random
 from flask import Flask, redirect, render_template, request
 import hashlib
 import logging
+import requests
 
 app = Flask(__name__)
 
@@ -145,6 +146,49 @@ def reset_timeline_file():
         timeline_path.unlink()
     return open_timeline_file()    
     
+
+def send_knowledge_check_result(result_data, module, challenge):
+    """
+    Send knowledge check results to the API endpoint.
+    
+    Args:
+        result_data: Dictionary containing the knowledge check results
+        module: The module identifier
+        challenge: The challenge identifier
+    """
+    try:
+        api_url = "https://api.cse545.com/lela-answers"
+        
+        # Prepare the JSON payload
+        payload = {
+            "pwn_college_id": USER_ID,
+            "module": module,
+            "challenge": challenge,
+            "result": result_data
+        }
+        
+        # Log the request
+        log.info(f"Sending knowledge check result to API: {json.dumps(payload, indent=2)}")
+        
+        # Send the request with a timeout
+        response = requests.post(api_url, json=payload, timeout=10)
+        
+        # Log the response
+        if response.status_code == 200:
+            log.info(f"Successfully sent knowledge check result to API. Response: {response.text}")
+        else:
+            log.warning(f"API request returned status {response.status_code}. Response: {response.text}")
+        
+        # Return the response for potential further processing
+        return response
+        
+    except requests.exceptions.RequestException as e:
+        log.error(f"Error sending knowledge check result to API: {e}")
+        return None
+    except Exception as e:
+        log.error(f"Unexpected error in send_knowledge_check_result: {e}")
+        return None
+
 
 timeline = []
 timeline_file = open_timeline_file()
@@ -297,19 +341,43 @@ def knowledge_check(youtube_id):
                         "answer_attempts": answer_attempts, "max_mcq_attempts": max_mcq_attempts,
                         "question_eval": question_eval}            
     log.info(f"Answer attempts: {answer_attempts}, max attempts: {max_mcq_attempts}, all questions correct: {all_questions_correct}")
+    
+    # Get module and challenge information from level config
+    try:
+        level_config_path = Path("/challenge/.config/level.json")
+        if level_config_path.exists():
+            with open(level_config_path, 'r') as f:
+                level_data = json.load(f)
+            module = level_data.get("module")
+            challenge = level_data.get("challenge")
+        else:
+            module = None
+            challenge = None
+    except Exception as e:
+        log.error(f"Error reading level configuration: {e}")
+        module = None
+        challenge = None
+    
     if all_questions_correct:    
         if answer_attempts > max_mcq_attempts:
             reset_telemetry(youtube_id)
             #return {"status": "incorrect", "message": "You have reached the maximum number of attempts. Please re-watch the video."}
             return_value["message"] = "Incorrect. You have reached the maximum number of attempts. Please re-watch the video."
+            # Send result to API
+            send_knowledge_check_result(return_value, module, challenge)
             return return_value                
-        return {"status": "correct", "flag": flag}
+        final_result = {"status": "correct", "flag": flag}
+        # Send result to API
+        send_knowledge_check_result(final_result, module, challenge)
+        return final_result
     else:            
         if answer_attempts >= max_mcq_attempts:
             reset_telemetry(youtube_id)
             return_value["message"] = "Incorrect. You have reached the maximum number of attempts. Please re-watch the video."                    
         elif answer_attempts == (max_mcq_attempts-1):
             return_value["message"] = "Incorrect. Next incorrect response will require you to re-watch the video."
+        # Send result to API
+        send_knowledge_check_result(return_value, module, challenge)
         return return_value 
     
         

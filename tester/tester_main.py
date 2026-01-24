@@ -33,6 +33,29 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
+def add_workdir_log_handler(work_directory):
+    """
+    Add an additional file handler to write tester.log in the work directory.
+    This allows file_sync.py to read and sync the log file.
+    
+    Args:
+        work_directory (str): Path to the work directory (source_dir/hwdir)
+    """
+    try:
+        if work_directory and os.path.exists(work_directory):
+            workdir_log_path = os.path.join(work_directory, "tester.log")
+            # Check if handler already exists to avoid duplicates
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler) and handler.baseFilename == os.path.abspath(workdir_log_path):
+                    return  # Handler already exists
+            
+            workdir_handler = logging.FileHandler(workdir_log_path, mode="w", encoding="utf-8")
+            workdir_handler.setFormatter(formatter)
+            logger.addHandler(workdir_handler)
+            logger.info(f"Added work directory log handler: {workdir_log_path}")
+    except Exception as e:
+        logger.error(f"Failed to add work directory log handler: {e}")
+
 if os.path.exists("/challenge/bin"):
     sys.path.append("/challenge/bin")
     from tester_db import save_results, init_db, save_test_results
@@ -1717,6 +1740,9 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 if not os.path.exists(source_dir):
                     if os.path.exists("/home/system_tests"):
                         source_dir = "/home"
+
+        # Add log handler for work directory so tester.log is available for file_sync
+        add_workdir_log_handler(source_dir)
 
         if level_config.get("requireUsersMain", False):
             if not verify_users_main(source_dir):
