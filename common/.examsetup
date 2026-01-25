@@ -38,11 +38,14 @@ fi
 
 echo "[e] pwn.college id is $pwn_college_id" | tee -a $STARTUP_LOG
 
+current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
+
 if [ -z "$pwn_college_id" ]; then 
     echo "[e] pwn.colege id not found" | tee -a $STARTUP_LOG
-    sed -i "s/LEVEL_ID/Level $level/g" /challenge/web/js/exam-badge.js
+    sed -i "s/LEVEL_ID/$current_module $level/g" /challenge/web/js/exam-badge.js
 else
     combined=""
+
     if [ -f /challenge/.config/info.dat ]; then
         echo "[e] found file /challenge/.config/info.dat using pwn_college_id=$pwn_college_id" | tee -a $STARTUP_LOG
         student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z0-9\-_ ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
@@ -58,7 +61,7 @@ else
     fi
         
     echo "[e] attempting to re-write exam-badge.js" | tee -a $STARTUP_LOG
-    sed -i "s/LEVEL_ID/Level $level - $combined/g" /challenge/web/js/exam-badge.js
+    sed -i "s/LEVEL_ID/$current_module $level - $combined/g" /challenge/web/js/exam-badge.js
     
 fi 
 
