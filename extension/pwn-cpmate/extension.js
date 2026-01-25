@@ -9,7 +9,48 @@ const fernet = require('fernet');
 
 const version = "1.3";
 //const historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
-var historyBasePath = path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
+
+// Function to determine the correct history base path
+function getHistoryBasePath() {
+    try {
+        // Check if we're in an exam environment
+        const levelJsonPath = '/challenge/.config/level.json';
+        if (fsa.existsSync(levelJsonPath)) {
+            const levelData = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
+            
+            if (levelData.examLevel === true && levelData.course_code) {
+                // Extract numeric part from course code (e.g., "cse545" -> "545")
+                const courseNumMatch = levelData.course_code.match(/\d+/);
+                const courseNum = courseNumMatch ? courseNumMatch[0] : '';
+                
+                // Try with course number first
+                if (courseNum) {
+                    const examHistoryPath = path.join('/home/hacker', '.local', 'share', `code-server-${courseNum}exam`, 'User', 'History');
+                    if (fsa.existsSync(path.dirname(path.dirname(examHistoryPath)))) {
+                        console.log(`Exam environment detected, using history path: ${examHistoryPath}`);
+                        return examHistoryPath;
+                    }
+                }
+                
+                // Fallback to generic code-server-exam
+                const fallbackExamPath = path.join('/home/hacker', '.local', 'share', 'code-server-exam', 'User', 'History');
+                if (fsa.existsSync(path.dirname(path.dirname(fallbackExamPath)))) {
+                    console.log(`Exam environment detected, using fallback history path: ${fallbackExamPath}`);
+                    return fallbackExamPath;
+                }
+                
+                console.log('Exam environment detected but no exam-specific directories found, using default');
+            }
+        }
+    } catch (error) {
+        console.error('Error reading level.json, using default path:', error);
+    }
+    
+    // Default to normal home directory
+    return path.join(os.homedir(), '.local', 'share', 'code-server', 'User', 'History');
+}
+
+var historyBasePath = getHistoryBasePath();
 var historyMap = new Map(); // Cache to store file paths and their corresponding history directories
 var clipboardHistory = new Set();
 var recentKeyboardInput = "";
