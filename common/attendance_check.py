@@ -175,6 +175,25 @@ def parse_valid_until(valid_until_utc):
 def main():
     logging.info("=== Attendance check started ===")
     
+    # Check for admin access - skip attendance checks for admins
+    if os.path.exists("/home/me"):
+        logging.info("Admin access detected (/home/me exists) - skipping all attendance checks")
+        return
+    
+    # Check for /.admin_access file
+    if os.path.exists("/.admin_access"):
+        try:
+            stat_info = os.stat("/.admin_access")
+            # Check if owned by root (UID 0)
+            if stat_info.st_uid == 0:
+                with open("/.admin_access", 'r') as f:
+                    content = f.read().strip().lower()
+                if "you are now a digital god" in content:
+                    logging.info("Admin access detected (/.admin_access owned by root with correct content) - skipping all attendance checks")
+                    return
+        except Exception as e:
+            logging.debug(f"Error checking /.admin_access: {e}")
+    
     # Get pwn_college_id
     pwn_college_id = get_pwn_college_id()
     if not pwn_college_id:
