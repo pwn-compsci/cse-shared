@@ -970,7 +970,7 @@ fi
         chmod 0644 /var/log/attendance_check.log
         chmod 770 /challenge/bin/attendance_check.py
         python3 /challenge/bin/attendance_check.py >> $STARTUP_LOG 2>&1 &
-    fi 
+    fi  
 # fi
 
 # this script runs as root, make sure any new files or directories are owned by hacker
