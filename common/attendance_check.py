@@ -6,7 +6,7 @@ import time
 import re
 import logging
 import glob
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import requests
 import os
@@ -161,11 +161,13 @@ def handle_invalid_attendance(reason, work_dir, first_time=False):
     make_files_readonly(work_dir)
 
 def parse_valid_until(valid_until_utc):
-    """Parse ISO format datetime string"""
+    """Parse ISO format datetime string and return timezone-aware UTC datetime"""
     try:
-        # Remove timezone info for parsing
+        # Remove timezone suffix for parsing, then explicitly set to UTC
         dt_str = valid_until_utc.replace('+00:00', '').replace('Z', '')
-        return datetime.fromisoformat(dt_str)
+        dt_naive = datetime.fromisoformat(dt_str)
+        # Make it timezone-aware in UTC
+        return dt_naive.replace(tzinfo=timezone.utc)
     except Exception as e:
         logging.error(f"Error parsing valid_until: {e}")
         return None
@@ -213,7 +215,7 @@ def main():
         
         # Loop until expiration
         while True:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             if now >= expiration:
                 logging.info("Attendance period has expired")
                 break
