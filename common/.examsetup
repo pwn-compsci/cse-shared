@@ -52,6 +52,8 @@ else
         echo "[e] found file studentinfo $student_info" | tee -a $STARTUP_LOG
         if [ -z "$student_info" ]; then
             student_info="Student not found"            
+        elif [ ${#student_info} -gt 15 ]; then
+            student_info="${student_info:0:12}..."
         fi
         combined="$pwn_college_id - $student_info"
         echo "[e] found combined of $combined" | tee -a $STARTUP_LOG

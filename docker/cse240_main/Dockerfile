@@ -205,11 +205,22 @@ RUN <<EOF
     passwd -d hacker 
 EOF
 
-RUN mkdir -p /root/.local/share/tldr \
- && tldr --update && tldr --update \
- && mkdir -p /usr/share/tldr \
+RUN mkdir -p /root/.local/share/tldr /usr/share/tldr \
+ && (for i in 1 2 3; do \
+      echo "Attempt $i to download tldr pages..." \
+      && rm -rf /root/.local/share/tldr/* \
+      && cd /tmp \
+      && curl -L -o tldr.zip https://github.com/tldr-pages/tldr/archive/refs/heads/main.zip \
+      && unzip -q tldr.zip \
+      && cp -r tldr-main/pages/* /root/.local/share/tldr/ \
+      && rm -rf tldr.zip tldr-main \
+      && break \
+      || ([ $i -eq 3 ] && echo "Failed to download tldr pages after 3 attempts" && exit 1 || sleep 5); \
+    done) \
  && cp -r /root/.local/share/tldr/* /usr/share/tldr/ \
- && chown -R root:root /usr/share/tldr
+ && chown -R root:root /usr/share/tldr \
+ && ls -la /usr/share/tldr/ | head -20 \
+ && echo "tldr pages successfully installed"
 ENV TLDR_CACHE_DIR=/usr/share/tldr
 
 ######################################################################
@@ -222,7 +233,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v73 && touch "/cse240_v73/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v76 && touch "/cse240_v76/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final
