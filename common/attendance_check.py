@@ -101,6 +101,61 @@ def make_files_readonly(work_dir):
     except Exception as e:
         logging.error(f"Error making files read-only: {e}")
 
+def add_notice_to_readme(reason):
+    """Add attendance violation notice to readme.html if it exists"""
+    readme_path = "/challenge/.config/readme.html"
+    
+    if not os.path.exists(readme_path):
+        logging.info(f"readme.html not found at {readme_path}, skipping notice addition")
+        return
+    
+    try:
+        with open(readme_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Check if notice already exists
+        notice_marker = "<!-- ATTENDANCE_VIOLATION_NOTICE -->"
+        if notice_marker in content:
+            logging.info("Attendance notice already present in readme.html")
+            return
+        
+        # Create the notice HTML
+        notice_html = f'''<!-- ATTENDANCE_VIOLATION_NOTICE -->
+<div style="background-color: #ffebee; border: 3px solid #c62828; border-radius: 8px; padding: 20px; margin: 20px 0; font-family: Arial, sans-serif;">
+    <h2 style="color: #c62828; margin-top: 0;">⚠️ CLASS LAB ATTENDANCE VIOLATION</h2>
+    <p style="font-size: 16px; line-height: 1.6;">
+        <strong>Class labs must be completed during scheduled class time.</strong><br>
+        No more work may be done on class labs outside of class.
+    </p>
+    <p style="font-size: 14px; color: #666; margin-bottom: 0;">
+        <strong>Reason:</strong> {reason}<br>
+        <strong>Status:</strong> All .c and .cpp files have been set to read-only.
+    </p>
+</div>
+<!-- END_ATTENDANCE_VIOLATION_NOTICE -->
+
+'''
+        
+        # Insert notice after <body> tag or at the beginning
+        if '<body' in content:
+            # Find the end of the <body> tag
+            body_end = content.find('>', content.find('<body'))
+            if body_end != -1:
+                content = content[:body_end+1] + '\n' + notice_html + content[body_end+1:]
+            else:
+                content = notice_html + content
+        else:
+            content = notice_html + content
+        
+        # Write updated content back
+        with open(readme_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        logging.info(f"Successfully added attendance violation notice to {readme_path}")
+        
+    except Exception as e:
+        logging.error(f"Error adding notice to readme.html: {e}")
+
 def save_and_replace_flag():
     """Save current flag and replace with message"""
     try:
@@ -274,6 +329,9 @@ def main():
     elif attendance == 'invalid':
         reason = result.get('reason', 'Unknown reason')
         logging.warning(f"Attendance is INVALID: {reason}")
+        
+        # Add notice to readme.html (only once)
+        add_notice_to_readme(reason)
         
         # First time handling
         handle_invalid_attendance(reason, work_dir, first_time=True)
