@@ -52,13 +52,17 @@ def get_work_dir():
         logging.error(f"Error reading {LEVEL_CONFIG}: {e}")
         return None
 
-def validate_attendance(pwn_college_id):
+def validate_attendance(pwn_college_id, module=None, challenge=None):
     """Make API request to validate attendance"""
     try:
         payload = {
             "pwn_college_id": pwn_college_id,
             "api_token": API_TOKEN
         }
+        if module:
+            payload["module"] = module
+        if challenge:
+            payload["challenge"] = challenge
         response = requests.post(API_URL, json=payload, timeout=10)
         return response.json()
     except Exception as e:
@@ -202,12 +206,24 @@ def main():
         except Exception as e:
             logging.debug(f"Error checking /.admin_access: {e}")
 
-    # Get work directory
+    # Get work directory and level info
     work_dir = get_work_dir()
     logging.info(f"Work directory: {work_dir}")
     
+    # Get module and challenge from level.json
+    module = None
+    challenge = None
+    try:
+        with open(LEVEL_CONFIG, 'r') as f:
+            level_data = json.load(f)
+        module = level_data.get('module')
+        challenge = level_data.get('challenge')
+        logging.info(f"Module: {module}, Challenge: {challenge}")
+    except Exception as e:
+        logging.warning(f"Could not read module/challenge from level.json: {e}")
+    
     # Validate attendance
-    result = validate_attendance(pwn_college_id)
+    result = validate_attendance(pwn_college_id, module, challenge)
     if not result:
         logging.error("Failed to get attendance validation result")
         return
@@ -216,7 +232,16 @@ def main():
     
     attendance = result.get('attendance')
     
-    if attendance == 'valid':
+    if attendance == 'exempted':
+        exemption_reason = result.get('exemption_reason', 'Unknown')
+        exemption_hours = result.get('exemption_hours', 0)
+        time_remaining = result.get('time_remaining_minutes', 0)
+        valid_until_utc = result.get('valid_until_utc', 'N/A')
+        logging.info(f"Attendance is EXEMPTED - Reason: {exemption_reason}, Hours: {exemption_hours}, Time remaining: {time_remaining:.1f} minutes, Valid until: {valid_until_utc}")
+        logging.info("Skipping all attendance enforcement due to exemption")
+        return
+    
+    elif attendance == 'valid':
         logging.info("Attendance is VALID")
         valid_until_utc = result.get('valid_until_utc')
         time_remaining = result.get('time_remaining_minutes', 0)
