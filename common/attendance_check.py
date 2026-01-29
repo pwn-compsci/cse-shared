@@ -80,7 +80,7 @@ def broadcast_message(message):
             logging.info(f"Failed to write to {tty}: {e}")
 
 def make_files_readonly(work_dir):
-    """Make all .c and .cpp files in work_dir read-only"""
+    """Make all .c and .cpp files in work_dir read-only and owned by root"""
     try:
         if not work_dir or not os.path.exists(work_dir):
             logging.warning(f"Work directory does not exist: {work_dir}")
@@ -90,19 +90,20 @@ def make_files_readonly(work_dir):
         for ext in ['*.c', '*.cpp']:
             for file in Path(work_dir).rglob(ext):
                 try:
-                    os.chmod(file, 0o444)
+                    os.chown(file, 0, 0)  # Set owner to root:root
+                    os.chmod(file, 0o444)  # r--r--r--
                     file_count += 1
-                    logging.debug(f"Set {file} to read-only")
+                    logging.debug(f"Set {file} to read-only with owner root")
                 except Exception as e:
                     logging.error(f"Error setting {file} to read-only: {e}")
         
         if file_count > 0:
-            logging.info(f"Set {file_count} files to read-only in {work_dir}")
+            logging.info(f"Set {file_count} files to read-only (owner: root) in {work_dir}")
     except Exception as e:
         logging.error(f"Error making files read-only: {e}")
 
 def make_files_readwrite(work_dir):
-    """Make all .c and .cpp files in work_dir read-write for owner"""
+    """Make all .c and .cpp files in work_dir read-write for owner and set owner to hacker (1000)"""
     try:
         if not work_dir or not os.path.exists(work_dir):
             logging.warning(f"Work directory does not exist: {work_dir}")
@@ -112,14 +113,15 @@ def make_files_readwrite(work_dir):
         for ext in ['*.c', '*.cpp']:
             for file in Path(work_dir).rglob(ext):
                 try:
+                    os.chown(file, 1000, 1000)  # Set owner to hacker:hacker
                     os.chmod(file, 0o644)  # rw-r--r--
                     file_count += 1
-                    logging.debug(f"Set {file} to read-write")
+                    logging.debug(f"Set {file} to read-write with owner hacker")
                 except Exception as e:
                     logging.error(f"Error setting {file} to read-write: {e}")
         
         if file_count > 0:
-            logging.info(f"Set {file_count} files to read-write in {work_dir}")
+            logging.info(f"Set {file_count} files to read-write (owner: hacker) in {work_dir}")
     except Exception as e:
         logging.error(f"Error making files read-write: {e}")
 
