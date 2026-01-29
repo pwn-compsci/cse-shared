@@ -181,22 +181,65 @@ def add_notice_to_readme(reason):
         logging.error(f"Error adding notice to readme.html: {e}")
 
 def save_and_replace_flag():
-    """Save current flag and replace with message"""
+    """Save current flag and mangle the signature part to invalidate it while preserving account_id"""
     try:
         # Save current flag
         if os.path.exists(FLAG_FILE):
             with open(FLAG_FILE, 'r') as f:
-                current_flag = f.read()
+                current_flag = f.read().strip()
             with open(SAVED_FLAG_FILE, 'w') as f:
                 f.write(current_flag)
             os.chmod(SAVED_FLAG_FILE, 0o400)
             logging.info(f"Saved current flag to {SAVED_FLAG_FILE}")
-        
-        # Replace flag
-        new_flag = "pwn.college{only permitted during class}"
-        with open(FLAG_FILE, 'w') as f:
-            f.write(new_flag)
-        logging.info(f"Replaced flag with class restriction message")
+            
+            # Mangle only the signature part of the flag
+            try:
+                # Extract the serialized part between braces
+                if '{' in current_flag and '}' in current_flag:
+                    prefix = current_flag[:current_flag.index('{') + 1]  # "pwn.college{"
+                    suffix = '}'
+                    serialized_part = current_flag[current_flag.index('{') + 1:current_flag.rindex('}')]
+                    
+                    # Reverse to get original format (data.signature)
+                    unreversed = serialized_part[::-1]
+                    
+                    # Split at the dot
+                    parts = unreversed.split('.', 1)
+                    if len(parts) >= 2:
+                        data_part = parts[0]
+                        # Mangle the signature part
+                        mangled_signature = "INVALID_NOT_ATTENDING_CLASSLAB"
+                        
+                        # Reconstruct with mangled signature
+                        new_unreversed = f"{data_part}.{mangled_signature}"
+                        # Reverse back
+                        new_serialized = new_unreversed[::-1]
+                        
+                        # Reconstruct full flag
+                        mangled_flag = f"{prefix}{new_serialized}{suffix}"
+                        
+                        with open(FLAG_FILE, 'w') as f:
+                            f.write(mangled_flag)
+                        logging.info(f"Mangled flag signature (account_id preserved for tracking)")
+                    else:
+                        # Fallback if parsing fails
+                        new_flag = "pwn.college{INVALID_NOT_ATTENDING_CLASSLAB}"
+                        with open(FLAG_FILE, 'w') as f:
+                            f.write(new_flag)
+                        logging.warning("Could not parse flag structure, used simple replacement")
+                else:
+                    # Fallback if not in expected format
+                    new_flag = "pwn.college{ATTENDANCE_VIOLATION}"
+                    with open(FLAG_FILE, 'w') as f:
+                        f.write(new_flag)
+                    logging.warning("Flag not in expected format, used simple replacement")
+            except Exception as e:
+                logging.error(f"Error mangling flag: {e}, using simple replacement")
+                new_flag = "pwn.college{ATTENDANCE_VIOLATION}"
+                with open(FLAG_FILE, 'w') as f:
+                    f.write(new_flag)
+        else:
+            logging.warning(f"Flag file {FLAG_FILE} does not exist")
     except Exception as e:
         logging.error(f"Error handling flag: {e}")
 
@@ -363,12 +406,23 @@ def main():
         # First time handling
         handle_invalid_attendance(reason, work_dir, first_time=True)
         
-        # Keep checking every minute and reapplying restrictions
-        logging.info("Entering enforcement loop - will reapply read-only restrictions every minute")
-        while True:
-            time.sleep(60)
-            logging.info("Reapplying read-only restrictions")
+        # Enforcement loop - aggressive at first, then periodic checks
+        logging.info("Entering enforcement loop - will reapply read-only restrictions")
+        
+        # Run every 10 seconds for 3 times (30 seconds)
+        for i in range(3):
+            time.sleep(10)
+            logging.info(f"Reapplying read-only restrictions (10s interval, attempt {i+1}/3)")
             make_files_readonly(work_dir)
+        
+        # Then run every minute for 5 minutes
+        for i in range(5):
+            time.sleep(60)
+            logging.info(f"Reapplying read-only restrictions (60s interval, attempt {i+1}/5)")
+            make_files_readonly(work_dir)
+        
+        logging.info("Enforcement loop completed - exiting attendance check")
+        return
     
     else:
         logging.error(f"Unexpected attendance status: {attendance}")
