@@ -145,7 +145,7 @@ def add_notice_to_readme(reason):
         notice_html = f'''<!-- ATTENDANCE_VIOLATION_NOTICE -->
 <div style="background-color: #ffebee; border: 3px solid #c62828; border-radius: 8px; padding: 20px; margin: 20px 0; font-family: Arial, sans-serif;">
     <h2 style="color: #c62828; margin-top: 0;">⚠️ CLASS LAB ATTENDANCE VIOLATION</h2>
-    <p style="font-size: 16px; line-height: 1.6;">
+    <p style="font-size: 16px; line-height: 1.6; color: #000;">
         <strong>Class labs must be completed during scheduled class time.</strong><br>
         No more work may be done on class labs outside of class.
     </p>
