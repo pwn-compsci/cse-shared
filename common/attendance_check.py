@@ -98,7 +98,19 @@ def make_files_readonly(work_dir):
                     logging.error(f"Error setting {file} to read-only: {e}")
         
         if file_count > 0:
-            logging.info(f"Set {file_count} files to read-only (owner: root) in {work_dir}")
+            # Verify the first modified file's owner and permissions
+            first_file = None
+            for ext in ['*.c', '*.cpp']:
+                files = list(Path(work_dir).rglob(ext))
+                if files:
+                    first_file = files[0]
+                    break
+            
+            if first_file:
+                stat_info = os.stat(first_file)
+                logging.info(f"Set {file_count} files to read-only. Verified first file {first_file}: owner={stat_info.st_uid}:{stat_info.st_gid}, permissions={oct(stat_info.st_mode)[-3:]}")
+            else:
+                logging.info(f"Set {file_count} files to read-only (N/A) in {work_dir}")
     except Exception as e:
         logging.error(f"Error making files read-only: {e}")
 
