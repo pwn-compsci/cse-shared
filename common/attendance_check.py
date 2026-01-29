@@ -101,6 +101,28 @@ def make_files_readonly(work_dir):
     except Exception as e:
         logging.error(f"Error making files read-only: {e}")
 
+def make_files_readwrite(work_dir):
+    """Make all .c and .cpp files in work_dir read-write for owner"""
+    try:
+        if not work_dir or not os.path.exists(work_dir):
+            logging.warning(f"Work directory does not exist: {work_dir}")
+            return
+        
+        file_count = 0
+        for ext in ['*.c', '*.cpp']:
+            for file in Path(work_dir).rglob(ext):
+                try:
+                    os.chmod(file, 0o644)  # rw-r--r--
+                    file_count += 1
+                    logging.debug(f"Set {file} to read-write")
+                except Exception as e:
+                    logging.error(f"Error setting {file} to read-write: {e}")
+        
+        if file_count > 0:
+            logging.info(f"Set {file_count} files to read-write in {work_dir}")
+    except Exception as e:
+        logging.error(f"Error making files read-write: {e}")
+
 def add_notice_to_readme(reason):
     """Add attendance violation notice to readme.html if it exists"""
     readme_path = "/challenge/.config/readme.html"
@@ -127,7 +149,7 @@ def add_notice_to_readme(reason):
         <strong>Class labs must be completed during scheduled class time.</strong><br>
         No more work may be done on class labs outside of class.
     </p>
-    <p style="font-size: 14px; color: #666; margin-bottom: 0;">
+    <p style="font-size: 14px; color: #000; margin-bottom: 0;">
         <strong>Reason:</strong> {reason}<br>
         <strong>Status:</strong> All .c and .cpp files have been set to read-only.
     </p>
@@ -264,6 +286,9 @@ def main():
     # Get work directory and level info
     work_dir = get_work_dir()
     logging.info(f"Work directory: {work_dir}")
+    
+    # Set all .c and .cpp files to read-write at program start
+    make_files_readwrite(work_dir)
     
     # Get module and challenge from level.json
     module = None
