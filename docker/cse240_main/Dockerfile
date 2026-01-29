@@ -72,6 +72,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         man-db
         manpages-dev
         manpages
+        manpages-posix
+        manpages-posix-dev
+        glibc-doc
+        gcc-doc
+        binutils-doc
+        cpp-doc
+        make-doc
+        libc6-dev
+        linux-doc
         tldr
         tzdata 
         unminimize 
@@ -81,6 +90,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python3-pip
         libseccomp2         
 EOF
+
+# Run unminimize immediately after package installation
+RUN printf 'y\n' | /usr/local/sbin/unminimize || printf 'y\n' | unminimize || true
 
 RUN pip install fastecdsa
 
@@ -194,8 +206,10 @@ RUN pip install --user flask requests gevent gevent-websocket
 RUN pip install psutil 
 # RUN python3 -c "import gevent; print(gevent.__version__)" 
 
-# run unminimize for man pages and tldr
-RUN printf 'y\n' | /usr/local/sbin/unminimize || printf 'y\n' | unminimize || true
+# Build and update man database for offline operation
+RUN echo "Rebuilding man database for offline operation..." \
+ && mandb -c \
+ && echo "Man database rebuilt successfully"
 
 ENV LC_CTYPE=C.UTF-8
 
@@ -203,9 +217,27 @@ RUN <<EOF
     if id ubuntu; then userdel -f -r ubuntu; fi 
     useradd -s /bin/bash -m hacker 
     passwd -d hacker 
+    
+    # Ensure hacker user has proper shell configuration for offline tools
+    echo 'export MANPAGER="less"' >> /home/hacker/.bashrc
+    echo 'export TLDR_AUTO_UPDATE_DISABLED=1' >> /home/hacker/.bashrc
+    echo 'export TLDR_CACHE_DIR="/usr/share/tldr"' >> /home/hacker/.bashrc
+    
+    # Also set for root
+    echo 'export TLDR_AUTO_UPDATE_DISABLED=1' >> /root/.bashrc
+    echo 'export TLDR_CACHE_DIR="/usr/share/tldr"' >> /root/.bashrc
+    
+    # Create hacker's tldr cache directory if it doesn't exist
+    mkdir -p /home/hacker/.local/share/tldr
+    chown -R hacker:hacker /home/hacker/.local
+    
+    # Ensure man database is accessible to hacker user
+    chown -R root:root /var/cache/man
+    chmod -R 755 /var/cache/man
 EOF
 
-RUN mkdir -p /root/.local/share/tldr /usr/share/tldr \
+# Configure tldr for offline operation
+RUN mkdir -p /root/.local/share/tldr /usr/share/tldr /home/hacker/.local/share/tldr \
  && (for i in 1 2 3; do \
       echo "Attempt $i to download tldr pages..." \
       && rm -rf /root/.local/share/tldr/* \
@@ -218,10 +250,18 @@ RUN mkdir -p /root/.local/share/tldr /usr/share/tldr \
       || ([ $i -eq 3 ] && echo "Failed to download tldr pages after 3 attempts" && exit 1 || sleep 5); \
     done) \
  && cp -r /root/.local/share/tldr/* /usr/share/tldr/ \
+ && cp -r /root/.local/share/tldr/* /home/hacker/.local/share/tldr/ \
  && chown -R root:root /usr/share/tldr \
+ && chown -R hacker:hacker /home/hacker/.local/share/tldr \
  && ls -la /usr/share/tldr/ | head -20 \
- && echo "tldr pages successfully installed"
+ && echo "tldr pages successfully installed" \
+ && echo "Configuring tldr for offline operation..." \
+ && echo 'export TLDR_CACHE_DIR="/usr/share/tldr"' >> /etc/bash.bashrc \
+ && echo 'export TLDR_AUTO_UPDATE_DISABLED=1' >> /etc/bash.bashrc
+
+# Set environment variables for offline tldr operation
 ENV TLDR_CACHE_DIR=/usr/share/tldr
+ENV TLDR_AUTO_UPDATE_DISABLED=1
 
 ######################################################################
 # Install racket-langserver
@@ -233,7 +273,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v76 && touch "/cse240_v76/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v77 && touch "/cse240_v77/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final

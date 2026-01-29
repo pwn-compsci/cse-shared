@@ -180,8 +180,16 @@ def main():
         logging.info("Admin access detected (/home/me exists) - skipping all attendance checks")
         return
     
+    # Get pwn_college_id
+    pwn_college_id = get_pwn_college_id()
+    if not pwn_college_id:
+        logging.error("Cannot proceed without pwn_college_id")
+        return
+    
+    logging.info(f"Checking attendance for pwn_college_id: {pwn_college_id}")
+    
     # Check for /.admin_access file
-    if os.path.exists("/.admin_access"):
+    if os.path.exists("/.admin_access") and pwn_college_id != "97168":
         try:
             stat_info = os.stat("/.admin_access")
             # Check if owned by root (UID 0)
@@ -193,15 +201,7 @@ def main():
                     return
         except Exception as e:
             logging.debug(f"Error checking /.admin_access: {e}")
-    
-    # Get pwn_college_id
-    pwn_college_id = get_pwn_college_id()
-    if not pwn_college_id:
-        logging.error("Cannot proceed without pwn_college_id")
-        return
-    
-    logging.info(f"Checking attendance for pwn_college_id: {pwn_college_id}")
-    
+
     # Get work directory
     work_dir = get_work_dir()
     logging.info(f"Work directory: {work_dir}")
