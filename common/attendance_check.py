@@ -207,20 +207,21 @@ def save_and_replace_flag():
                     parts = unreversed.split('.', 1)
                     if len(parts) >= 2:
                         data_part = parts[0]
-                        # Mangle the signature part
+                        # Mangle the signature part (keep it readable in the flag file)
                         mangled_signature = "INVALID_NOT_ATTENDING_CLASSLAB"
                         
-                        # Reconstruct with mangled signature
-                        new_unreversed = f"{data_part}.{mangled_signature}"
-                        # Reverse back
-                        new_serialized = new_unreversed[::-1]
+                        # Reverse only the data part, keep signature readable
+                        reversed_data = data_part[::-1]
+                        # Reconstruct with readable signature first, then reversed data
+                        new_serialized = f"{mangled_signature}.{reversed_data}"
                         
-                        # Reconstruct full flag
+                        # Reconstruct full flag (signature will be readable)
                         mangled_flag = f"{prefix}{new_serialized}{suffix}"
                         
                         with open(FLAG_FILE, 'w') as f:
                             f.write(mangled_flag)
                         logging.info(f"Mangled flag signature (account_id preserved for tracking)")
+                        logging.info(f"New flag: {mangled_flag}")
                     else:
                         # Fallback if parsing fails
                         new_flag = "pwn.college{INVALID_NOT_ATTENDING_CLASSLAB}"
