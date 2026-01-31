@@ -161,7 +161,7 @@ def add_notice_to_readme(reason):
     <h2 style="color: #c62828; margin-top: 0;">⚠️ CLASS LAB ATTENDANCE VIOLATION</h2>
     <p style="font-size: 16px; line-height: 1.6; color: #000;">
         <strong>Class labs must be completed during scheduled class time.</strong><br>
-        No more work may be done on class labs outside of class.
+        No more work may be done on class labs outside of class. But you are welcome to review existing code and read the requirements.
     </p>
     <p style="font-size: 14px; color: #000; margin-bottom: 0;">
         <strong>Reason:</strong> {reason}<br>

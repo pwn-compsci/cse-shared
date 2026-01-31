@@ -639,9 +639,9 @@ function activate(context) {
     extensionId = context.extension.id;
     
     // Notify users about ephemeral nature of changes
-    vscode.window.showWarningMessage(
-        '⚠️ Important: This VS Code instance allows file editing, but all changes will be lost when the server shuts down (e.g., overnight). Save your work elsewhere if needed.'
-    );
+    // vscode.window.showWarningMessage(
+    //     '⚠️ Important: This VS Code instance allows file editing, but all changes will be lost when the server shuts down (e.g., overnight). Save your work elsewhere if needed.'
+    // );
     
     // Load configuration on startup and start session monitoring if needed
     Promise.all([loadLevelConfig(), loadSessionConfiguration()]).then(() => {
@@ -1006,6 +1006,8 @@ function activate(context) {
                     const hwid = levelConfig.hwid;
                     const labid = levelConfig.labid;
                     const level = levelConfig.level;
+                    const module = levelConfig.module;
+                    const challenge = levelConfig.challenge;
                     
                     // Find history directory for current file
                     let historyDir = "/home/hacker/.local/share/ultima/skipped";
@@ -1026,7 +1028,7 @@ function activate(context) {
                     const ccFullPath = path.join(historyDir, ccFilename);
                     
                     // Prepare header with metadata
-                    const header = `# Copied from Requirements\n# hwid: ${hwid}\n# labid: ${labid}\n# level: ${level}\n# timestamp: ${new Date().toISOString()}\n# saveid: ${saveid}\n\n`;
+                    const header = `# Copied from Requirements\n# hwid: ${hwid}\n# labid: ${labid}\n# level: ${level}\n# module: ${module}\n# challenge: ${challenge}\n# timestamp: ${new Date().toISOString()}\n# saveid: ${saveid}\n\n`;
                     const ccContent = header + originalText;
                     
                     try {
@@ -1046,6 +1048,8 @@ function activate(context) {
                         hwid: hwid,
                         labid: labid,
                         level: level,
+                        module: module,
+                        challenge: challenge,
                         currentFile: currentFilePath,
                         historyDirectory: historyDir,
                         ccFile: ccFullPath,
@@ -2128,7 +2132,7 @@ async function loadLevelConfig() {
         
         // Populate global levelConfig object
         levelConfig.hw = configData;
-        levelConfig.hwid = configData.hwid;
+        levelConfig.hwid = configData.hw;  // hwid comes from 'hw' field in level.json
         levelConfig.labid = configData.labid;
         levelConfig.level = configData.level;
         levelConfig.initialFiles = configData.initial_files;
