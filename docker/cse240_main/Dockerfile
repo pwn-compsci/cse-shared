@@ -273,7 +273,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v80 && touch "/cse240_v80/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v81 && touch "/cse240_v81/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final

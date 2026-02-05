@@ -1681,29 +1681,8 @@ function activate(context) {
     
     context.subscriptions.push(disposableTypeCommand);
     
-    // Track backspace/delete separately
-    let disposableDeleteLeft = vscode.commands.registerCommand('deleteLeft', async () => {
-        if (!isDeactivating) {
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                recordKeystroke('⌫', editor);
-            }
-        }
-        return vscode.commands.executeCommand('default:deleteLeft');
-    });
-    
-    let disposableDeleteRight = vscode.commands.registerCommand('deleteRight', async () => {
-        if (!isDeactivating) {
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                recordKeystroke('⌦', editor); // Forward delete symbol
-            }
-        }
-        return vscode.commands.executeCommand('default:deleteRight');
-    });
-    
-    context.subscriptions.push(disposableDeleteLeft);
-    context.subscriptions.push(disposableDeleteRight);
+    // Note: Backspace/delete tracking is handled in onDidChangeTextDocument below
+    // We don't override deleteLeft/deleteRight commands because they don't have default: versions
 
     let disposableTextChange = vscode.workspace.onDidChangeTextDocument(async (event) => {
         if (lockChangeCheck){
@@ -1788,8 +1767,16 @@ function activate(context) {
             if (textOut === "" ) {
                 
                 if (event.contentChanges && event.contentChanges.length > 0) {
-                    // log(`Detected backspace or delete operation: removed ${event.contentChanges[0].rangeLength} characters`);
+                    // Detected backspace or delete operation
+                    const rangeLength = event.contentChanges[0].rangeLength || 1;
                     textOut = '⌫';
+                    
+                    // Record the deletion in keystroke log
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor && !isDeactivating) {
+                        // Record one backspace symbol for the delete operation
+                        recordKeystroke('⌫', editor);
+                    }
                 } else{
                     log('really wanted to detect backspace or delete operation, but could not find rangeLength')
                     console.log(event)
