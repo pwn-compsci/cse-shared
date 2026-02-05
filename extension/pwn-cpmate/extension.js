@@ -68,6 +68,8 @@ let debounceTimeout;
 var lockChangeCheck = false;
 var clipboardRetries = 0;
 var extensionId = "";
+var keystrokes = []; // Buffer for actual keystrokes with metadata
+var keystrokeFlushTimer = null;
 
 // Admin and debug controls
 var isAdminUser = false;
@@ -1541,6 +1543,161 @@ function activate(context) {
         return false;
     }
 
+    // ============================================================================
+    // Enhanced Keystroke Tracking
+    // ============================================================================
+    
+    /**
+     * Flushes keystroke buffer to log file with detailed context
+     * Groups keystrokes by file to handle file switches during typing
+     */
+    async function flushKeystrokes() {
+        if (keystrokes.length === 0) return;
+        
+        // Group keystrokes by file path
+        const keystrokesByFile = new Map();
+        for (const keystroke of keystrokes) {
+            if (!keystroke.filePath) continue; // Skip if no file path
+            
+            if (!keystrokesByFile.has(keystroke.filePath)) {
+                keystrokesByFile.set(keystroke.filePath, []);
+            }
+            keystrokesByFile.get(keystroke.filePath).push(keystroke);
+        }
+        
+        // Process each file's keystrokes
+        for (const [filePath, fileKeystrokes] of keystrokesByFile.entries()) {
+            try {
+                const historyDir = await findHistoryDirectory(filePath);
+                const fullPath = path.join(historyDir, "key.log");
+                const now = new Date();
+                const isoString = now.toISOString();
+                
+                // Get first and last positions for this file
+                const firstKeystroke = fileKeystrokes[0];
+                const lastKeystroke = fileKeystrokes[fileKeystrokes.length - 1];
+                
+                // Build structured log entry
+                const logEntry = {
+                    timestamp: isoString,
+                    file: path.basename(filePath),
+                    fullPath: filePath,
+                    keystrokes: fileKeystrokes.map(k => k.text),
+                    keystrokeCount: fileKeystrokes.length,
+                    totalChars: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
+                    startPosition: firstKeystroke.position ? {
+                        line: firstKeystroke.position.line + 1, // 1-indexed for humans
+                        character: firstKeystroke.position.character + 1
+                    } : null,
+                    endPosition: lastKeystroke.position ? {
+                        line: lastKeystroke.position.line + 1,
+                        character: lastKeystroke.position.character + 1
+                    } : null,
+                    firstTimestamp: firstKeystroke.timestamp,
+                    lastTimestamp: lastKeystroke.timestamp,
+                    durationMs: new Date(lastKeystroke.timestamp).getTime() - new Date(firstKeystroke.timestamp).getTime(),
+                    languageId: fileKeystrokes[0].languageId || 'unknown'
+                };
+                
+                // Log as single-line JSON for easy parsing
+                const outText = JSON.stringify(logEntry) + '\n';
+                
+                await fs.appendFile(fullPath, outText);
+                log(`Keystroke: ${logEntry.totalChars} chars in ${logEntry.file} (${logEntry.durationMs}ms)`);
+                
+            } catch (error) {
+                log(`Error flushing keystrokes for ${filePath}: ${error}`);
+            }
+        }
+        
+        keystrokes = [];
+    }
+    
+    /**
+     * Records a keystroke with full context and schedules a flush
+     */
+    function recordKeystroke(text, editor) {
+        if (!editor) return;
+        
+        const filePath = editor.document.uri.fsPath;
+        const position = editor.selection.active;
+        
+        keystrokes.push({
+            text: text,
+            timestamp: new Date().toISOString(),
+            filePath: filePath,
+            position: {
+                line: position.line,
+                character: position.character
+            },
+            languageId: editor.document.languageId
+        });
+        
+        // Clear existing timer
+        if (keystrokeFlushTimer) {
+            clearTimeout(keystrokeFlushTimer);
+        }
+        
+        // Flush after 3 seconds of inactivity or when buffer reaches 50 characters
+        const totalChars = keystrokes.reduce((sum, k) => sum + k.text.length, 0);
+        if (totalChars >= 50) {
+            flushKeystrokes();
+        } else {
+            keystrokeFlushTimer = setTimeout(() => {
+                flushKeystrokes();
+            }, 3000);
+        }
+    }
+    
+    // Override the 'type' command to capture actual keystrokes
+    let disposableTypeCommand = vscode.commands.registerCommand('type', async (args) => {
+        if (isDeactivating) {
+            // Fall back to default behavior
+            return vscode.commands.executeCommand('default:type', args);
+        }
+        
+        const editor = vscode.window.activeTextEditor;
+        if (editor && args && args.text) {
+            const typedText = args.text;
+            
+            // Record the keystroke with full editor context
+            if (typedText === '\n') {
+                recordKeystroke('↵', editor);
+            } else {
+                recordKeystroke(typedText, editor);
+            }
+        }
+        
+        // Execute the default type command
+        return vscode.commands.executeCommand('default:type', args);
+    });
+    
+    context.subscriptions.push(disposableTypeCommand);
+    
+    // Track backspace/delete separately
+    let disposableDeleteLeft = vscode.commands.registerCommand('deleteLeft', async () => {
+        if (!isDeactivating) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                recordKeystroke('⌫', editor);
+            }
+        }
+        return vscode.commands.executeCommand('default:deleteLeft');
+    });
+    
+    let disposableDeleteRight = vscode.commands.registerCommand('deleteRight', async () => {
+        if (!isDeactivating) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                recordKeystroke('⌦', editor); // Forward delete symbol
+            }
+        }
+        return vscode.commands.executeCommand('default:deleteRight');
+    });
+    
+    context.subscriptions.push(disposableDeleteLeft);
+    context.subscriptions.push(disposableDeleteRight);
+
     let disposableTextChange = vscode.workspace.onDidChangeTextDocument(async (event) => {
         if (lockChangeCheck){
             log('Skipping change check because of lock')
@@ -1735,27 +1892,9 @@ function activate(context) {
                     // this could happen also if clipboard is empty
                     let saveid = getTimestampBasedName();
                     saveTextInfo(currentFilePath, editor, textOut, saveid,"t")
-                       
-                } else { // doing short or single key check
-                    recentKeyboardInput += textOut;
-
-                    if (recentKeyboardInput.length > 25) {
-                        const editor = vscode.window.activeTextEditor;
-                        if (editor) {
-                            log(`chars: Looking to find ${currentFilePath}`)
-                            const historyDir = await findHistoryDirectory(currentFilePath);
-                            const fullPath = path.join(historyDir, "key.log");
-                            const escapedString = JSON.stringify(recentKeyboardInput);
-                            const now = new Date();
-                            const isoString = now.toISOString();
-                            let outText = `${isoString}: ${recentKeyboardInput.length}b ${escapedString}\n`
-                            fs.appendFile(fullPath, outText);
-                            log(outText);
-                            // editor.document.save();
-                            recentKeyboardInput = "";
-                        }
-                    }
                 }
+                // Note: Single keystrokes are now tracked via the 'type' command override above
+                // This provides more accurate keystroke tracking than inferring from text changes
             }
 
         }
@@ -2044,10 +2183,73 @@ function activate(context) {
 }
 
 
-function deactivate() {
+async function deactivate() {
     isDeactivating = true;
     const now = new Date();
     fsa.appendFileSync(PWN_STATUS_FILE, `deactivated ${extensionId} at ${now}\n`);
+
+    // Flush any pending keystrokes synchronously
+    if (keystrokes.length > 0) {
+        try {
+            // Group keystrokes by file path
+            const keystrokesByFile = new Map();
+            for (const keystroke of keystrokes) {
+                if (!keystroke.filePath) continue;
+                if (!keystrokesByFile.has(keystroke.filePath)) {
+                    keystrokesByFile.set(keystroke.filePath, []);
+                }
+                keystrokesByFile.get(keystroke.filePath).push(keystroke);
+            }
+            
+            // Synchronously write each file's keystrokes
+            for (const [filePath, fileKeystrokes] of keystrokesByFile.entries()) {
+                try {
+                    const firstKeystroke = fileKeystrokes[0];
+                    const lastKeystroke = fileKeystrokes[fileKeystrokes.length - 1];
+                    
+                    const logEntry = {
+                        timestamp: new Date().toISOString(),
+                        file: path.basename(filePath),
+                        fullPath: filePath,
+                        keystrokes: fileKeystrokes.map(k => k.text),
+                        keystrokeCount: fileKeystrokes.length,
+                        totalChars: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
+                        startPosition: firstKeystroke.position ? {
+                            line: firstKeystroke.position.line + 1,
+                            character: firstKeystroke.position.character + 1
+                        } : null,
+                        endPosition: lastKeystroke.position ? {
+                            line: lastKeystroke.position.line + 1,
+                            character: lastKeystroke.position.character + 1
+                        } : null,
+                        firstTimestamp: firstKeystroke.timestamp,
+                        lastTimestamp: lastKeystroke.timestamp,
+                        durationMs: new Date(lastKeystroke.timestamp).getTime() - new Date(firstKeystroke.timestamp).getTime(),
+                        languageId: fileKeystrokes[0].languageId || 'unknown',
+                        flushedOnDeactivate: true
+                    };
+                    
+                    // Find history directory synchronously (simplified)
+                    const historyDir = path.join(historyBasePath, crypto.createHash('md5').update(filePath).digest('hex'));
+                    if (fsa.existsSync(historyDir)) {
+                        const fullPath = path.join(historyDir, "key.log");
+                        fsa.appendFileSync(fullPath, JSON.stringify(logEntry) + '\n');
+                    }
+                } catch (error) {
+                    logSync(`Error flushing keystrokes on deactivate for ${filePath}: ${error}`);
+                }
+            }
+        } catch (error) {
+            logSync(`Error during keystroke flush on deactivate: ${error}`);
+        }
+        keystrokes = [];
+    }
+    
+    // Clear keystroke flush timer
+    if (keystrokeFlushTimer) {
+        clearTimeout(keystrokeFlushTimer);
+        keystrokeFlushTimer = null;
+    }
 
     // Clear intervals
     if (CBReaderInterval !== null) {
