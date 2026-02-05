@@ -1569,7 +1569,7 @@ function activate(context) {
         for (const [filePath, fileKeystrokes] of keystrokesByFile.entries()) {
             try {
                 const historyDir = await findHistoryDirectory(filePath);
-                const fullPath = path.join(historyDir, "key.log");
+                const fullPath = path.join(historyDir, "key.json");
                 const now = new Date();
                 const isoString = now.toISOString();
                 
@@ -1582,6 +1582,13 @@ function activate(context) {
                     timestamp: isoString,
                     file: path.basename(filePath),
                     fullPath: filePath,
+                    module: levelConfig.module || null,
+                    challenge: levelConfig.challenge || null,
+                    module_name: levelConfig.module_name || null,
+                    challenge_name: levelConfig.challenge_name || null,
+                    hw: levelConfig.hw || null,
+                    hwid: levelConfig.hwid || null,
+                    labid: levelConfig.labid || null,
                     keystrokes: fileKeystrokes.map(k => k.text),
                     keystrokeCount: fileKeystrokes.length,
                     totalChars: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
@@ -1793,10 +1800,13 @@ function activate(context) {
                 textOut = textOut.replace(/[\r]+/g, '↵');
             }
             
+            // Get editor reference early for prompt stripping
+            const editor = vscode.window.activeTextEditor;
+            
             // Check if pasted text contains any known prompts and strip them
             let strippedText = textOut;
             let wasStripped = false;
-            if (textOut.length > 2) {
+            if (textOut.length > 2 && editor) {
                 // First check against all tracked modified texts (fast path for recent copies)
                 for (const [modifiedText, data] of injectedPromptsMap.entries()) {
                     // Normalize for comparison (remove \r differences)
@@ -1856,7 +1866,6 @@ function activate(context) {
                 }
             }
             
-            const editor = vscode.window.activeTextEditor;
             if (editor) {            
             
                 const currentFilePath = editor.document.uri.fsPath;
@@ -2211,6 +2220,13 @@ async function deactivate() {
                         timestamp: new Date().toISOString(),
                         file: path.basename(filePath),
                         fullPath: filePath,
+                        module: levelConfig.module || null,
+                        challenge: levelConfig.challenge || null,
+                        module_name: levelConfig.module_name || null,
+                        challenge_name: levelConfig.challenge_name || null,
+                        hw: levelConfig.hw || null,
+                        hwid: levelConfig.hwid || null,
+                        labid: levelConfig.labid || null,
                         keystrokes: fileKeystrokes.map(k => k.text),
                         keystrokeCount: fileKeystrokes.length,
                         totalChars: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
@@ -2232,7 +2248,7 @@ async function deactivate() {
                     // Find history directory synchronously (simplified)
                     const historyDir = path.join(historyBasePath, crypto.createHash('md5').update(filePath).digest('hex'));
                     if (fsa.existsSync(historyDir)) {
-                        const fullPath = path.join(historyDir, "key.log");
+                        const fullPath = path.join(historyDir, "key.json");
                         fsa.appendFileSync(fullPath, JSON.stringify(logEntry) + '\n');
                     }
                 } catch (error) {
