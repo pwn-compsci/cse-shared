@@ -70,6 +70,7 @@ var clipboardRetries = 0;
 var extensionId = "";
 var keystrokes = []; // Buffer for actual keystrokes with metadata
 var keystrokeFlushTimer = null;
+var cursorMovements = []; // Buffer for cursor movements without typing
 
 // Admin and debug controls
 var isAdminUser = false;
@@ -1548,16 +1549,16 @@ function activate(context) {
     // ============================================================================
     
     /**
-     * Flushes keystroke buffer to log file with detailed context
-     * Groups keystrokes by file to handle file switches during typing
+     * Flushes keystroke buffer to log file with detailed timing and movement data
+     * Groups keystrokes by file and creates chunks with per-keystroke timestamps
      */
     async function flushKeystrokes() {
-        if (keystrokes.length === 0) return;
+        if (keystrokes.length === 0 && cursorMovements.length === 0) return;
         
         // Group keystrokes by file path
         const keystrokesByFile = new Map();
         for (const keystroke of keystrokes) {
-            if (!keystroke.filePath) continue; // Skip if no file path
+            if (!keystroke.filePath) continue;
             
             if (!keystrokesByFile.has(keystroke.filePath)) {
                 keystrokesByFile.set(keystroke.filePath, []);
@@ -1565,52 +1566,156 @@ function activate(context) {
             keystrokesByFile.get(keystroke.filePath).push(keystroke);
         }
         
-        // Process each file's keystrokes
-        for (const [filePath, fileKeystrokes] of keystrokesByFile.entries()) {
+        // Group cursor movements by file path
+        const movementsByFile = new Map();
+        for (const movement of cursorMovements) {
+            if (!movement.filePath) continue;
+            
+            if (!movementsByFile.has(movement.filePath)) {
+                movementsByFile.set(movement.filePath, []);
+            }
+            movementsByFile.get(movement.filePath).push(movement);
+        }
+        
+        // Get all unique file paths
+        const allFilePaths = new Set([...keystrokesByFile.keys(), ...movementsByFile.keys()]);
+        
+        // Process each file's keystrokes and movements
+        for (const filePath of allFilePaths) {
             try {
                 const historyDir = await findHistoryDirectory(filePath);
                 const fullPath = path.join(historyDir, "key.json");
                 const now = new Date();
-                const isoString = now.toISOString();
                 
-                // Get first and last positions for this file
-                const firstKeystroke = fileKeystrokes[0];
-                const lastKeystroke = fileKeystrokes[fileKeystrokes.length - 1];
+                // Read existing entries
+                let entries = [];
+                try {
+                    const existingData = await fs.readFile(fullPath, 'utf8');
+                    if (existingData.trim()) {
+                        entries = JSON.parse(existingData);
+                        if (!Array.isArray(entries)) {
+                            entries = [];
+                        }
+                    }
+                } catch (readError) {
+                    entries = [];
+                }
                 
-                // Build structured log entry
-                const logEntry = {
-                    timestamp: isoString,
-                    file: path.basename(filePath),
+                // Get session identifiers
+                const sessionKey = {
                     fullPath: filePath,
                     module: levelConfig.module || null,
-                    challenge: levelConfig.challenge || null,
-                    module_name: levelConfig.module_name || null,
-                    challenge_name: levelConfig.challenge_name || null,
-                    hw: levelConfig.hw || null,
-                    hwid: levelConfig.hwid || null,
-                    labid: levelConfig.labid || null,
-                    keystrokes: fileKeystrokes.map(k => k.text),
-                    keystrokeCount: fileKeystrokes.length,
-                    totalChars: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
-                    startPosition: firstKeystroke.position ? {
-                        line: firstKeystroke.position.line + 1, // 1-indexed for humans
-                        character: firstKeystroke.position.character + 1
-                    } : null,
-                    endPosition: lastKeystroke.position ? {
-                        line: lastKeystroke.position.line + 1,
-                        character: lastKeystroke.position.character + 1
-                    } : null,
-                    firstTimestamp: firstKeystroke.timestamp,
-                    lastTimestamp: lastKeystroke.timestamp,
-                    durationMs: new Date(lastKeystroke.timestamp).getTime() - new Date(firstKeystroke.timestamp).getTime(),
-                    languageId: fileKeystrokes[0].languageId || 'unknown'
+                    challenge: levelConfig.challenge || null
                 };
                 
-                // Log as single-line JSON for easy parsing
-                const outText = JSON.stringify(logEntry) + '\n';
+                // Find existing entry for this session
+                let existingEntry = entries.find(e => 
+                    e.fullPath === sessionKey.fullPath &&
+                    e.module === sessionKey.module &&
+                    e.challenge === sessionKey.challenge
+                );
                 
-                await fs.appendFile(fullPath, outText);
-                log(`Keystroke: ${logEntry.totalChars} chars in ${logEntry.file} (${logEntry.durationMs}ms)`);
+                const fileKeystrokes = keystrokesByFile.get(filePath) || [];
+                const fileMovements = movementsByFile.get(filePath) || [];
+                
+                if (fileKeystrokes.length > 0) {
+                    const firstKeystroke = fileKeystrokes[0];
+                    const lastKeystroke = fileKeystrokes[fileKeystrokes.length - 1];
+                    
+                    // Build keystroke array with individual timestamps
+                    const keystrokesWithTimestamps = fileKeystrokes.map(k => ({
+                        key: k.text,
+                        ts: k.timestamp,
+                        line: k.position.line + 1,
+                        char: k.position.character + 1
+                    }));
+                    
+                    // Calculate timing statistics
+                    const timingDeltas = [];
+                    for (let i = 1; i < fileKeystrokes.length; i++) {
+                        const delta = new Date(fileKeystrokes[i].timestamp).getTime() - 
+                                     new Date(fileKeystrokes[i-1].timestamp).getTime();
+                        timingDeltas.push(delta);
+                    }
+                    
+                    let timingStats = null;
+                    if (timingDeltas.length > 0) {
+                        const sum = timingDeltas.reduce((a, b) => a + b, 0);
+                        const avg = sum / timingDeltas.length;
+                        const min = Math.min(...timingDeltas);
+                        const max = Math.max(...timingDeltas);
+                        
+                        // Calculate variance and standard deviation
+                        const variance = timingDeltas.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / timingDeltas.length;
+                        const stdDev = Math.sqrt(variance);
+                        
+                        timingStats = {
+                            avgMs: Math.round(avg * 100) / 100,
+                            minMs: min,
+                            maxMs: max,
+                            stdDevMs: Math.round(stdDev * 100) / 100
+                        };
+                    }
+                    
+                    // Create a keystroke chunk
+                    const keystrokeChunk = {
+                        timestamp: now.toISOString(),
+                        text: fileKeystrokes.map(k => k.text).join(''),
+                        keystrokes: keystrokesWithTimestamps,
+                        charCount: fileKeystrokes.reduce((sum, k) => sum + k.text.length, 0),
+                        startPosition: {
+                            line: firstKeystroke.position.line + 1,
+                            character: firstKeystroke.position.character + 1
+                        },
+                        endPosition: {
+                            line: lastKeystroke.position.line + 1,
+                            character: lastKeystroke.position.character + 1
+                        },
+                        timing: timingStats
+                    };
+                    
+                    // Add cursor movements if any
+                    if (fileMovements.length > 0) {
+                        keystrokeChunk.movements = fileMovements.map(m => ({
+                            ts: m.timestamp,
+                            from: { line: m.fromLine + 1, char: m.fromChar + 1 },
+                            to: { line: m.toLine + 1, char: m.toChar + 1 }
+                        }));
+                    }
+                    
+                    if (existingEntry) {
+                        // Add chunk to existing entry
+                        existingEntry.chunks.push(keystrokeChunk);
+                        existingEntry.chunkCount = existingEntry.chunks.length;
+                        existingEntry.totalChars += keystrokeChunk.charCount;
+                        existingEntry.lastUpdate = now.toISOString();
+                    } else {
+                        // Create new entry
+                        const newEntry = {
+                            startTime: now.toISOString(),
+                            lastUpdate: now.toISOString(),
+                            file: path.basename(filePath),
+                            fullPath: filePath,
+                            module: levelConfig.module || null,
+                            challenge: levelConfig.challenge || null,
+                            module_name: levelConfig.module_name || null,
+                            challenge_name: levelConfig.challenge_name || null,
+                            hw: levelConfig.hw || null,
+                            hwid: levelConfig.hwid || null,
+                            labid: levelConfig.labid || null,
+                            languageId: fileKeystrokes[0].languageId || 'unknown',
+                            chunks: [keystrokeChunk],
+                            chunkCount: 1,
+                            totalChars: keystrokeChunk.charCount
+                        };
+                        entries.push(newEntry);
+                    }
+                    
+                    // Write back as proper JSON array
+                    await fs.writeFile(fullPath, JSON.stringify(entries, null, 2));
+                    
+                    log(`Keystroke: ${keystrokeChunk.charCount} chars, avg ${timingStats ? timingStats.avgMs + 'ms' : 'N/A'} between keys`);
+                }
                 
             } catch (error) {
                 log(`Error flushing keystrokes for ${filePath}: ${error}`);
@@ -1618,6 +1723,7 @@ function activate(context) {
         }
         
         keystrokes = [];
+        cursorMovements = [];
     }
     
     /**
@@ -1645,14 +1751,14 @@ function activate(context) {
             clearTimeout(keystrokeFlushTimer);
         }
         
-        // Flush after 3 seconds of inactivity or when buffer reaches 50 characters
+        // Flush after 5 seconds of inactivity or when buffer reaches 100 characters
         const totalChars = keystrokes.reduce((sum, k) => sum + k.text.length, 0);
-        if (totalChars >= 50) {
+        if (totalChars >= 100) {
             flushKeystrokes();
         } else {
             keystrokeFlushTimer = setTimeout(() => {
                 flushKeystrokes();
-            }, 3000);
+            }, 5000);
         }
     }
     
@@ -1683,6 +1789,51 @@ function activate(context) {
     
     // Note: Backspace/delete tracking is handled in onDidChangeTextDocument below
     // We don't override deleteLeft/deleteRight commands because they don't have default: versions
+    
+    // Track cursor movements (for detecting navigation patterns)
+    let lastSelection = null;
+    let disposableSelectionChange = vscode.window.onDidChangeTextEditorSelection((event) => {
+        if (isDeactivating) return;
+        
+        const editor = event.textEditor;
+        if (!editor) return;
+        
+        const newSelection = event.selections[0];
+        if (!newSelection) return;
+        
+        // Only track if it's a cursor movement (not a selection change from typing)
+        // and only if the document didn't change
+        if (lastSelection && 
+            lastSelection.filePath === editor.document.uri.fsPath &&
+            newSelection.isEmpty) {
+            
+            const fromLine = lastSelection.active.line;
+            const fromChar = lastSelection.active.character;
+            const toLine = newSelection.active.line;
+            const toChar = newSelection.active.character;
+            
+            // Only record if position actually changed
+            if (fromLine !== toLine || fromChar !== toChar) {
+                cursorMovements.push({
+                    timestamp: new Date().toISOString(),
+                    filePath: editor.document.uri.fsPath,
+                    fromLine: fromLine,
+                    fromChar: fromChar,
+                    toLine: toLine,
+                    toChar: toChar
+                });
+            }
+        }
+        
+        // Update last selection
+        lastSelection = {
+            filePath: editor.document.uri.fsPath,
+            active: newSelection.active,
+            isEmpty: newSelection.isEmpty
+        };
+    });
+    
+    context.subscriptions.push(disposableSelectionChange);
 
     let disposableTextChange = vscode.workspace.onDidChangeTextDocument(async (event) => {
         if (lockChangeCheck){
