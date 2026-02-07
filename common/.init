@@ -167,7 +167,8 @@ echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG
 # 109275 madu
 # 68429 vmamshi
 # 44674 gio
-admin_ids=(95033 97169 42906 70537 44199 67665 57598 57891 94686 68880 129911 78896 64397 97168 109275 68429 44674)
+# 157464 omy1 (test user)
+admin_ids=(95033 97169 42906 70537 44199 67665 57598 57891 94686 68880 129911 78896 64397 97168 109275 68429 44674 157464)
 # write admin ids to /.helperids, make it only readable by root
 tmpfile=$(mktemp /tmp/helperids.XXXXXX) || tmpfile="/tmp/helperids.$$"
 trap 'rm -f "$tmpfile"' EXIT
