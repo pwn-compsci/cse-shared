@@ -161,7 +161,7 @@ extract_pwn_id_from_flag() {
     local extracted_id=""
     
     if [ ! -f "$flag_file" ]; then
-        echo "[i] Flag file not found at $flag_file" | tee -a $STARTUP_LOG
+        echo "[i] Flag file not found at $flag_file" >> $STARTUP_LOG
         return 1
     fi
     
@@ -169,7 +169,7 @@ extract_pwn_id_from_flag() {
     local flag_content=$(cat "$flag_file" 2>/dev/null | tr -d '[:space:]')
     
     if [ -z "$flag_content" ]; then
-        echo "[i] Flag file is empty" | tee -a $STARTUP_LOG
+        echo "[i] Flag file is empty" >> $STARTUP_LOG
         return 1
     fi
     
@@ -182,7 +182,7 @@ extract_pwn_id_from_flag() {
     fi
     
     if [ -z "$serialized_part" ]; then
-        echo "[i] Could not extract serialized part from flag" | tee -a $STARTUP_LOG
+        echo "[i] Could not extract serialized part from flag" >> $STARTUP_LOG
         return 1
     fi
     
@@ -193,7 +193,7 @@ extract_pwn_id_from_flag() {
     local data_part=$(echo "$unreversed" | cut -d'.' -f1)
     
     if [ -z "$data_part" ]; then
-        echo "[i] Could not extract data part from flag" | tee -a $STARTUP_LOG
+        echo "[i] Could not extract data part from flag" >> $STARTUP_LOG
         return 1
     fi
     
@@ -207,7 +207,7 @@ extract_pwn_id_from_flag() {
     local decoded=$(echo "$data_part" | tr '_-' '/+' | base64 -d 2>/dev/null)
     
     if [ -z "$decoded" ]; then
-        echo "[i] Could not decode base64 data from flag" | tee -a $STARTUP_LOG
+        echo "[i] Could not decode base64 data from flag" >> $STARTUP_LOG
         return 1
     fi
     
@@ -216,11 +216,11 @@ extract_pwn_id_from_flag() {
     extracted_id=$(echo "$decoded" | grep -oP '^\s*\[\s*\K\d+' | head -n1)
     
     if [ -n "$extracted_id" ]; then
-        echo "[i] Extracted pwn_college_id from flag: $extracted_id" | tee -a $STARTUP_LOG
+        echo "[i] Extracted pwn_college_id from flag: $extracted_id" >> $STARTUP_LOG
         echo "$extracted_id"
         return 0
     else
-        echo "[i] Could not parse account_id from decoded flag data: $decoded" | tee -a $STARTUP_LOG
+        echo "[i] Could not parse account_id from decoded flag data: $decoded" >> $STARTUP_LOG
         return 1
     fi
 }
