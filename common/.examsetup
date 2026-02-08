@@ -379,11 +379,6 @@ else
     echo "[e] session_monitor.py not found, skipping" | tee -a $STARTUP_LOG
 fi
 
-# Ensure level.json is readable before running exam attempts check
-if [ -f /challenge/.config/level.json ]; then
-    chmod 644 /challenge/.config/level.json 2>/dev/null || true
-fi
-
 if [ -f /challenge/bin/.exam_attempts_check ]; then 
     echo "[e] Found .exam_attempts_check, setting permissions" | tee -a $STARTUP_LOG
     chmod 700 /challenge/bin/.exam_attempts_check
