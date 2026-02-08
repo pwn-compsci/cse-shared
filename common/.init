@@ -154,6 +154,77 @@ ensure_workspace_trust_disabled() {
     fi
 }
 
+# Function to extract pwn_college_id from flag file
+# This mimics the Python function extract_account_id_from_flag in wsgi.py
+extract_pwn_id_from_flag() {
+    local flag_file="${1:-/flag}"
+    local extracted_id=""
+    
+    if [ ! -f "$flag_file" ]; then
+        echo "[i] Flag file not found at $flag_file" | tee -a $STARTUP_LOG
+        return 1
+    fi
+    
+    # Read the flag file content
+    local flag_content=$(cat "$flag_file" 2>/dev/null | tr -d '[:space:]')
+    
+    if [ -z "$flag_content" ]; then
+        echo "[i] Flag file is empty" | tee -a $STARTUP_LOG
+        return 1
+    fi
+    
+    # Extract the serialized part between braces if it's a full flag
+    local serialized_part=""
+    if [[ "$flag_content" == *"pwn.college{"* ]]; then
+        serialized_part=$(echo "$flag_content" | sed -n 's/.*pwn\.college{\([^}]*\)}.*/\1/p')
+    else
+        serialized_part="$flag_content"
+    fi
+    
+    if [ -z "$serialized_part" ]; then
+        echo "[i] Could not extract serialized part from flag" | tee -a $STARTUP_LOG
+        return 1
+    fi
+    
+    # Reverse the serialized part (pwn.college reverses it with [::-1])
+    local unreversed=$(echo "$serialized_part" | rev)
+    
+    # Split at the first dot to separate data from signature
+    local data_part=$(echo "$unreversed" | cut -d'.' -f1)
+    
+    if [ -z "$data_part" ]; then
+        echo "[i] Could not extract data part from flag" | tee -a $STARTUP_LOG
+        return 1
+    fi
+    
+    # Add base64 padding if needed
+    local padding=$((4 - ${#data_part} % 4))
+    if [ "$padding" -ne 4 ]; then
+        data_part="${data_part}$(printf '=%.0s' $(seq 1 $padding))"
+    fi
+    
+    # Decode the base64 data part (urlsafe variant: replace - with + and _ with /)
+    local decoded=$(echo "$data_part" | tr '_-' '/+' | base64 -d 2>/dev/null)
+    
+    if [ -z "$decoded" ]; then
+        echo "[i] Could not decode base64 data from flag" | tee -a $STARTUP_LOG
+        return 1
+    fi
+    
+    # Parse the JSON array [account_id, challenge_id] and extract the first element
+    # Using grep to extract the first number from the JSON array
+    extracted_id=$(echo "$decoded" | grep -oP '^\s*\[\s*\K\d+' | head -n1)
+    
+    if [ -n "$extracted_id" ]; then
+        echo "[i] Extracted pwn_college_id from flag: $extracted_id" | tee -a $STARTUP_LOG
+        echo "$extracted_id"
+        return 0
+    else
+        echo "[i] Could not parse account_id from decoded flag data: $decoded" | tee -a $STARTUP_LOG
+        return 1
+    fi
+}
+
 
 echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
@@ -194,7 +265,7 @@ if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an adm
         if [[ "$active_pwn_college_id" == "$id" ]]; then
             admin_access=true
             echo "$active_pwn_college_id you are now a digital god" > /.admin_access
-            echo "active_pwn_college_id='$pwn_college_id'" >> /.user_info
+            echo "active_pwn_college_id='$active_pwn_college_id'" >> /.user_info
             echo "admin access granted" | tee -a $STARTUP_LOG
             break
         fi    
@@ -205,39 +276,25 @@ if [ ! -f /.admin_access ]; then
     echo "denied" > /.admin_access
 fi 
 
-echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
-
 date --iso-8601=seconds > /tmp/.start
 
 if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
-    echo "No argument supplied" | tee -a $STARTUP_LOG    
+    echo "No argument supplied for special doctor, exiting for debugging session" | tee -a $STARTUP_LOG    
     exit 0
 fi
 
-# Add pwn_college_id to level.json if it exists and has a value
-if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
-    if command -v jq >/dev/null 2>&1; then
-        tmpfile=$(mktemp)
-        if jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" 2>/dev/null; then
-            mv "$tmpfile" /challenge/.config/level.json
-        else
-            echo "[!] Failed to add pwn_college_id to level.json" | tee -a $STARTUP_LOG
-            rm -f "$tmpfile"
-        fi
-        echo "[i] Added pwn_college_id to level.json" | tee -a $STARTUP_LOG
-    else
-        echo "[!] jq not available, skipping pwn_college_id addition to level.json" | tee -a $STARTUP_LOG
-    fi
-fi
+echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
+
+##### Create /opt/.ring for api access
+printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
+chmod 400 /opt/.ring
+
+
 
 if [ -f /usr/bin/exec-suid ]; then 
     chmod 6755 /usr/bin/exec-suid || true
 fi 
-
-##### Create /opt/.ring
-printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
-chmod 400 /opt/.ring
 
 echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
 mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
@@ -421,16 +478,34 @@ fi
 
 echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 
-# user information configuration
+# user information configuration - determine pwn_college_id
 pwn_college_id=$active_pwn_college_id
+
+# If /home/me exists, try to get ID from overlays mount pattern
+if [ -d /home/me ]; then 
+    pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
+    echo "[i] Extracted pwn_college_id from overlays mount: $pwn_college_id" | tee -a $STARTUP_LOG
+fi
+
+# If we still don't have pwn_college_id and /home/me doesn't exist, try to extract it from the flag
+# This handles cases where mount patterns change or are unavailable
+if [ -z "$pwn_college_id" ] && [ ! -d /home/me ]; then
+    echo "[i] pwn_college_id is empty and /home/me doesn't exist, attempting to extract from flag" | tee -a $STARTUP_LOG
+    pwn_college_id=$(extract_pwn_id_from_flag)
+    if [ -n "$pwn_college_id" ]; then
+        echo "[i] Successfully extracted pwn_college_id from flag: $pwn_college_id" | tee -a $STARTUP_LOG
+    else
+        echo "[!] Could not determine pwn_college_id from any source" | tee -a $STARTUP_LOG
+    fi
+fi
+
+# Now process ed.dat with the determined pwn_college_id
 if [ -f /challenge/ed.dat ]; then
     mv  /challenge/ed.dat /challenge/.config/ed.dat
 fi 
 rm -f /challenge/ed.dat
+
 if [ -f /challenge/.config/ed.dat ]; then
-    if [ -d /home/me ]; then 
-        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
-    fi 
     echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log 
     grep -Poh "^${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
     if [ ! -s /challenge/.config/info.dat ]; then
@@ -445,11 +520,23 @@ if [ -f /challenge/.config/ed.dat ]; then
     if [ ! -d /home/me ]; then 
         rm -f /challenge/.config/ed.dat
     fi
-else
-    if [ -d /home/me ]; then 
-        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
-    fi 
-fi 
+fi
+
+# Add pwn_college_id to level.json if it exists and has a value
+if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
+    if command -v jq >/dev/null 2>&1; then
+        tmpfile=$(mktemp)
+        if jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" 2>/dev/null; then
+            mv "$tmpfile" /challenge/.config/level.json
+        else
+            echo "[!] Failed to add pwn_college_id to level.json" | tee -a $STARTUP_LOG
+            rm -f "$tmpfile"
+        fi
+        echo "[i] Added pwn_college_id to level.json" | tee -a $STARTUP_LOG
+    else
+        echo "[!] jq not available, skipping pwn_college_id addition to level.json" | tee -a $STARTUP_LOG
+    fi
+fi
 
 if [ ! -f /home/hacker/.cache ]; then 
     mkdir -p /home/hacker/.cache

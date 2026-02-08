@@ -193,9 +193,7 @@ Problem: ${module}/${challenge}
 Attempts: ${attempts}/${final_threshold}
 
 If you believe this is an error or have extenuating
-circumstances, please contact course staff immediately.
-
-You may continue working on other exam problems.
+circumstances, please contact courthe professor.
 ===============================================
 EOF
     else
@@ -213,11 +211,11 @@ Problem: ${module}/${challenge}
 Current Attempts: ${attempts}
 
 What to do:
-1. Visit office hours or request help during lab
+1. Visit office hours or request help during test session
 2. A staff member will review your approach
 3. After consultation, staff will clear you to continue
 
-You may work on other exam problems while waiting.
+If not locked, you may work on other exam problems while waiting.
 ===============================================
 EOF
     fi
@@ -393,8 +391,23 @@ main() {
     log "DEBUG: API URL: $API_URL"
     log "DEBUG: Retry interval: ${RETRY_INTERVAL}s"
     
-    # Get PWN College ID (from environment or user)
-    PWN_COLLEGE_ID="${USER:-${PWN_USER_ID}}"
+    # Get PWN College ID from /.user_info file
+    PWN_COLLEGE_ID=""
+    if [ -f "/.user_info" ]; then
+        # Source the file and extract pwn_college_id
+        source /.user_info 2>/dev/null || true
+        log "DEBUG: Read pwn_college_id from /.user_info: $pwn_college_id"
+    fi
+    
+    # Fallback to environment variables if /.user_info doesn't have it
+    if [ -z "$pwn_college_id" ]; then
+        PWN_COLLEGE_ID="${USER:-${PWN_USER_ID}}"
+        log "DEBUG: Using fallback from environment: $PWN_COLLEGE_ID"
+    else
+        PWN_COLLEGE_ID="$pwn_college_id"
+        log "DEBUG: Using pwn_college_id from /.user_info: $PWN_COLLEGE_ID"
+    fi
+    
     if [ -z "$PWN_COLLEGE_ID" ]; then
         log "ERROR: Could not determine PWN College ID"
         exit 1
