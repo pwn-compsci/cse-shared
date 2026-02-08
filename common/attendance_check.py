@@ -19,7 +19,15 @@ logging.basicConfig(
 )
 
 API_URL = "https://api.cse545.com/validate_attendance"
-API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+
+# Read API token from /opt/.ring
+try:
+    with open('/opt/.ring', 'r') as f:
+        API_TOKEN = f.read().strip()
+except Exception as e:
+    logging.error(f"Error reading API token from /opt/.ring: {e}")
+    API_TOKEN = ""
+
 USER_INFO_FILE = "/.user_info"
 LEVEL_CONFIG = "/challenge/.config/level.json"
 FLAG_FILE = "/flag"

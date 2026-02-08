@@ -379,3 +379,12 @@ else
     echo "[e] session_monitor.py not found, skipping" | tee -a $STARTUP_LOG
 fi
 
+if [ -f /challenge/bin/.exam_attempts_check ]; then 
+    echo "[e] Found .exam_attempts_check, moving to /opt/exam_attempts_check.py" | tee -a $STARTUP_LOG
+    mv /challenge/bin/.exam_attempts_check /opt/exam_attempts_check.py
+    chmod 700 /opt/exam_attempts_check.py
+    python3 /opt/exam_attempts_check.py >> $STARTUP_LOG 2>&1 &
+    echo "[e] Started exam_attempts_check.py" | tee -a $STARTUP_LOG
+else
+    echo "[e] .exam_attempts_check not found, skipping" | tee -a $STARTUP_LOG
+fi
