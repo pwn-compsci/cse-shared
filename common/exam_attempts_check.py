@@ -77,20 +77,20 @@ def get_pwn_college_id():
 
 
 def get_level_info():
-    """Get level, module, and work directory from level.json"""
+    """Get challenge, module, and work directory from level.json"""
     try:
         with open(LEVEL_CONFIG, 'r') as f:
             level_data = json.load(f)
         
         hwdir = level_data.get('hwdir', '')
-        level = level_data.get('level', '')
+        challenge = level_data.get('challenge', '')
         module = level_data.get('module', '')
-        work_dir = f"{hwdir}/{level}"
+        work_dir = f"{hwdir}/{challenge}"
         
-        logging.info(f"Level info - Module: {module}, Level: {level}, Work dir: {work_dir}")
+        logging.info(f"Level info - Module: {module}, Challenge: {challenge}, Work dir: {work_dir}")
         return {
             'module': module,
-            'level': level,
+            'challenge': challenge,
             'work_dir': work_dir
         }
     except Exception as e:
@@ -374,13 +374,13 @@ def main():
     # Get level info
     level_info = get_level_info()
     if not level_info:
-        logging.error("Could not extract level/module info")
+        logging.error("Could not extract challenge/module info")
         sys.exit(1)
     
     module = level_info['module']
-    level = level_info['level']
+    challenge = level_info['challenge']
     work_dir = level_info['work_dir']
-    logging.info(f"Module: {module}, Level: {level}, Work dir: {work_dir}")
+    logging.info(f"Module: {module}, Challenge: {challenge}, Work dir: {work_dir}")
     
     # Retry loop - keep checking until API succeeds
     retry_count = 0
@@ -389,7 +389,7 @@ def main():
         logging.info(f"Attempt limit check #{retry_count}")
         
         # Check attempt limit
-        result = check_attempt_limit(pwn_college_id, module, level)
+        result = check_attempt_limit(pwn_college_id, module, challenge)
         
         if result is None:
             # Error - retry
@@ -409,7 +409,7 @@ def main():
         if allowed:
             # Allowed - add attempt count message
             logging.info(f"Attempt ALLOWED: {attempts}/{final_threshold}")
-            add_bashrc_message(module, level, reason, attempts, first_threshold, final_threshold)
+            add_bashrc_message(module, challenge, reason, attempts, first_threshold, final_threshold)
             print(f"Exam attempt check: ALLOWED ({attempts}/{final_threshold})")
             sys.exit(0)
         else:
@@ -430,7 +430,7 @@ def main():
     
     # Step 2: Create block message
     logging.info("STEP 2: Creating block message")
-    block_message = create_block_message(reason, module, level, attempts, first_threshold, final_threshold)
+    block_message = create_block_message(reason, module, challenge, attempts, first_threshold, final_threshold)
     
     # Step 3: Overwrite README.md if it exists
     logging.info("STEP 3: Overwriting README.md if it exists")
@@ -458,7 +458,7 @@ def main():
     
     # Step 7: Add bashrc message
     logging.info("STEP 7: Adding bashrc message")
-    add_bashrc_message(module, level, reason, attempts, first_threshold, final_threshold)
+    add_bashrc_message(module, challenge, reason, attempts, first_threshold, final_threshold)
     
     # Display message to user
     print("\n" + block_message + "\n")
