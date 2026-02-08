@@ -337,7 +337,7 @@ def remove_template_files():
 
 
 def add_message_to_readme(work_dir, block_message):
-    """Add block message to README.md if it exists"""
+    """Overwrite README.md with block message if it exists (no backup)"""
     readme_file = f"{work_dir}/README.md"
     
     if not os.path.exists(readme_file):
@@ -345,24 +345,15 @@ def add_message_to_readme(work_dir, block_message):
         return
     
     try:
-        # Backup original README
-        shutil.copy2(readme_file, f"{readme_file}.backup")
-        
-        # Prepend the block message to README
-        with open(readme_file, 'r') as f:
-            original_content = f.read()
-        
+        # Overwrite README with just the block message (destroying original)
         with open(readme_file, 'w') as f:
-            f.write("```\n")
             f.write(block_message)
-            f.write("\n```\n\n")
-            f.write("---\n\n")
-            f.write(original_content)
+            f.write("\n")
         
-        logging.info(f"Added block message to {readme_file}")
+        logging.info(f"Overwrote README.md with block message at {readme_file} (original destroyed)")
         
     except Exception as e:
-        logging.error(f"Error updating README.md: {e}")
+        logging.error(f"Error overwriting README.md: {e}")
 
 
 def main():
@@ -441,8 +432,8 @@ def main():
     logging.info("STEP 2: Creating block message")
     block_message = create_block_message(reason, module, level, attempts, first_threshold, final_threshold)
     
-    # Step 3: Add message to README.md if it exists
-    logging.info("STEP 3: Adding message to README.md if it exists")
+    # Step 3: Overwrite README.md if it exists
+    logging.info("STEP 3: Overwriting README.md if it exists")
     add_message_to_readme(work_dir, block_message)
     
     # Step 4: Replace main source file
