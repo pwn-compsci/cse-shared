@@ -235,7 +235,9 @@ if [ -f /usr/bin/exec-suid ]; then
     chmod 6755 /usr/bin/exec-suid || true
 fi 
 
-
+##### Create /opt/.ring
+printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
+chmod 400 /opt/.ring
 
 echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
 mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
