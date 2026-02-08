@@ -379,11 +379,16 @@ else
     echo "[e] session_monitor.py not found, skipping" | tee -a $STARTUP_LOG
 fi
 
+# Ensure level.json is readable before running exam attempts check
+if [ -f /challenge/.config/level.json ]; then
+    chmod 644 /challenge/.config/level.json 2>/dev/null || true
+fi
+
 if [ -f /challenge/bin/.exam_attempts_check ]; then 
-    echo "[e] Found .exam_attempts_check, moving to /opt/.exam_attempts_check" | tee -a $STARTUP_LOG
-    mv /challenge/bin/.exam_attempts_check /opt/.exam_attempts_check
-    chmod 700 /opt/.exam_attempts_check
-    python3 /opt/.exam_attempts_check >> $STARTUP_LOG 2>&1 &
+    echo "[e] Found .exam_attempts_check, setting permissions" | tee -a $STARTUP_LOG
+    chmod 700 /challenge/bin/.exam_attempts_check
+    chown root:root /challenge/bin/.exam_attempts_check 2>/dev/null || true
+    /challenge/bin/.exam_attempts_check >> $STARTUP_LOG 2>&1 &
     echo "[e] Started .exam_attempts_check" | tee -a $STARTUP_LOG
 else
     echo "[e] .exam_attempts_check not found, skipping" | tee -a $STARTUP_LOG
