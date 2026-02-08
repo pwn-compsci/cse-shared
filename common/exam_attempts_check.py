@@ -336,6 +336,35 @@ def remove_template_files():
         logging.info(f"Template directory does not exist: {template_dir}")
 
 
+def add_message_to_readme(work_dir, block_message):
+    """Add block message to README.md if it exists"""
+    readme_file = f"{work_dir}/README.md"
+    
+    if not os.path.exists(readme_file):
+        logging.info(f"README.md does not exist at {readme_file}")
+        return
+    
+    try:
+        # Backup original README
+        shutil.copy2(readme_file, f"{readme_file}.backup")
+        
+        # Prepend the block message to README
+        with open(readme_file, 'r') as f:
+            original_content = f.read()
+        
+        with open(readme_file, 'w') as f:
+            f.write("```\n")
+            f.write(block_message)
+            f.write("\n```\n\n")
+            f.write("---\n\n")
+            f.write(original_content)
+        
+        logging.info(f"Added block message to {readme_file}")
+        
+    except Exception as e:
+        logging.error(f"Error updating README.md: {e}")
+
+
 def main():
     logging.info("=" * 50)
     logging.info("Exam Attempt Limit Checker - Starting")
@@ -412,8 +441,12 @@ def main():
     logging.info("STEP 2: Creating block message")
     block_message = create_block_message(reason, module, level, attempts, first_threshold, final_threshold)
     
-    # Step 3: Replace main source file
-    logging.info("STEP 3: Replacing main source file")
+    # Step 3: Add message to README.md if it exists
+    logging.info("STEP 3: Adding message to README.md if it exists")
+    add_message_to_readme(work_dir, block_message)
+    
+    # Step 4: Replace main source file
+    logging.info("STEP 4: Replacing main source file")
     main_file = None
     if replace_main_file(work_dir, block_message):
         if os.path.exists(f"{work_dir}/main.c"):
@@ -421,19 +454,19 @@ def main():
         elif os.path.exists(f"{work_dir}/main.cpp"):
             main_file = f"{work_dir}/main.cpp"
     
-    # Step 4: Delete other source files
+    # Step 5: Delete other source files
     if main_file:
-        logging.info("STEP 4: Deleting other source files")
+        logging.info("STEP 5: Deleting other source files")
         delete_other_source_files(work_dir, main_file)
     else:
-        logging.info("STEP 4: Skipped (no main file)")
+        logging.info("STEP 5: Skipped (no main file)")
     
-    # Step 5: Remove template files
-    logging.info("STEP 5: Removing template files")
+    # Step 6: Remove template files
+    logging.info("STEP 6: Removing template files")
     remove_template_files()
     
-    # Step 6: Add bashrc message
-    logging.info("STEP 6: Adding bashrc message")
+    # Step 7: Add bashrc message
+    logging.info("STEP 7: Adding bashrc message")
     add_bashrc_message(module, level, reason, attempts, first_threshold, final_threshold)
     
     # Display message to user

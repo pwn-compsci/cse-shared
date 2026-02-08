@@ -1,214 +1,201 @@
-#!/bin/bash
-#
-# Exam Attempt Limit Checker
-#
-# This script checks if a student has exceeded their exam attempt limits.
-# If blocked, it:
-# 1. Replaces the flag with ATTEMPT_LIMIT_REACHED_{id}
-# 2. Replaces main source file with block message
-# 3. Deletes other source files
-# 4. Adds a bashrc message
-#
-# Usage: Called from .examsetup or challenge setup scripts
+#!/usr/bin/env python3
 
-# set -e
-echo "Starting exam attempt check at $(date)" >> /var/log/attempt_check.log
+"""
+Exam Attempt Limit Checker
+
+This script checks if a student has exceeded their exam attempt limits.
+If blocked, it:
+1. Replaces the flag with ATTEMPT_LIMIT_REACHED_{id}
+2. Replaces main source file with block message
+3. Deletes other source files
+4. Adds a bashrc message
+
+Usage: Called from .examsetup or challenge setup scripts
+"""
+
+import json
+import re
+import logging
+import os
+import sys
+import time
+import shutil
+from pathlib import Path
+import requests
+
+# Setup logging
+logging.basicConfig(
+    filename='/var/log/attempt_check.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Configuration
-API_URL="${API_URL:-https://api.cse545.com}"
-API_TOKEN=$(cat /opt/.ring | tr -d '[:space:]')
-LEVEL_CONFIG="/challenge/.config/level.json"
-LOG_FILE="/var/log/attempt_check.log"
-RETRY_INTERVAL=30
+API_URL = os.environ.get('API_URL', 'https://api.cse545.com')
+RETRY_INTERVAL = 30
+
+# Read API token from /opt/.ring
+try:
+    with open('/opt/.ring', 'r') as f:
+        API_TOKEN = f.read().strip()
+except Exception as e:
+    logging.error(f"Error reading API token from /opt/.ring: {e}")
+    API_TOKEN = ""
+
+USER_INFO_FILE = "/.user_info"
+LEVEL_CONFIG = "/challenge/.config/level.json"
+FLAG_FILE = "/flag"
+SAVED_FLAG_FILE = "/.saved_flag"
 
 # Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+RED = '\033[0;31m'
+YELLOW = '\033[1;33m'
+NC = '\033[0m'  # No Color
 
-# Function to log messages
-log() {
-    local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
-    echo "$timestamp $*" >> "$LOG_FILE" 2>&1
-    echo "$timestamp $*" >&2
-}
 
-# Function to get level working directory
-get_level_work_dir() {
-    log "DEBUG: Reading level config from $LEVEL_CONFIG"
-    if [ ! -f "$LEVEL_CONFIG" ]; then
-        log "ERROR: Level config not found at $LEVEL_CONFIG"
-        return 1
-    fi
-    
-    local work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' "$LEVEL_CONFIG")
-    log "DEBUG: Extracted work_dir: $work_dir"
-    echo "$work_dir"
-}
+def get_pwn_college_id():
+    """Extract pwn_college_id from /.user_info"""
+    try:
+        with open(USER_INFO_FILE, 'r') as f:
+            content = f.read()
+        match = re.search(r"pwn_college_id='(\d+)'", content)
+        if match:
+            return match.group(1)
+        logging.warning("Could not find pwn_college_id in /.user_info")
+        
+        # Fallback to environment variables
+        pwn_id = os.environ.get('USER') or os.environ.get('PWN_USER_ID')
+        if pwn_id:
+            logging.info(f"Using fallback pwn_college_id from environment: {pwn_id}")
+            return pwn_id
+        
+        logging.error("Could not determine PWN College ID")
+        return None
+    except Exception as e:
+        logging.error(f"Error reading {USER_INFO_FILE}: {e}")
+        return None
 
-# Function to get level and module info
-get_level_info() {
-    log "DEBUG: Extracting level and module info from $LEVEL_CONFIG"
-    if [ ! -f "$LEVEL_CONFIG" ]; then
-        log "ERROR: Level config not found at $LEVEL_CONFIG"
-        return 1
-    fi
-    
-    LEVEL=$(jq -r '.level' "$LEVEL_CONFIG")
-    MODULE=$(jq -r '.module' "$LEVEL_CONFIG")
-    
-    log "DEBUG: Raw extraction - LEVEL: $LEVEL, MODULE: $MODULE"
-    
-    if [ -z "$LEVEL" ] || [ "$LEVEL" == "null" ]; then
-        log "ERROR: Could not extract level from config"
-        return 1
-    fi
-    
-    if [ -z "$MODULE" ] || [ "$MODULE" == "null" ]; then
-        log "ERROR: Could not extract module from config"
-        return 1
-    fi
-    
-    log "DEBUG: Successfully extracted - MODULE: $MODULE, LEVEL: $LEVEL"
-    echo "$MODULE|$LEVEL"
-}
 
-# Function to check attempt limit via API
-check_attempt_limit() {
-    local pwn_college_id="$1"
-    local module="$2"
-    local challenge="$3"
-    
-    log "INFO: Checking attempt limit for user: $pwn_college_id, module: $module, challenge: $challenge"
-    log "DEBUG: API_URL: ${API_URL}/exam-attempts/check"
-    log "DEBUG: Request payload: {pwn_college_id: $pwn_college_id, module: $module, challenge: $challenge}"
-    
-    # Make API call
-    local response=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}/exam-attempts/check" \
-        -H 'Content-Type: application/json' \
-        -H "X-API-Token: ${API_TOKEN}" \
-        -d "{
-            \"pwn_college_id\": \"${pwn_college_id}\",
-            \"module\": \"${module}\",
-            \"challenge\": \"${challenge}\"
-        }" 2>&1)
-    
-    local http_code=$(echo "$response" | tail -n1)
-    local response_body=$(echo "$response" | sed '$d')
-    
-    log "DEBUG: HTTP Status Code: $http_code"
-    log "DEBUG: Response body: $response_body"
-    
-    # Check if API call failed
-    if [ -z "$response_body" ] || [ "$http_code" != "200" ]; then
-        log "ERROR: API call failed - HTTP $http_code"
-        log "ERROR: Could not check attempt limits (API unavailable or error)"
-        return 2  # Return error code for retry
-    fi
-    
-    # Parse response
-    log "DEBUG: Parsing JSON response"
-    local allowed=$(echo "$response_body" | jq -r '.allowed' 2>/dev/null)
-    local reason=$(echo "$response_body" | jq -r '.reason' 2>/dev/null)
-    local attempts=$(echo "$response_body" | jq -r '.details.attempts // 0' 2>/dev/null)
-    local first_threshold=$(echo "$response_body" | jq -r '.details.first_threshold // 3' 2>/dev/null)
-    local final_threshold=$(echo "$response_body" | jq -r '.details.final_threshold // 5' 2>/dev/null)
-    
-    log "DEBUG: Parsed values - allowed: $allowed, reason: $reason, attempts: $attempts, first_threshold: $first_threshold, final_threshold: $final_threshold"
-    
-    # Export for use in main script
-    export ATTEMPT_ALLOWED="$allowed"
-    export ATTEMPT_REASON="$reason"
-    export ATTEMPT_COUNT="$attempts"
-    export ATTEMPT_FIRST_THRESHOLD="$first_threshold"
-    export ATTEMPT_FINAL_THRESHOLD="$final_threshold"
-    
-    log "INFO: API Response: allowed=$allowed, reason=$reason, attempts=$attempts/$final_threshold"
-    
-    if [ "$allowed" != "true" ]; then
-        log "INFO: Attempt BLOCKED - Reason: $reason"
-        return 1  # Blocked
-    fi
-    
-    log "INFO: Attempt ALLOWED"
-    return 0  # Allowed
-}
+def get_level_info():
+    """Get level, module, and work directory from level.json"""
+    try:
+        with open(LEVEL_CONFIG, 'r') as f:
+            level_data = json.load(f)
+        
+        hwdir = level_data.get('hwdir', '')
+        level = level_data.get('level', '')
+        module = level_data.get('module', '')
+        work_dir = f"{hwdir}/{level}"
+        
+        logging.info(f"Level info - Module: {module}, Level: {level}, Work dir: {work_dir}")
+        return {
+            'module': module,
+            'level': level,
+            'work_dir': work_dir
+        }
+    except Exception as e:
+        logging.error(f"Error reading {LEVEL_CONFIG}: {e}")
+        return None
 
-# Function to save and replace flag (similar to attendance_check.py)
-save_and_replace_flag() {
-    local work_dir="$1"
-    local flag_file="${work_dir}/flag"
-    
-    log "DEBUG: Checking for flag file at $flag_file"
-    if [ ! -f "$flag_file" ]; then
-        log "WARNING: No flag file found at $flag_file"
-        return 0
-    fi
-    
-    # Read the original flag
-    local original_flag=$(cat "$flag_file")
-    log "DEBUG: Original flag: $original_flag"
-    
-    # Extract the ID portion (everything after the last underscore)
-    # Flag format is typically: pwn.college{...}_uniqueid
-    local flag_id=""
-    if [[ "$original_flag" =~ _([^_]+)$ ]]; then
-        flag_id="${BASH_REMATCH[1]}"
-        log "DEBUG: Extracted flag ID: $flag_id"
-    fi
-    
-    # Create backup
-    cp "$flag_file" "${flag_file}.backup" 2>/dev/null || true
-    log "DEBUG: Created backup at ${flag_file}.backup"
-    
-    # Replace with ATTEMPT_LIMIT_REACHED plus original ID
-    if [ -n "$flag_id" ]; then
-        echo "ATTEMPT_LIMIT_REACHED_${flag_id}" > "$flag_file"
-        log "INFO: Flag replaced with ATTEMPT_LIMIT_REACHED_${flag_id}"
-    else
-        echo "ATTEMPT_LIMIT_REACHED" > "$flag_file"
-        log "INFO: Flag replaced with ATTEMPT_LIMIT_REACHED"
-    fi
-}
 
-# Function to create block message based on threshold type
-create_block_message() {
-    local reason="$1"
-    local module="$2"
-    local challenge="$3"
-    local attempts="$4"
-    local first_threshold="$5"
-    local final_threshold="$6"
+def check_attempt_limit(pwn_college_id, module, challenge):
+    """Make API request to check attempt limits"""
+    try:
+        url = f"{API_URL}/exam-attempts/check"
+        payload = {
+            "pwn_college_id": pwn_college_id,
+            "module": module,
+            "challenge": challenge
+        }
+        headers = {
+            'Content-Type': 'application/json',
+            'X-API-Token': API_TOKEN
+        }
+        
+        logging.info(f"Checking attempt limit for user: {pwn_college_id}, module: {module}, challenge: {challenge}")
+        logging.debug(f"API URL: {url}")
+        logging.debug(f"Request payload: {payload}")
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        logging.debug(f"HTTP Status Code: {response.status_code}")
+        logging.debug(f"Response body: {response.text}")
+        
+        if response.status_code != 200:
+            logging.error(f"API call failed - HTTP {response.status_code}")
+            return None
+        
+        data = response.json()
+        logging.info(f"API Response: {data}")
+        return data
+        
+    except Exception as e:
+        logging.error(f"Error making API request: {e}")
+        return None
+
+
+def save_and_replace_flag(work_dir, pwn_college_id):
+    """Save current flag and replace with attempt limit message"""
+    flag_file = f"{work_dir}/flag"
     
-    if [ "$reason" == "final_threshold" ]; then
-        cat <<EOF
-===============================================
+    logging.debug(f"Checking for flag file at {flag_file}")
+    if not os.path.exists(flag_file):
+        # Try /flag instead
+        flag_file = FLAG_FILE
+        if not os.path.exists(flag_file):
+            logging.warning(f"No flag file found at {flag_file}")
+            return
+    
+    try:
+        # Read the original flag
+        with open(flag_file, 'r') as f:
+            original_flag = f.read().strip()
+        logging.debug(f"Original flag: {original_flag}")
+        
+        # Save original flag
+        with open(SAVED_FLAG_FILE, 'w') as f:
+            f.write(original_flag)
+        os.chmod(SAVED_FLAG_FILE, 0o400)
+        logging.info(f"Saved original flag to {SAVED_FLAG_FILE}")
+        
+        # Replace with attempt limit message
+        new_flag = f"ATTEMPT_LIMIT_REACHED_{pwn_college_id}"
+        with open(flag_file, 'w') as f:
+            f.write(new_flag)
+        logging.info(f"Flag replaced with {new_flag}")
+        
+    except Exception as e:
+        logging.error(f"Error replacing flag: {e}")
+
+
+def create_block_message(reason, module, challenge, attempts, first_threshold, final_threshold):
+    """Create block message based on threshold type"""
+    if reason == "final_threshold":
+        return f"""===============================================
 MAXIMUM ATTEMPTS REACHED
 ===============================================
 
 You have reached the maximum number of attempts
 for this exam problem and cannot attempt it again.
 
-Problem: ${module}/${challenge}
-Attempts: ${attempts}/${final_threshold}
+Problem: {module}/{challenge}
+Attempts: {attempts}/{final_threshold}
 
 If you believe this is an error or have extenuating
-circumstances, please contact courthe professor.
-===============================================
-EOF
-    else
-        cat <<EOF
-===============================================
+circumstances, please contact the professor.
+==============================================="""
+    else:
+        return f"""===============================================
 STAFF CONSULTATION REQUIRED
 ===============================================
 
-You have reached ${first_threshold} attempts on this problem.
+You have reached {first_threshold} attempts on this problem.
 
 Before you can attempt this problem again, you MUST
 meet with a TA or instructor for assistance.
 
-Problem: ${module}/${challenge}
-Current Attempts: ${attempts}
+Problem: {module}/{challenge}
+Current Attempts: {attempts}
 
 What to do:
 1. Visit office hours or request help during test session
@@ -216,313 +203,247 @@ What to do:
 3. After consultation, staff will clear you to continue
 
 If not locked, you may work on other exam problems while waiting.
-===============================================
-EOF
-    fi
-}
+==============================================="""
 
-# Function to replace main source file with block message
-replace_main_file() {
-    local work_dir="$1"
-    local block_message="$2"
-    local main_file=""
+
+def replace_main_file(work_dir, block_message):
+    """Replace main source file with block message"""
+    main_file = None
     
     # Find main.c or main.cpp
-    if [ -f "${work_dir}/main.c" ]; then
-        main_file="${work_dir}/main.c"
-    elif [ -f "${work_dir}/main.cpp" ]; then
-        main_file="${work_dir}/main.cpp"
-    else
-        log "WARNING: No main.c or main.cpp found"
-        return 1
-    fi
+    if os.path.exists(f"{work_dir}/main.c"):
+        main_file = f"{work_dir}/main.c"
+    elif os.path.exists(f"{work_dir}/main.cpp"):
+        main_file = f"{work_dir}/main.cpp"
+    else:
+        logging.warning("No main.c or main.cpp found")
+        return False
     
-    # Backup original
-    cp "$main_file" "${main_file}.backup" 2>/dev/null || true
-    
-    # Replace with block message
-    cat > "$main_file" <<EOF
-/*
-$block_message
-*/
-EOF
-    
-    chmod 444 "$main_file"  # Make read-only
-    log "Replaced source file: $main_file"
-}
+    try:
+        # Backup original
+        shutil.copy2(main_file, f"{main_file}.backup")
+        
+        # Replace with block message
+        with open(main_file, 'w') as f:
+            f.write(f"/*\n{block_message}\n*/\n")
+        
+        # Make read-only
+        os.chmod(main_file, 0o444)
+        logging.info(f"Replaced source file: {main_file}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error replacing main file: {e}")
+        return False
 
-# Function to delete other source files
-delete_other_source_files() {
-    local work_dir="$1"
-    local keep_file="$2"  # main.c or main.cpp to keep
-    
-    log "Deleting other source files in $work_dir (keeping $keep_file)"
-    
-    # Delete all .c, .h, .cpp files except the one we're keeping
-    find "$work_dir" -maxdepth 1 -type f \( -name "*.c" -o -name "*.h" -o -name "*.cpp" \) ! -name "$(basename "$keep_file")" -delete 2>/dev/null || true
-    
-    log "Source files deleted"
-}
 
-# Function to add attempt count message to bashrc (for all students)
-add_attempt_count_message() {
-    local module="$1"
-    local challenge="$2"
-    local attempts="$3"
-    local first_threshold="$4"
-    local final_threshold="$5"
-    
-    local bashrc_file="/etc/bash.bashrc"
-    local marker="# ATTEMPT_COUNT_${module}_${challenge}"
-    
-    # Remove old message if exists
-    if grep -q "$marker" "$bashrc_file" 2>/dev/null; then
-        log "DEBUG: Removing old attempt count message"
-        sed -i "/^$marker$/,+1d" "$bashrc_file" 2>/dev/null || true
-    fi
-    
-    # Create message based on current attempt count
-    local message=""
-    if [ "$attempts" -lt "$first_threshold" ]; then
-        local remaining=$((first_threshold - attempts))
-        message="echo -e '${YELLOW}📝 ${module}/${challenge}: ${attempts}/${final_threshold} attempts used. If unable to solve in ${remaining} more attempt(s), you will be required to speak with course staff.${NC}'"
-    else
-        local remaining=$((final_threshold - attempts))
-        if [ "$remaining" -gt 0 ]; then
-            message="echo -e '${YELLOW}⚠ ${module}/${challenge}: ${remaining} of ${final_threshold} exam attempts remaining - Staff consultation required before next attempt${NC}'"
-        else
-            message="echo -e '${RED}⛔ ${module}/${challenge}: Maximum attempts (${final_threshold}) reached${NC}'"
-        fi
-    fi
-    
-    # Append to bashrc
-    {
-        echo "$marker"
-        echo "$message"
-    } >> "$bashrc_file" 2>/dev/null || {
-        log "WARNING: Could not write to $bashrc_file (no sudo access)"
-        return 1
-    }
-    
-    log "INFO: Added attempt count message to bashrc"
-}
+def delete_other_source_files(work_dir, keep_file):
+    """Delete other source files except the one we're keeping"""
+    try:
+        keep_basename = os.path.basename(keep_file)
+        logging.info(f"Deleting other source files in {work_dir} (keeping {keep_basename})")
+        
+        for ext in ['*.c', '*.h', '*.cpp']:
+            for file in Path(work_dir).glob(ext):
+                if file.name != keep_basename:
+                    file.unlink()
+                    logging.debug(f"Deleted {file}")
+        
+        logging.info("Source files deleted")
+    except Exception as e:
+        logging.error(f"Error deleting source files: {e}")
 
-# Function to add bashrc message (for blocked students)
-add_bashrc_message() {
-    local module="$1"
-    local challenge="$2"
-    local reason="$3"
-    
-    local bashrc_file="/etc/bash.bashrc"
-    local marker="# ATTEMPT_LIMIT_MESSAGE_${module}_${challenge}"
-    
-    # Check if message already exists
-    if grep -q "$marker" "$bashrc_file" 2>/dev/null; then
-        log "Bashrc message already exists"
-        return 0
-    fi
-    
-    # Create message
-    local message=""
-    if [ "$reason" == "final_threshold" ]; then
-        message="echo -e '${RED}⚠ MAXIMUM ATTEMPTS REACHED for ${module}/${challenge}${NC}'"
-    else
-        message="echo -e '${YELLOW}⚠ Staff consultation required for ${module}/${challenge} - visit office hours${NC}'"
-    fi
-    
-    # Append to bashrc
-    {
-        echo ""
-        echo "$marker"
-        echo "$message"
-    } >> "$bashrc_file" 2>/dev/null || {
-        log "WARNING: Could not write to $bashrc_file (no sudo access)"
-        return 1
-    }
-    
-    log "Added bashrc message"
-}
 
-# Function to check if user is an admin
-is_admin() {
-    local admin_file="/.admin_access"
+def add_bashrc_message(module, challenge, reason, attempts, first_threshold, final_threshold):
+    """Add appropriate message to bashrc"""
+    bashrc_file = "/etc/bash.bashrc"
+    marker = f"# ATTEMPT_MESSAGE_{module}_{challenge}"
     
-    if [ ! -f "$admin_file" ]; then
-        return 1  # Not admin (file doesn't exist)
-    fi
-    
-    # Check if file contains "digital god"
-    if grep -q "digital god" "$admin_file" 2>/dev/null; then
-        return 0  # Is admin
-    fi
-    
-    return 1  # Not admin
-}
+    try:
+        # Read existing bashrc
+        try:
+            with open(bashrc_file, 'r') as f:
+                content = f.read()
+        except:
+            content = ""
+        
+        # Remove old message if exists
+        if marker in content:
+            lines = content.split('\n')
+            new_lines = []
+            skip_next = False
+            for line in lines:
+                if marker in line:
+                    skip_next = True
+                    continue
+                if skip_next:
+                    skip_next = False
+                    continue
+                new_lines.append(line)
+            content = '\n'.join(new_lines)
+        
+        # Create new message
+        message = ""
+        if reason == "final_threshold":
+            message = f"echo -e '{RED}⛔ {module}/{challenge}: Maximum attempts ({final_threshold}) reached{NC}'"
+        elif attempts >= first_threshold:
+            remaining = final_threshold - attempts
+            message = f"echo -e '{YELLOW}⚠ {module}/{challenge}: {remaining} of {final_threshold} exam attempts remaining - Staff consultation required before next attempt{NC}'"
+        else:
+            remaining = first_threshold - attempts
+            message = f"echo -e '{YELLOW}📝 {module}/{challenge}: {attempts}/{final_threshold} attempts used. If unable to solve in {remaining} more attempt(s), you will be required to speak with course staff.{NC}'"
+        
+        # Append to bashrc
+        with open(bashrc_file, 'a') as f:
+            f.write(f"\n{marker}\n{message}\n")
+        
+        logging.info("Added message to bashrc")
+        
+    except Exception as e:
+        logging.warning(f"Could not write to {bashrc_file}: {e}")
 
-# Function to remove template files
-remove_template_files() {
-    local template_dir="/challenge/template"
-    
-    # Check if user is admin
-    if is_admin; then
-        log "User is admin - preserving template files"
-        return 0
-    fi
-    
-    # Remove template directory if it exists
-    if [ -d "$template_dir" ]; then
-        rm -rf "$template_dir" 2>/dev/null || {
-            log "WARNING: Could not remove template directory (permission issue)"
-            return 1
-        }
-        log "Removed template directory: $template_dir"
-    else
-        log "Template directory does not exist: $template_dir"
-    fi
-}
 
-# Main execution
-main() {
-    log "=========================================="
-    log "Exam Attempt Limit Checker - Starting"
-    log "=========================================="
-    log "DEBUG: Script version: 2.0"
-    log "DEBUG: Log file: $LOG_FILE"
-    log "DEBUG: API URL: $API_URL"
-    log "DEBUG: Retry interval: ${RETRY_INTERVAL}s"
+def is_admin():
+    """Check if user is an admin"""
+    admin_file = "/.admin_access"
     
-    # Get PWN College ID from /.user_info file
-    PWN_COLLEGE_ID=""
-    if [ -f "/.user_info" ]; then
-        # Source the file and extract pwn_college_id
-        source /.user_info 2>/dev/null || true
-        log "DEBUG: Read pwn_college_id from /.user_info: $pwn_college_id"
-    fi
+    if not os.path.exists(admin_file):
+        return False
     
-    # Fallback to environment variables if /.user_info doesn't have it
-    if [ -z "$pwn_college_id" ]; then
-        PWN_COLLEGE_ID="${USER:-${PWN_USER_ID}}"
-        log "DEBUG: Using fallback from environment: $PWN_COLLEGE_ID"
-    else
-        PWN_COLLEGE_ID="$pwn_college_id"
-        log "DEBUG: Using pwn_college_id from /.user_info: $PWN_COLLEGE_ID"
-    fi
+    try:
+        with open(admin_file, 'r') as f:
+            content = f.read()
+        return "digital god" in content
+    except:
+        return False
+
+
+def remove_template_files():
+    """Remove template files (unless user is admin)"""
+    if is_admin():
+        logging.info("User is admin - preserving template files")
+        return
     
-    if [ -z "$PWN_COLLEGE_ID" ]; then
-        log "ERROR: Could not determine PWN College ID"
-        exit 1
-    fi
-    log "INFO: PWN College ID: $PWN_COLLEGE_ID"
+    template_dir = "/challenge/template"
     
-    # Get level working directory
-    LEVEL_WORK_DIR=$(get_level_work_dir)
-    if [ $? -ne 0 ] || [ -z "$LEVEL_WORK_DIR" ]; then
-        log "ERROR: Could not determine level working directory"
-        exit 1
-    fi
-    log "INFO: Level working directory: $LEVEL_WORK_DIR"
+    if os.path.exists(template_dir):
+        try:
+            shutil.rmtree(template_dir)
+            logging.info(f"Removed template directory: {template_dir}")
+        except Exception as e:
+            logging.warning(f"Could not remove template directory: {e}")
+    else:
+        logging.info(f"Template directory does not exist: {template_dir}")
+
+
+def main():
+    logging.info("=" * 50)
+    logging.info("Exam Attempt Limit Checker - Starting")
+    logging.info("=" * 50)
+    logging.info(f"Script version: 3.0 (Python)")
+    logging.info(f"API URL: {API_URL}")
+    logging.info(f"Retry interval: {RETRY_INTERVAL}s")
     
-    # Get level and module info
-    INFO=$(get_level_info)
-    if [ $? -ne 0 ]; then
-        log "ERROR: Could not extract level/module info"
-        exit 1
-    fi
+    # Get PWN College ID
+    pwn_college_id = get_pwn_college_id()
+    if not pwn_college_id:
+        logging.error("Could not determine PWN College ID")
+        sys.exit(1)
+    logging.info(f"PWN College ID: {pwn_college_id}")
     
-    MODULE=$(echo "$INFO" | cut -d'|' -f1)
-    LEVEL=$(echo "$INFO" | cut -d'|' -f2)
-    log "INFO: Module: $MODULE, Level: $LEVEL"
+    # Get level info
+    level_info = get_level_info()
+    if not level_info:
+        logging.error("Could not extract level/module info")
+        sys.exit(1)
+    
+    module = level_info['module']
+    level = level_info['level']
+    work_dir = level_info['work_dir']
+    logging.info(f"Module: {module}, Level: {level}, Work dir: {work_dir}")
     
     # Retry loop - keep checking until API succeeds
-    local retry_count=0
-    while true; do
-        retry_count=$((retry_count + 1))
-        log "INFO: Attempt limit check #$retry_count"
+    retry_count = 0
+    while True:
+        retry_count += 1
+        logging.info(f"Attempt limit check #{retry_count}")
         
         # Check attempt limit
-        check_attempt_limit "$PWN_COLLEGE_ID" "$MODULE" "$LEVEL"
-        local check_result=$?
+        result = check_attempt_limit(pwn_college_id, module, level)
         
-        if [ $check_result -eq 0 ]; then
-            # Allowed - add attempt count message to bashrc
-            log "INFO: Attempt ALLOWED: ${ATTEMPT_COUNT}/${ATTEMPT_FINAL_THRESHOLD}"
-            add_attempt_count_message "$MODULE" "$LEVEL" "$ATTEMPT_COUNT" "$ATTEMPT_FIRST_THRESHOLD" "$ATTEMPT_FINAL_THRESHOLD"
-            echo "Exam attempt check: ALLOWED (${ATTEMPT_COUNT}/${ATTEMPT_FINAL_THRESHOLD})"
-            exit 0
-        elif [ $check_result -eq 1 ]; then
-            # Blocked - proceed to enforcement
-            log "INFO: Attempt BLOCKED - proceeding with enforcement"
-            break
-        else
-            # Error (code 2) - retry
-            log "WARNING: API check failed (attempt #$retry_count), retrying in ${RETRY_INTERVAL}s..."
-            echo "Checking attempt limit... (attempt #$retry_count, retrying in ${RETRY_INTERVAL}s)"
-            sleep "$RETRY_INTERVAL"
+        if result is None:
+            # Error - retry
+            logging.warning(f"API check failed (attempt #{retry_count}), retrying in {RETRY_INTERVAL}s...")
+            print(f"Checking attempt limit... (attempt #{retry_count}, retrying in {RETRY_INTERVAL}s)")
+            time.sleep(RETRY_INTERVAL)
             continue
-        fi
-    done
+        
+        # Parse result
+        allowed = result.get('allowed', False)
+        reason = result.get('reason', '')
+        details = result.get('details', {})
+        attempts = details.get('attempts', 0)
+        first_threshold = details.get('first_threshold', 3)
+        final_threshold = details.get('final_threshold', 5)
+        
+        if allowed:
+            # Allowed - add attempt count message
+            logging.info(f"Attempt ALLOWED: {attempts}/{final_threshold}")
+            add_bashrc_message(module, level, reason, attempts, first_threshold, final_threshold)
+            print(f"Exam attempt check: ALLOWED ({attempts}/{final_threshold})")
+            sys.exit(0)
+        else:
+            # Blocked - proceed to enforcement
+            logging.info("Attempt BLOCKED - proceeding with enforcement")
+            break
     
     # Student is BLOCKED - enforce restrictions
-    log "INFO: ========================================"
-    log "INFO: STUDENT BLOCKED - Enforcing restrictions"
-    log "INFO: Reason: $ATTEMPT_REASON"
-    log "INFO: Attempts: ${ATTEMPT_COUNT}/${ATTEMPT_FINAL_THRESHOLD}"
-    log "INFO: ========================================"
+    logging.info("=" * 50)
+    logging.info("STUDENT BLOCKED - Enforcing restrictions")
+    logging.info(f"Reason: {reason}")
+    logging.info(f"Attempts: {attempts}/{final_threshold}")
+    logging.info("=" * 50)
     
-    # Save and replace flag
-    log "STEP 1: Replacing flag"
-    save_and_replace_flag "$LEVEL_WORK_DIR"
+    # Step 1: Replace flag
+    logging.info("STEP 1: Replacing flag")
+    save_and_replace_flag(work_dir, pwn_college_id)
     
-    # Create block message
-    log "STEP 2: Creating block message"
-    BLOCK_MESSAGE=$(create_block_message "$ATTEMPT_REASON" "$MODULE" "$LEVEL" \
-                    "$ATTEMPT_COUNT" "$ATTEMPT_FIRST_THRESHOLD" "$ATTEMPT_FINAL_THRESHOLD")
-    log "DEBUG: Block message created (${#BLOCK_MESSAGE} bytes)"
+    # Step 2: Create block message
+    logging.info("STEP 2: Creating block message")
+    block_message = create_block_message(reason, module, level, attempts, first_threshold, final_threshold)
     
-    # Replace main source file
-    log "STEP 3: Replacing main source file"
-    replace_main_file "$LEVEL_WORK_DIR" "$BLOCK_MESSAGE"
-    MAIN_FILE=""
-    if [ -f "${LEVEL_WORK_DIR}/main.c" ]; then
-        MAIN_FILE="${LEVEL_WORK_DIR}/main.c"
-        log "DEBUG: Main file is main.c"
-    elif [ -f "${LEVEL_WORK_DIR}/main.cpp" ]; then
-        MAIN_FILE="${LEVEL_WORK_DIR}/main.cpp"
-        log "DEBUG: Main file is main.cpp"
-    else
-        log "WARNING: No main file found"
-    fi
+    # Step 3: Replace main source file
+    logging.info("STEP 3: Replacing main source file")
+    main_file = None
+    if replace_main_file(work_dir, block_message):
+        if os.path.exists(f"{work_dir}/main.c"):
+            main_file = f"{work_dir}/main.c"
+        elif os.path.exists(f"{work_dir}/main.cpp"):
+            main_file = f"{work_dir}/main.cpp"
     
-    # Delete other source files
-    if [ -n "$MAIN_FILE" ]; then
-        log "STEP 4: Deleting other source files"
-        delete_other_source_files "$LEVEL_WORK_DIR" "$MAIN_FILE"
-    else
-        log "STEP 4: Skipped (no main file)"
-    fi
+    # Step 4: Delete other source files
+    if main_file:
+        logging.info("STEP 4: Deleting other source files")
+        delete_other_source_files(work_dir, main_file)
+    else:
+        logging.info("STEP 4: Skipped (no main file)")
     
-    # Remove template files (unless user is admin)
-    log "STEP 5: Removing template files"
-    remove_template_files
+    # Step 5: Remove template files
+    logging.info("STEP 5: Removing template files")
+    remove_template_files()
     
-    # Add attempt count message
-    log "STEP 6: Adding attempt count message"
-    add_attempt_count_message "$MODULE" "$LEVEL" "$ATTEMPT_COUNT" "$ATTEMPT_FIRST_THRESHOLD" "$ATTEMPT_FINAL_THRESHOLD"
-    
-    # Add bashrc blocking message
-    log "STEP 7: Adding bashrc blocking message"
-    add_bashrc_message "$MODULE" "$LEVEL" "$ATTEMPT_REASON"
+    # Step 6: Add bashrc message
+    logging.info("STEP 6: Adding bashrc message")
+    add_bashrc_message(module, level, reason, attempts, first_threshold, final_threshold)
     
     # Display message to user
-    echo ""
-    echo "$BLOCK_MESSAGE"
-    echo ""
+    print("\n" + block_message + "\n")
     
-    log "INFO: ========================================"
-    log "INFO: Attempt limit enforcement COMPLETE"
-    log "INFO: ========================================"
-    exit 1
-}
+    logging.info("=" * 50)
+    logging.info("Attempt limit enforcement COMPLETE")
+    logging.info("=" * 50)
+    sys.exit(1)
 
-# Run main function
-main "$@"
+
+if __name__ == "__main__":
+    main()
