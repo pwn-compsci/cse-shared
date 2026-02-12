@@ -121,7 +121,8 @@ if [ -d $clevel_work_dir ]; then
         fi
         
         if [ "$codecoverage" -gt 0 ]; then
-            profile_flags="-ftest-coverage -fprofile-arcs"
+            # profile_flags="-ftest-coverage -fprofile-arcs"
+            profile_flags=" --coveragage "
         fi
         
         local all_flags="$base_flags $strict_flags $profile_flags"
@@ -158,7 +159,8 @@ if [ -d $clevel_work_dir ]; then
         fi
         
         if [ "$codecoverage" -gt 0 ]; then
-            profile_flags="-ftest-coverage -fprofile-arcs"
+            # profile_flags="-ftest-coverage -fprofile-arcs"
+            profile_flags=" --coveragage "
         fi
         
         local all_flags="$base_flags $strict_flags $profile_flags"
