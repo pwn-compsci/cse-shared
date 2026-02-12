@@ -8,7 +8,10 @@ import shutil
 import sys
 
 
-flag = open("/flag").read().strip()
+try:
+    flag = open("/flag").read().strip()
+except:
+    flag = None
 
 import re
 import base64
@@ -63,7 +66,19 @@ def extract_account_id_from_flag(flag):
         print("Error extracting account id from flag")
         return None
 
-USER_ID = extract_account_id_from_flag(flag)
+if flag:
+    USER_ID = extract_account_id_from_flag(flag)
+else:
+    # Fallback to /.user_info
+    try:
+        user_info = open("/.user_info", "r").read()
+        match = re.search(r"pwn_college_id='(\d+)'", user_info)
+        if match:
+            USER_ID = int(match.group(1))
+        else:
+            USER_ID = None
+    except:
+        USER_ID = None
 
 def error(message):
     print(message, file=sys.stderr)

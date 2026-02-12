@@ -227,10 +227,7 @@ def replace_main_file(work_dir, block_message):
         return False
     
     try:
-        # Backup original
-        shutil.copy2(main_file, f"{main_file}.backup")
-        
-        # Replace with block message
+        # Replace with block message (no backup)
         with open(main_file, 'w') as f:
             f.write(f"/*\n{block_message}\n*/\n")
         
