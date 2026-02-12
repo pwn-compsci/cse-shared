@@ -68,7 +68,8 @@ def extract_account_id_from_flag(flag):
 
 if flag:
     USER_ID = extract_account_id_from_flag(flag)
-else:
+
+if not flag or USER_ID is None:
     # Fallback to /.user_info
     try:
         user_info = open("/.user_info", "r").read()
