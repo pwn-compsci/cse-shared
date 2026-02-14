@@ -121,17 +121,84 @@ if [ -d $clevel_work_dir ]; then
         fi
         
         if [ "$codecoverage" -gt 0 ]; then
-            # profile_flags="-ftest-coverage -fprofile-arcs"
-            profile_flags=" --coverage "
+            profile_flags="--coverage"
         fi
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        # Log both original and final commands with timestamp (append)
+        # Log original command
         echo "" >> "$clevel_work_dir/compile.log"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: gcc $*" >> "$clevel_work_dir/compile.log"
-        echo "Final:    gcc $all_flags $*" >> "$clevel_work_dir/compile.log"
         
+        # If code coverage is enabled, check if we need to split compile and link
+        if [ "$codecoverage" -gt 0 ]; then
+            # Check if this is a compile+link operation (has .c files and -o without -c flag)
+            local has_source=false
+            local has_output=false
+            local has_compile_only=false
+            
+            for arg in "$@"; do
+                if [[ "$arg" == *.c ]]; then
+                    has_source=true
+                elif [[ "$arg" == "-c" ]]; then
+                    has_compile_only=true
+                elif [[ "$arg" == "-o" ]]; then
+                    has_output=true
+                fi
+            done
+            
+            # If compile+link step (source files + output, but not -c flag), split it
+            if [ "$has_source" = true ] && [ "$has_output" = true ] && [ "$has_compile_only" = false ]; then
+                echo "Code coverage enabled: splitting into compile and link steps" >> "$clevel_work_dir/compile.log"
+                
+                # Extract source files and other arguments
+                local source_files=()
+                local other_args=()
+                local output_file=""
+                local next_is_output=false
+                
+                for arg in "$@"; do
+                    if [ "$next_is_output" = true ]; then
+                        output_file="$arg"
+                        next_is_output=false
+                    elif [[ "$arg" == *.c ]]; then
+                        source_files+=("$arg")
+                    elif [[ "$arg" == "-o" ]]; then
+                        next_is_output=true
+                    else
+                        other_args+=("$arg")
+                    fi
+                done
+                
+                # Derive object file name from output file (e.g., main.bin -> main.o)
+                local base_name="${output_file%.*}"
+                local object_file="${base_name}.o"
+                
+                # Step 1: Compile all source files into a single object file
+                echo "Step 1: gcc $all_flags -c ${source_files[*]} -o $object_file" >> "$clevel_work_dir/compile.log"
+                command gcc $all_flags -c "${source_files[@]}" -o "$object_file" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+                local compile_rc=${PIPESTATUS[0]}
+                if [ "$compile_rc" -ne 0 ]; then
+                    save_compile "gcc" "gcc $all_flags -c ${source_files[*]} -o $object_file" "$compile_rc" >> /tmp/save_compile.log 2>&1 || true
+                    trim_compile_log
+                    return $compile_rc
+                fi
+                
+                # Step 2: Link object file
+                echo "Step 2: gcc $all_flags $object_file ${other_args[*]} -o $output_file" >> "$clevel_work_dir/compile.log"
+                command gcc $all_flags "$object_file" "${other_args[@]}" -o "$output_file" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+                local rc=${PIPESTATUS[0]}
+                if [ "$rc" -eq 0 ]; then
+                    printf "\033[32mCompilation successful!\033[0m\n" >> "$clevel_work_dir/compile.log"
+                fi
+                save_compile "gcc" "gcc $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+                trim_compile_log
+                return $rc
+            fi
+        fi
+        
+        # Normal single-step compilation
+        echo "Final:    gcc $all_flags $*" >> "$clevel_work_dir/compile.log"
         command gcc $all_flags "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
@@ -159,17 +226,84 @@ if [ -d $clevel_work_dir ]; then
         fi
         
         if [ "$codecoverage" -gt 0 ]; then
-            # profile_flags="-ftest-coverage -fprofile-arcs"
-            profile_flags=" --coveragage "
+            profile_flags="--coverage"
         fi
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        # Log both original and final commands with timestamp (append)
+        # Log original command
         echo "" >> "$clevel_work_dir/compile.log"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: g++ $*" >> "$clevel_work_dir/compile.log"
-        echo "Final:    g++ $all_flags $*" >> "$clevel_work_dir/compile.log"
         
+        # If code coverage is enabled, check if we need to split compile and link
+        if [ "$codecoverage" -gt 0 ]; then
+            # Check if this is a compile+link operation (has .cpp files and -o without -c flag)
+            local has_source=false
+            local has_output=false
+            local has_compile_only=false
+            
+            for arg in "$@"; do
+                if [[ "$arg" == *.cpp ]] || [[ "$arg" == *.cc ]] || [[ "$arg" == *.cxx ]]; then
+                    has_source=true
+                elif [[ "$arg" == "-c" ]]; then
+                    has_compile_only=true
+                elif [[ "$arg" == "-o" ]]; then
+                    has_output=true
+                fi
+            done
+            
+            # If compile+link step (source files + output, but not -c flag), split it
+            if [ "$has_source" = true ] && [ "$has_output" = true ] && [ "$has_compile_only" = false ]; then
+                echo "Code coverage enabled: splitting into compile and link steps" >> "$clevel_work_dir/compile.log"
+                
+                # Extract source files and other arguments
+                local source_files=()
+                local other_args=()
+                local output_file=""
+                local next_is_output=false
+                
+                for arg in "$@"; do
+                    if [ "$next_is_output" = true ]; then
+                        output_file="$arg"
+                        next_is_output=false
+                    elif [[ "$arg" == *.cpp ]] || [[ "$arg" == *.cc ]] || [[ "$arg" == *.cxx ]]; then
+                        source_files+=("$arg")
+                    elif [[ "$arg" == "-o" ]]; then
+                        next_is_output=true
+                    else
+                        other_args+=("$arg")
+                    fi
+                done
+                
+                # Derive object file name from output file (e.g., main.bin -> main.o)
+                local base_name="${output_file%.*}"
+                local object_file="${base_name}.o"
+                
+                # Step 1: Compile all source files into a single object file
+                echo "Step 1: g++ $all_flags -c ${source_files[*]} -o $object_file" >> "$clevel_work_dir/compile.log"
+                command g++ $all_flags -c "${source_files[@]}" -o "$object_file" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+                local compile_rc=${PIPESTATUS[0]}
+                if [ "$compile_rc" -ne 0 ]; then
+                    save_compile "g++" "g++ $all_flags -c ${source_files[*]} -o $object_file" "$compile_rc" >> /tmp/save_compile.log 2>&1 || true
+                    trim_compile_log
+                    return $compile_rc
+                fi
+                
+                # Step 2: Link object file
+                echo "Step 2: g++ $all_flags $object_file ${other_args[*]} -o $output_file" >> "$clevel_work_dir/compile.log"
+                command g++ $all_flags "$object_file" "${other_args[@]}" -o "$output_file" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+                local rc=${PIPESTATUS[0]}
+                if [ "$rc" -eq 0 ]; then
+                    printf "\033[32mCompilation successful!\033[0m\n" >> "$clevel_work_dir/compile.log"
+                fi
+                save_compile "g++" "g++ $all_flags $*" "$rc" >> /tmp/save_compile.log 2>&1 || true
+                trim_compile_log
+                return $rc
+            fi
+        fi
+        
+        # Normal single-step compilation
+        echo "Final:    g++ $all_flags $*" >> "$clevel_work_dir/compile.log"
         command g++ $all_flags "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
         local rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
