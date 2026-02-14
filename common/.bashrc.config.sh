@@ -318,6 +318,26 @@ if [ -d $clevel_work_dir ]; then
         echo "" >> "$clevel_work_dir/compile.log"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: make $*" >> "$clevel_work_dir/compile.log"
         
+        # Check level.json for compilation flags
+        local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")
+        local codecoverage=$(jq -r 'if .codecoverage then .codecoverage else 0 end' /challenge/.config/level.json 2>/dev/null || echo "0")
+        
+        # Build flags for make
+        local base_flags="-O0 -g -fdiagnostics-color=always"
+        local strict_flags=""
+        local coverage_flags=""
+        
+        if [ "$limited_gcc_flags" != "true" ]; then
+            strict_flags="-Wall -Werror"
+        fi
+        
+        if [ "$codecoverage" -gt 0 ]; then
+            coverage_flags="--coverage"
+            echo "Code coverage enabled for make" >> "$clevel_work_dir/compile.log"
+        fi
+        
+        local all_flags="$base_flags $strict_flags $coverage_flags"
+        
         # Try to detect compiler and files from Makefile
         local detected_compiler="make"
         local detected_files=""
@@ -342,8 +362,14 @@ if [ -d $clevel_work_dir ]; then
             fi
         fi
         
-        # Run make and append output to compile.log
-        command make "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+        # If coverage is enabled, pass flags via environment variables
+        if [ "$codecoverage" -gt 0 ]; then
+            echo "Running make with CFLAGS=\"$all_flags\" CXXFLAGS=\"$all_flags\"" >> "$clevel_work_dir/compile.log"
+            CFLAGS="$all_flags" CXXFLAGS="$all_flags" command make "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+        else
+            # Run make normally
+            command make "$@" 2>&1 | tee -a "$clevel_work_dir/compile.log"
+        fi
         local rc=${PIPESTATUS[0]}
         
         if [ "$rc" -eq 0 ]; then
