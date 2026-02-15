@@ -367,6 +367,8 @@ def main():
     logging.info(f"Script version: 3.0 (Python)")
     logging.info(f"API URL: {API_URL}")
     logging.info(f"Retry interval: {RETRY_INTERVAL}s")
+    logging.info(f"Pausing for 5 seconds to allow system to stabilize...")
+    time.sleep(5)
     
     # Get PWN College ID
     pwn_college_id = get_pwn_college_id()

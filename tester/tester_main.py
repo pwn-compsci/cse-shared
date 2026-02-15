@@ -978,11 +978,17 @@ def check_if_direct_flag_access(command_args, cwd, input_data, env):
         return False
 
 
-def run_target_program(test, working_directory, target_path, args, input_data, model_program=False, environmentVar={}, return_code=0, expected_output=None, hidden_test=False):
+def run_target_program(test, working_directory, target_path, args, input_data, model_program=False, environmentVar={}, return_code=0, expected_output=None, hidden_test=False, test_type="normal"):
     result = None
     try:
 
-        timeout_command = ['timeout', '-k','2', '10']
+        # Use longer timeout for valgrind tests (they run much slower)
+        if test_type == "valgrind":
+            timeout_command = ['timeout', '-k','2', '60']
+            subprocess_timeout = 30
+        else:
+            timeout_command = ['timeout', '-k','2', '10']
+            subprocess_timeout = 3
         command = timeout_command + [target_path] + args
         print(f"target_path: {target_path}")
         if ".class" in target_path:
@@ -1010,14 +1016,14 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
             #         wf.write(f"{iso_format_datetime} Error direct access of /flag detected in program, this is not permitted, please remove the code opening /flag\n")
 
             result = subprocess.run(command, cwd=working_directory, input=input_data, text=True, encoding='latin-1',
-                                capture_output=True, timeout=3, check=do_check, env=environmentVar)
+                                capture_output=True, timeout=subprocess_timeout, check=do_check, env=environmentVar)
         else:
             if ED_ENV:
                 result = subprocess.run(command, cwd=working_directory, input=input_data, text=True, encoding='latin-1',
-                                    capture_output=True, timeout=3, check=do_check, env=environmentVar)
+                                    capture_output=True, timeout=subprocess_timeout, check=do_check, env=environmentVar)
             else:
                 result = subprocess.run(command, cwd=working_directory, input=input_data, text=True, encoding='latin-1',
-                                    capture_output=True, timeout=3, check=do_check, env=environmentVar, preexec_fn=demote)
+                                    capture_output=True, timeout=subprocess_timeout, check=do_check, env=environmentVar, preexec_fn=demote)
         if result.returncode == 124:
             raise subprocess.TimeoutExpired("timeout caught it", 10)
         if not do_check:
@@ -1323,7 +1329,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
         if len(random_input) > 0 and os.path.exists(random_input):
             input_data = pick_random_word(random_input)
 
-        expected_output = run_target_program(test, "/challenge/", "/challenge/modelGood.bin", args, input_data, model_program=True, hidden_test=hidden_test)
+        expected_output = run_target_program(test, "/challenge/", "/challenge/modelGood.bin", args, input_data, model_program=True, hidden_test=hidden_test, test_type=test_type)
         expected_output_list = [line for line in expected_output.splitlines() if len(line) > 1]
     else:
         expected_output_list = test_json.get("output", [])
@@ -1345,7 +1351,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
     
     # primary execution of the target program with the current system test
     actual_output = run_target_program( test, working_dir, target_path, args, input_data, environmentVar=test_json.get("testEnvironmentVars",{}),
-                                       return_code=return_code, expected_output=expected_output_list, hidden_test=hidden_test)
+                                       return_code=return_code, expected_output=expected_output_list, hidden_test=hidden_test, test_type=test_type)
 
     test_name = test_json.get('name', '')
     test_description = test_json.get('description', '')
