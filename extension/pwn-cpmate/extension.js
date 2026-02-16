@@ -79,6 +79,9 @@ const _origConsoleLog = console.log;
 const _origConsoleWarn = console.warn;
 const _origConsoleError = console.error;
 
+// Global debugging flag - can be toggled from debug console with: global.DEBUGGING = true
+global.DEBUGGING = false;
+
 function initAdminAccessAndConfigureLogging() {
     try {
         if (fsa.existsSync('/.admin_access')) {
@@ -167,6 +170,9 @@ function getDbPath() {
 }
 
 async function log(text) {
+    if (!global.DEBUGGING) {
+        return; // Skip logging if debugging is disabled
+    }
     try {
         console.log(text);
     } catch(error){
@@ -184,6 +190,9 @@ async function log(text) {
     await fs.appendFile(getLogPath(), encoded + "\n");
 }
 function logSync(text) {
+    if (!global.DEBUGGING) {
+        return; // Skip logging if debugging is disabled
+    }
     if (typeof text !== 'string') {
         text = `=> ${text}`
     }
@@ -1420,6 +1429,15 @@ function activate(context) {
     });
     context.subscriptions.push(moveToSingleCommand);
     
+    // Register command to toggle debugging
+    const toggleDebuggingCommand = vscode.commands.registerCommand('pwn-cpmate.toggleDebugging', async () => {
+        global.DEBUGGING = !global.DEBUGGING;
+        const status = global.DEBUGGING ? 'enabled' : 'disabled';
+        vscode.window.showInformationMessage(`Debug logging ${status}`);
+        console.log(`[Debug Toggle] Logging is now ${status}`);
+    });
+    context.subscriptions.push(toggleDebuggingCommand);
+    
     async function saveTextInfo(currentFilePath, editor, textToSave, saveid, prefix){
 
         let errorString = "";
@@ -1951,24 +1969,25 @@ function activate(context) {
                     const normalizedPasted = textOut.replace(/[\r↵]+/g, '\n');
                     const normalizedModified = modifiedText.replace(/[\r]+/g, '\n');
                     
-                    if (normalizedPasted.includes(normalizedModified) || normalizedModified.includes(normalizedPasted)) {
-                        // Found a match - strip prompts by replacing with original text
+                    if (normalizedPasted === normalizedModified) {
+                        // Exact match - strip prompts by replacing with original text
                         strippedText = data.originalText.replace(/[\r]+/g, '↵');
                         wasStripped = true;
-                        log(`[Prompt Strip] Detected paste with injected prompts, stripping ${data.prompts.length} prompt(s)`);
+                        log(`[Prompt Strip] Exact match - stripping ${data.prompts.length} prompt(s)`);
                         
-                        // Replace the pasted text in the editor
+                        // Replace the pasted text in the editor using correct range
                         const change = event.contentChanges[0];
-                        const startPos = change.range.start;
-                        const endPos = change.range.end;
-                        const newRange = new vscode.Range(startPos, startPos.translate(0, change.text.length));
+                        const pasteRange = new vscode.Range(change.range.start, change.range.end);
                         
+                        lockChangeCheck = true;
                         await editor.edit(editBuilder => {
-                            editBuilder.replace(newRange, data.originalText);
+                            editBuilder.replace(pasteRange, data.originalText);
                         }, { undoStopBefore: false, undoStopAfter: false });
+                        lockChangeCheck = false;
                         
                         // Update textOut for logging
                         textOut = strippedText;
+                        log(`[Prompt Strip] Successfully replaced ${normalizedPasted.length}b with ${data.originalText.length}b`);
                         break;
                     }
                 }
@@ -1986,20 +2005,21 @@ function activate(context) {
                         const removedCount = lines.length - strippedLines.length;
                         strippedText = strippedLines.join('\n').replace(/[\r]+/g, '↵');
                         wasStripped = true;
-                        log(`[Prompt Strip] Detected ${removedCount} known prompt line(s) in paste, stripping them`);
+                        log(`[Prompt Strip] Line-by-line: removing ${removedCount} prompt line(s)`);
                         
-                        // Replace the pasted text in the editor
+                        // Replace the pasted text in the editor using correct range
                         const change = event.contentChanges[0];
-                        const startPos = change.range.start;
-                        const endPos = change.range.end;
-                        const newRange = new vscode.Range(startPos, startPos.translate(0, change.text.length));
+                        const pasteRange = new vscode.Range(change.range.start, change.range.end);
                         
+                        lockChangeCheck = true;
                         await editor.edit(editBuilder => {
-                            editBuilder.replace(newRange, strippedLines.join('\n'));
+                            editBuilder.replace(pasteRange, strippedLines.join('\n'));
                         }, { undoStopBefore: false, undoStopAfter: false });
+                        lockChangeCheck = false;
                         
                         // Update textOut for logging
                         textOut = strippedText;
+                        log(`[Prompt Strip] Successfully removed ${removedCount} lines`);
                     }
                 }
             }

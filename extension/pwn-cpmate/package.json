@@ -39,6 +39,11 @@
         "command": "pwn-cpmate.togglePaneMode",
         "title": "Toggle Requirements Pane Mode (Split/Single)",
         "category": "PWN"
+      },
+      {
+        "command": "pwn-cpmate.toggleDebugging",
+        "title": "Toggle Debug Logging",
+        "category": "PWN"
       }
     ],
     "keybindings": [
@@ -51,12 +56,20 @@
         "command": "pwn-cpmate.togglePaneMode",
         "key": "ctrl+alt+q",
         "mac": "cmd+alt+q"
+      },
+      {
+        "command": "pwn-cpmate.toggleDebugging",
+        "key": "ctrl+shift+alt+d",
+        "mac": "cmd+shift+alt+d"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "pwn-cpmate.showRequirements"
+        },
+        {
+          "command": "pwn-cpmate.toggleDebugging"
         }
       ]
     },
