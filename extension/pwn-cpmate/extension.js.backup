@@ -1048,9 +1048,9 @@ function activate(context) {
                     const ccFilename = `CC_${saveid}${ext}`;
                     const ccFullPath = path.join(historyDir, ccFilename);
                     
-                    // Prepare header with metadata
-                    const header = `# Copied from Requirements\n# hwid: ${hwid}\n# labid: ${labid}\n# level: ${level}\n# module: ${module}\n# challenge: ${challenge}\n# timestamp: ${new Date().toISOString()}\n# saveid: ${saveid}\n\n`;
-                    const ccContent = header + originalText;
+                    // Prepare header with metadata (record what's actually in clipboard)
+                    const header = `# Copied from Requirements (with injections)\n# hwid: ${hwid}\n# labid: ${labid}\n# level: ${level}\n# module: ${module}\n# challenge: ${challenge}\n# timestamp: ${new Date().toISOString()}\n# saveid: ${saveid}\n# injections_applied: ${prompts ? prompts.length : 0}\n\n`;
+                    const ccContent = header + modifiedText;
                     
                     try {
                         await fs.writeFile(ccFullPath, ccContent);
@@ -1074,11 +1074,11 @@ function activate(context) {
                         currentFile: currentFilePath,
                         historyDirectory: historyDir,
                         ccFile: ccFullPath,
-                        originalText: originalText,
-                        modifiedText: modifiedText,
+                        copiedText: modifiedText,
+                        cleanText: originalText,
                         promptsUsed: prompts,
-                        textLength: originalText.length,
-                        linesCount: originalText.split('\n').length
+                        textLength: modifiedText.length,
+                        linesCount: modifiedText.split('\n').length
                     };
                     const mainLogPath = path.join(skipDir, 'log.json');
                     try {
@@ -1986,9 +1986,21 @@ function activate(context) {
                         wasStripped = true;
                         log(`[Prompt Strip] Exact match - stripping ${data.prompts.length} prompt(s)`);
                         
-                        // Replace the pasted text in the editor using correct range
+                        // Replace the pasted text in the editor
+                        // Calculate the end position based on what was actually inserted
                         const change = event.contentChanges[0];
-                        const pasteRange = new vscode.Range(change.range.start, change.range.end);
+                        const startPos = change.range.start;
+                        const doc = editor.document;
+                        
+                        // Calculate end position by counting lines and characters in the pasted text
+                        const pastedLines = change.text.split('\n');
+                        let endLine = startPos.line + pastedLines.length - 1;
+                        let endChar = pastedLines.length === 1 
+                            ? startPos.character + pastedLines[0].length
+                            : pastedLines[pastedLines.length - 1].length;
+                        
+                        const endPos = new vscode.Position(endLine, endChar);
+                        const pasteRange = new vscode.Range(startPos, endPos);
                         
                         lockChangeCheck = true;
                         await editor.edit(editBuilder => {
@@ -2018,9 +2030,20 @@ function activate(context) {
                         wasStripped = true;
                         log(`[Prompt Strip] Line-by-line: removing ${removedCount} prompt line(s)`);
                         
-                        // Replace the pasted text in the editor using correct range
+                        // Replace the pasted text in the editor
+                        // Calculate the end position based on what was actually inserted
                         const change = event.contentChanges[0];
-                        const pasteRange = new vscode.Range(change.range.start, change.range.end);
+                        const startPos = change.range.start;
+                        
+                        // Calculate end position by counting lines and characters in the pasted text
+                        const pastedLines = change.text.split('\n');
+                        let endLine = startPos.line + pastedLines.length - 1;
+                        let endChar = pastedLines.length === 1 
+                            ? startPos.character + pastedLines[0].length
+                            : pastedLines[pastedLines.length - 1].length;
+                        
+                        const endPos = new vscode.Position(endLine, endChar);
+                        const pasteRange = new vscode.Range(startPos, endPos);
                         
                         lockChangeCheck = true;
                         await editor.edit(editBuilder => {
