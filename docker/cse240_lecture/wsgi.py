@@ -91,7 +91,7 @@ with open ("/challenge/.config/level.json", "r") as af:
     level_json = json.load(af)
     YOUTUBE_ID = level_json.get("youtube_id")
     IFRAME_URL = level_json.get("iframe_url", f"")
-    TOTAL_TIME = level_json.get("total_time", 30)
+    TOTAL_TIME = level_json.get("total_time", 30) 
     if isinstance(TOTAL_TIME, str) and len(TOTAL_TIME) == 0:
         TOTAL_TIME = 30 # Default to 30 seconds if not specified or invalid
         
