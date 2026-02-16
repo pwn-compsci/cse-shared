@@ -95,7 +95,7 @@ function initAdminAccessAndConfigureLogging() {
         isAdminUser = false;
     }
 
-    const enabled = isAdminUser || DO_DEBUG === true;
+    const enabled = isAdminUser || DO_DEBUG === true || global.DEBUGGING === true;
     console.log = enabled ? _origConsoleLog : () => {};
     console.warn = enabled ? _origConsoleWarn : () => {};
     console.error = enabled ? _origConsoleError : () => {};
@@ -170,14 +170,16 @@ function getDbPath() {
 }
 
 async function log(text) {
-    if (!global.DEBUGGING) {
-        return; // Skip logging if debugging is disabled
+    // Console logging - only if debugging enabled
+    if (global.DEBUGGING) {
+        try {
+            console.log(text);
+        } catch(error){
+            // ignore console log errors
+        }
     }
-    try {
-        console.log(text);
-    } catch(error){
-        // ignore console log errors
-    }
+    
+    // File logging - always happens
     if (typeof text !== 'string') {
         text = `=> ${text}`
     }
@@ -190,9 +192,16 @@ async function log(text) {
     await fs.appendFile(getLogPath(), encoded + "\n");
 }
 function logSync(text) {
-    if (!global.DEBUGGING) {
-        return; // Skip logging if debugging is disabled
+    // Console logging - only if debugging enabled
+    if (global.DEBUGGING) {
+        try {
+            console.log(text);
+        } catch(error){
+            // ignore console log errors
+        }
     }
+    
+    // File logging - always happens
     if (typeof text !== 'string') {
         text = `=> ${text}`
     }
@@ -1432,9 +1441,11 @@ function activate(context) {
     // Register command to toggle debugging
     const toggleDebuggingCommand = vscode.commands.registerCommand('pwn-cpmate.toggleDebugging', async () => {
         global.DEBUGGING = !global.DEBUGGING;
+        // Re-configure console logging based on new DEBUGGING value
+        initAdminAccessAndConfigureLogging();
         const status = global.DEBUGGING ? 'enabled' : 'disabled';
         vscode.window.showInformationMessage(`Debug logging ${status}`);
-        console.log(`[Debug Toggle] Logging is now ${status}`);
+        _origConsoleLog(`[Debug Toggle] Logging is now ${status}`);
     });
     context.subscriptions.push(toggleDebuggingCommand);
     
