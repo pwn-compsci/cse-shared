@@ -1970,10 +1970,11 @@ function activate(context) {
             // Get editor reference early for prompt stripping
             const editor = vscode.window.activeTextEditor;
             
-            // Check if pasted text contains any known prompts and strip them
+            // DISABLED: Check if pasted text contains any known prompts and strip them
+            // Injected prompts should remain in the code for now
             let strippedText = textOut;
             let wasStripped = false;
-            if (textOut.length > 2 && editor) {
+            if (false && textOut.length > 2 && editor) {
                 // First check against all tracked modified texts (fast path for recent copies)
                 for (const [modifiedText, data] of injectedPromptsMap.entries()) {
                     // Normalize for comparison (remove \r differences)
