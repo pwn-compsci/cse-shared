@@ -124,20 +124,17 @@ var shutdownHtmlCreated = false;
 function resolveCourseCode() {
     try {
         if (levelConfig && levelConfig.courseCode) {
-            log(`[CourseCode] Using levelConfig.courseCode: ${levelConfig.courseCode}`);
             return levelConfig.courseCode;
         }
         const levelJsonPath = '/challenge/.config/level.json';
         if (fsa.existsSync(levelJsonPath)) {
             const data = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
             if (data && typeof data.course_code === 'string' && data.course_code.length > 0) {
-                log(`[CourseCode] Read from level.json: ${data.course_code}`);
                 return data.course_code;
             }
         }
-        log(`[CourseCode] Failed to read course code, using default: cse240`);
     } catch (e) {
-        log(`[CourseCode] Error resolving course code: ${e.message}, using default: cse240`);
+        // Cannot use log() here as it creates circular dependency
     }
     return 'cse240';
 }
