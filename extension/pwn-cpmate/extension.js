@@ -124,17 +124,20 @@ var shutdownHtmlCreated = false;
 function resolveCourseCode() {
     try {
         if (levelConfig && levelConfig.courseCode) {
+            log(`[CourseCode] Using levelConfig.courseCode: ${levelConfig.courseCode}`);
             return levelConfig.courseCode;
         }
         const levelJsonPath = '/challenge/.config/level.json';
         if (fsa.existsSync(levelJsonPath)) {
             const data = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
             if (data && typeof data.course_code === 'string' && data.course_code.length > 0) {
+                log(`[CourseCode] Read from level.json: ${data.course_code}`);
                 return data.course_code;
             }
         }
+        log(`[CourseCode] Failed to read course code, using default: cse240`);
     } catch (e) {
-        // fall through to default
+        log(`[CourseCode] Error resolving course code: ${e.message}, using default: cse240`);
     }
     return 'cse240';
 }
@@ -1191,8 +1194,18 @@ function activate(context) {
             log(`[Prompt Injection] Total injections available: ${allInjections.length}`);
             log(`[Prompt Injection] Breakdown: ${levelMetadataInjections.length} from .level_metadata, ${prinfoInjections.length} from .prinfo`);
             
-            // Inject clipboard interception script with injections embedded
-            const clipboardScript = `
+            // Check if this is an exam level - if so, skip clipboard interception
+            log(`[Requirements] Exam check - levelConfig.hw exists: ${!!levelConfig.hw}`);
+            if (levelConfig.hw) {
+                log(`[Requirements] Exam check - examLevel value: ${levelConfig.hw.examLevel}`);
+                log(`[Requirements] Exam check - examLevel type: ${typeof levelConfig.hw.examLevel}`);
+                log(`[Requirements] Exam check - examLevel === true: ${levelConfig.hw.examLevel === true}`);
+            }
+            const isExamLevel = levelConfig.hw && levelConfig.hw.examLevel === true;
+            log(`[Requirements] Final exam level determination: ${isExamLevel}`);
+            
+            // Inject clipboard interception script with injections embedded (skip if exam level)
+            const clipboardScript = isExamLevel ? '' : `
                 <script>
                     const vscode = acquireVsCodeApi();
                     
@@ -1340,6 +1353,11 @@ function activate(context) {
             htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
             
             // Insert script before closing body tag
+            if (isExamLevel) {
+                log(`[Requirements] ⚠️  EXAM LEVEL DETECTED - Skipping clipboard interception script`);
+            } else {
+                log(`[Requirements] Non-exam level - Including clipboard interception script (${clipboardScript.length} bytes)`);
+            }
             htmlContent = htmlContent.replace('</body>', clipboardScript + '</body>');
             
             // Remove external CSS links that won't work in webview
@@ -2546,6 +2564,12 @@ async function loadLevelConfig() {
         const data = await fs.readFile(configPath, 'utf8');
         const configData = JSON.parse(data);
         
+        log('[Config] ========== LOADING LEVEL CONFIG ==========');
+        log(`[Config] course_code: ${configData.course_code}`);
+        log(`[Config] examLevel: ${configData.examLevel} (type: ${typeof configData.examLevel})`);
+        log(`[Config] module: ${configData.module}`);
+        log(`[Config] challenge: ${configData.challenge}`);
+        
         // Populate global levelConfig object
         levelConfig.hw = configData;
         levelConfig.hwid = configData.hw;  // hwid comes from 'hw' field in level.json
@@ -2554,6 +2578,9 @@ async function loadLevelConfig() {
         levelConfig.initialFiles = configData.initial_files;
         levelConfig.isExam = typeof configData.examLevel === "string" && configData.examLevel.length > 4;
         levelConfig.courseCode = configData.course_code || "cse240";
+        
+        log(`[Config] Set levelConfig.courseCode to: ${levelConfig.courseCode}`);
+        log(`[Config] Set levelConfig.isExam to: ${levelConfig.isExam}`);
         
         // Support both hwdir (legacy, absolute path) and module (new format, relative)
         if (configData.hwdir) {
@@ -2575,7 +2602,9 @@ async function loadLevelConfig() {
         levelConfig.module_name = configData.module_name;
         levelConfig.challenge_name = configData.challenge_name;
         
-        log(`Level config loaded: ${levelConfig.challenge_name} (${levelConfig.module_name})`);
+        log(`[Config] Level config loaded: ${levelConfig.challenge_name} (${levelConfig.module_name})`);
+        log(`[Config] Work directory: ${levelConfig.cLevelWorkDir}`);
+        log('[Config] ========== LEVEL CONFIG COMPLETE ==========');
         return true;
     } catch (error) {
         log(`Error loading level config: ${error.message}`);
