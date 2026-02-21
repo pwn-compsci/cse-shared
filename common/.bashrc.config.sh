@@ -499,7 +499,7 @@ if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240
 else 
     if tail -n 10 /home/hacker/.bashrc | grep -qE 'CSE240_PS1' && \
             grep -q -v '# AUTO ADDED BY CSE240' /home/hacker/.bashrc; then
-        if [[ "$clevel_work_dir" != *cse240/exam* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]]; then
+        if [[ "$clevel_work_dir" != *cse240/exam* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]]; then
             sed  -i '/export[[:space:]]\+PS1[[:space:]]*.[[:space:]]*\$CSE240_PS1/{
     c\
     if [ -n "$CSE240_PS1" ]; then \

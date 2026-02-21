@@ -1191,12 +1191,8 @@ function activate(context) {
             log(`[Prompt Injection] Total injections available: ${allInjections.length}`);
             log(`[Prompt Injection] Breakdown: ${levelMetadataInjections.length} from .level_metadata, ${prinfoInjections.length} from .prinfo`);
             
-            // Check if this is an exam level - if so, skip clipboard interception
-            const isExamLevel = levelConfig.hw && levelConfig.hw.examLevel === true;
-            log(`[Requirements] Exam level check: ${isExamLevel}`);
-            
-            // Inject clipboard interception script with injections embedded (skip if exam level)
-            const clipboardScript = isExamLevel ? '' : `
+            // Inject clipboard interception script with injections embedded
+            const clipboardScript = `
                 <script>
                     const vscode = acquireVsCodeApi();
                     
