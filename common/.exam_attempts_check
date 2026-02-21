@@ -417,6 +417,36 @@ def main():
             logging.info(f"Attempt ALLOWED: {attempts}/{final_threshold}")
             add_bashrc_message(module, challenge, reason, attempts, first_threshold, final_threshold)
             print(f"Exam attempt check: ALLOWED ({attempts}/{final_threshold})")
+
+            # Write exam attempt info to file for other processes
+            try:
+                exam_info_dir = "/opt/"
+                os.makedirs(exam_info_dir, exist_ok=True)
+                
+                exam_info_file = f"{exam_info_dir}/exam_attempt_allowed.json"
+                
+                exam_data = {
+                    "pwn_college_id": pwn_college_id,
+                    "module": module,
+                    "challenge": challenge,
+                    "attempts": attempts,
+                    "first_threshold": first_threshold,
+                    "final_threshold": final_threshold,
+                    "timestamp": time.time(),
+                    "work_dir": work_dir,
+                    "allowed": True
+                }
+                
+                with open(exam_info_file, 'w') as f:
+                    json.dump(exam_data, f, indent=2)
+                
+                # Set to 400 permissions (read-only for owner)
+                os.chmod(exam_info_file, 0o400)
+                logging.info(f"Wrote exam attempt info to {exam_info_file} with 400 permissions")
+                
+            except Exception as e:
+                logging.error(f"Error writing exam attempt info file: {e}")
+            
             sys.exit(0)
         else:
             # Blocked - proceed to enforcement
