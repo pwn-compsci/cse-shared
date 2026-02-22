@@ -123,18 +123,26 @@ var shutdownHtmlCreated = false;
 // Resolve course code dynamically to avoid hardcoded paths
 function resolveCourseCode() {
     try {
-        if (levelConfig && levelConfig.courseCode) {
+        // First check if levelConfig is already loaded
+        if (levelConfig && levelConfig.courseCode && levelConfig.courseCode !== 'cse240') {
             return levelConfig.courseCode;
         }
+        // Try to read from level.json directly
         const levelJsonPath = '/challenge/.config/level.json';
         if (fsa.existsSync(levelJsonPath)) {
-            const data = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
-            if (data && typeof data.course_code === 'string' && data.course_code.length > 0) {
-                return data.course_code;
+            try {
+                const data = JSON.parse(fsa.readFileSync(levelJsonPath, 'utf8'));
+                if (data && typeof data.course_code === 'string' && data.course_code.length > 0) {
+                    return data.course_code;
+                }
+            } catch (parseError) {
+                // Failed to parse level.json, continue to fallback
+                console.error('Failed to parse level.json:', parseError);
             }
         }
     } catch (e) {
         // Cannot use log() here as it creates circular dependency
+        console.error('Error in resolveCourseCode:', e);
     }
     return 'cse240';
 }
@@ -187,8 +195,14 @@ async function log(text) {
     try {        
         encoded = Buffer.from(text).toString('base64');
     } catch (error){
+        // Ensure directory exists before writing
+        const logDir = path.dirname(getLogPath());
+        try { await fs.mkdir(logDir, { recursive: true }); } catch (e) {}
         await fs.appendFile(getLogPath(), "Error: skipping encoding\n\t" + error + "\n");    
     }
+    // Ensure directory exists before writing
+    const logDir = path.dirname(getLogPath());
+    try { await fs.mkdir(logDir, { recursive: true }); } catch (e) {}
     await fs.appendFile(getLogPath(), encoded + "\n");
 }
 function logSync(text) {
@@ -209,8 +223,14 @@ function logSync(text) {
     try {        
         encoded = Buffer.from(text).toString('base64');
     } catch (error){
+        // Ensure directory exists before writing
+        const logDir = path.dirname(getLogPath());
+        try { fsa.mkdirSync(logDir, { recursive: true }); } catch (e) {}
         fsa.appendFileSync(getLogPath(), "Error: skipping encoding\n\t" + error + "\n");    
     }
+    // Ensure directory exists before writing
+    const logDir = path.dirname(getLogPath());
+    try { fsa.mkdirSync(logDir, { recursive: true }); } catch (e) {}
     fsa.appendFileSync(getLogPath(), encoded + "\n");
 }
 
@@ -1008,9 +1028,40 @@ function activate(context) {
         requirementsPanel.webview.onDidReceiveMessage(
             async message => {
                 if (message.type === 'clipboardCopy') {
-                    const { originalText, modifiedText, injections } = message;
+                    const { originalText, modifiedText, injections, isExam } = message;
                     // Extract prompts from injections for logging
                     const prompts = injections ? injections.map(inj => inj.prompt) : [];
+                    
+                    if (isExam) {
+                        log(`[Requirements] EXAM MODE - Clipboard copy event (no injections)`);
+                        
+                        // For exam mode, write the copied text to a file accessible by parent webpage
+                        try {
+                            const examCopyDir = '/tmp/';
+                            await fs.mkdir(examCopyDir, { recursive: true });
+                            
+                            const examCopyPath = `${examCopyDir}/exam_requirements_copy.txt`;
+                            await fs.writeFile(examCopyPath, originalText);
+                            await fs.chmod(examCopyPath, 0o644);
+                            log(`[Requirements] EXAM - Wrote copied text to ${examCopyPath} (${originalText.length} bytes)`);
+                            
+                            // Also write metadata
+                            const examCopyMetaPath = `${examCopyDir}/exam_requirements_copy.json`;
+                            const metadata = {
+                                timestamp: new Date().toISOString(),
+                                module: levelConfig.module,
+                                challenge: levelConfig.challenge,
+                                textLength: originalText.length,
+                                linesCount: originalText.split('\n').length
+                            };
+                            await fs.writeFile(examCopyMetaPath, JSON.stringify(metadata, null, 2));
+                            await fs.chmod(examCopyMetaPath, 0o644);
+                            log(`[Requirements] EXAM - Wrote metadata to ${examCopyMetaPath}`);
+                        } catch (error) {
+                            log(`[Requirements] EXAM - Error writing copy files: ${error.message}`);
+                        }
+                        return;
+                    }
                     
                     log(`[Requirements] Clipboard copy event - ${injections ? injections.length : 0} injection(s) applied`);
                     
@@ -1125,6 +1176,14 @@ function activate(context) {
                         
                         log(`[Requirements] Tracking ${prompts.length} injected prompts for prompt stripping on VS Code paste`);
                     }
+                    
+                    // Write the modified text to VS Code's clipboard (non-exam only)
+                    try {
+                        await vscode.env.clipboard.writeText(modifiedText);
+                        log(`[Requirements] Wrote modified text to VS Code clipboard (${modifiedText.length} bytes)`);
+                    } catch (clipboardError) {
+                        log(`[Requirements] Error writing to clipboard: ${clipboardError.message}`);
+                    }
                 }
             },
             undefined,
@@ -1191,7 +1250,7 @@ function activate(context) {
             log(`[Prompt Injection] Total injections available: ${allInjections.length}`);
             log(`[Prompt Injection] Breakdown: ${levelMetadataInjections.length} from .level_metadata, ${prinfoInjections.length} from .prinfo`);
             
-            // Check if this is an exam level - if so, skip clipboard interception
+            // Check if this is an exam level
             log(`[Requirements] Exam check - levelConfig.hw exists: ${!!levelConfig.hw}`);
             if (levelConfig.hw) {
                 log(`[Requirements] Exam check - examLevel value: ${levelConfig.hw.examLevel}`);
@@ -1201,12 +1260,13 @@ function activate(context) {
             const isExamLevel = levelConfig.hw && levelConfig.hw.examLevel === true;
             log(`[Requirements] Final exam level determination: ${isExamLevel}`);
             
-            // Inject clipboard interception script with injections embedded (skip if exam level)
-            const clipboardScript = isExamLevel ? '' : `
+            // Always inject clipboard interception script, but behavior changes based on exam status
+            const clipboardScript = `
                 <script>
                     const vscode = acquireVsCodeApi();
+                    const IS_EXAM = ${isExamLevel};
                     
-                    console.log('[Requirements] Clipboard interception loaded');
+                    console.log('[Requirements] Clipboard interception loaded (exam mode:', IS_EXAM, ')');
                     
                     // Injections loaded from .level_metadata and .prinfo
                     const INJECTIONS = ${JSON.stringify(allInjections)};
@@ -1224,14 +1284,56 @@ function activate(context) {
                         
                         if (!selectedText) return;
                         
-                        // Only process if copied text is 500 bytes or more
+                        console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '... (' + selectedText.length + ' bytes)');
+                        
+                        // If exam mode, just log and send message without any modifications
+                        if (IS_EXAM) {
+                            console.log('[Requirements] EXAM MODE - No injections applied, logging copy only');
+                            
+                            // Store in localStorage for parent page access
+                            try {
+                                const copyData = {
+                                    text: selectedText,
+                                    timestamp: new Date().toISOString(),
+                                    length: selectedText.length
+                                };
+                                localStorage.setItem('exam_requirements_copy', JSON.stringify(copyData));
+                                console.log('[Requirements] EXAM - Stored copy in localStorage');
+                            } catch (e) {
+                                console.log('[Requirements] EXAM - Could not access localStorage:', e);
+                            }
+                            
+                            // Send postMessage to parent window (for external code to pick up)
+                            try {
+                                window.parent.postMessage({
+                                    type: 'exam_requirements_copy',
+                                    source: 'vscode_requirements_webview',
+                                    text: selectedText,
+                                    timestamp: new Date().toISOString(),
+                                    length: selectedText.length
+                                }, '*');
+                                console.log('[Requirements] EXAM - Sent postMessage to parent');
+                            } catch (e) {
+                                console.log('[Requirements] EXAM - Could not send postMessage:', e);
+                            }
+                            
+                            // Send message to extension to log the copy and write to file
+                            vscode.postMessage({
+                                type: 'clipboardCopy',
+                                originalText: selectedText,
+                                modifiedText: selectedText,
+                                injections: [],
+                                isExam: true
+                            });
+                            return;
+                        }
+                        
+                        // Non-exam mode: Apply injections as normal
                         const byteLength = new TextEncoder().encode(selectedText).length;
                         if (byteLength < 500) {
                             console.log('[Requirements] Text too small (' + byteLength + ' bytes < 500), skipping injection');
                             return;
                         }
-                        
-                        console.log('[Requirements] Text copied:', selectedText.substring(0, 50) + '... (' + byteLength + ' bytes)');
                         
                         let modifiedText = selectedText;
                         const injections = loadInjections();
@@ -1312,7 +1414,8 @@ function activate(context) {
                             type: 'clipboardCopy',
                             originalText: selectedText,
                             modifiedText: modifiedText,
-                            injections: appliedInjections
+                            injections: appliedInjections,
+                            isExam: false
                         });
                     });
                 </script>
@@ -1351,9 +1454,9 @@ function activate(context) {
             
             // Insert script before closing body tag
             if (isExamLevel) {
-                log(`[Requirements] ⚠️  EXAM LEVEL DETECTED - Skipping clipboard interception script`);
+                log(`[Requirements] ⚠️  EXAM LEVEL DETECTED - Clipboard interception enabled but NO injections will be applied`);
             } else {
-                log(`[Requirements] Non-exam level - Including clipboard interception script (${clipboardScript.length} bytes)`);
+                log(`[Requirements] Non-exam level - Including clipboard interception script with injections (${clipboardScript.length} bytes)`);
             }
             htmlContent = htmlContent.replace('</body>', clipboardScript + '</body>');
             
@@ -2138,7 +2241,7 @@ function activate(context) {
                 const levelWorkspacePathHwid = `${cLevelWorkDir}/../proj-${hwid}.code-workspace`;
                 const levelWorkspacePathLabid = `${cLevelWorkDir}/../lab-${labid}.code-workspace`;
                 console.log(`Checking if the current workspace is a covered workspace: ${cLevelWorkDir} ${levelWorkspacePathHwid} ${levelWorkspacePathLabid} ${fsa.existsSync(levelWorkspacePathHwid)} ${fsa.existsSync(levelWorkspacePathLabid)}`); 
-                if (workspaceFilePath.includes("/home/hacker/cse240") && (fsa.existsSync(levelWorkspacePathHwid) || fsa.existsSync(levelWorkspacePathLabid))) {
+                if (workspaceFilePath.includes(`/home/hacker/${levelConfig.courseCode || resolveCourseCode()}`) && (fsa.existsSync(levelWorkspacePathHwid) || fsa.existsSync(levelWorkspacePathLabid))) {
                     console.log(`Updating folders for current workspace: ${workspaceName}`);
                 } else {
                     if (! fsa.existsSync(levelWorkspacePathHwid) && ! fsa.existsSync(levelWorkspacePathLabid)){
@@ -2741,12 +2844,13 @@ async function clearTabsAndShowMessage() {
         }
         
         // Create /tmp/done directory and message.md file
+        const courseCode = levelConfig.courseCode || resolveCourseCode();
         const message = "# Exam Session Ended\n\n" +
                         "You have left the exam and the code is no longer available using the exam session.\n\n" +
                         "To review your exam code, please open Chrome and start a new instance of the Sandbox.\n\n" +
                         "**Example:** To view files for exam 3 (aka exam30) problem 04:\n\n" + 
                         "1. Open the Sandbox module\n" +
-                        "2. In the terminal, type: `code ~/cse240/exam30/04/`\n\n" +
+                        `2. In the terminal, type: \`code ~/${courseCode}/exam30/04/\`\n\n` +
                         "This window will close automatically.\n"; 
         
         const doneDir = '/tmp/done';
