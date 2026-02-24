@@ -152,6 +152,14 @@ else
     echo "chosen_problem=$chosen_problem" >> /challenge/.config/chosen_problem.dat
     
     cp -a /challenge/problems/$chosen_problem/. /challenge/
+    if [ $? -eq 0 ]; then
+        echo "[e] Successfully copied problem files from /challenge/problems/$chosen_problem to /challenge" | tee -a $STARTUP_LOG
+    else
+        echo "[e] ERROR: Failed to copy problem files from /challenge/problems/$chosen_problem to /challenge" | tee -a $STARTUP_LOG
+        echo "[e] ERROR: Dumping /challenge directory contents:" | tee -a $STARTUP_LOG
+        ls -laR /challenge | tee -a $STARTUP_LOG
+        echo "[e] ERROR: End of /challenge directory dump" | tee -a $STARTUP_LOG
+    fi
 
     # Record module, level, and starttime to starts.log for .examsetup
     starttime=$(date '+%Y-%m-%d %H:%M:%S')
@@ -184,9 +192,13 @@ else
     echo python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a $STARTUP_LOG 2>&1
     
     python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a $STARTUP_LOG 2>&1
-
-    echo "[e] generated problem files" | tee -a $STARTUP_LOG
-
+    
+    if [ $? -eq 0 ]; then
+        echo "[e] problem_generator.py completed successfully" | tee -a $STARTUP_LOG
+    else
+        echo -e "\033[31m[e] ERROR: problem_generator.py failed\033[0m" | tee -a $STARTUP_LOG
+    fi
+   
     # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a $STARTUP_LOG
@@ -215,11 +227,17 @@ echo "[e] creating clevel_work_dir = $clevel_work_dir in .examsetup" | tee -a $S
 mkdir -p $clevel_work_dir
 if [ -d /challenge/template ]; then 
     echo "[e] Copying template files to $clevel_work_dir from /challenge/template " | tee -a $STARTUP_LOG
+    echo "[e] Listing /challenge/template contents:" | tee -a $STARTUP_LOG
+    ls -la /challenge/template | tee -a $STARTUP_LOG
+    echo "******************************************************" | tee -a $STARTUP_LOG
     cp -a /challenge/template/* $clevel_work_dir
+    echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
     chown hacker:hacker -R $clevel_work_dir
 fi 
 if [ "$admin_access" = true ]; then
     if [ -d /challenge/model ]; then
+        mkdir -p $clevel_work_dir/template 
+        cp -a /challenge/template/. $clevel_work_dir/template/ || true
         cp -a /challenge/model/* $clevel_work_dir
         chown hacker:hacker -R $clevel_work_dir
     fi
@@ -304,10 +322,10 @@ echo "[e] Completed code-server" | tee -a $STARTUP_LOG
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" | tee -a $STARTUP_LOG
 
 count=0 
-max_attempts=20
+max_attempts=10
 
 while [ $count -lt $max_attempts ]; do
-    /bin/curl --max-time 1 -fs localhost:8080/ >> $STARTUP_LOG 2>&1
+    /bin/curl --max-time 1 -fs -w "HTTP Status: %{http_code}\n" localhost:8080/ >> $STARTUP_LOG 2>&1
     res=$?
     if [ $res -eq 0 ]; then
         echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') Service on port 8080 is ready" | tee -a $STARTUP_LOG
@@ -315,8 +333,8 @@ while [ $count -lt $max_attempts ]; do
     fi
     echo "Exit code: $res" | tee -a $STARTUP_LOG
     echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting (attempt $((count+1))/$max_attempts)" | tee -a $STARTUP_LOG
-
     ((count++))
+    sleep 1
 done
 
 if [ $count -ge $max_attempts ]; then
