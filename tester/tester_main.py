@@ -1695,6 +1695,9 @@ def check_for_codecoverage(source_dir, minimum_code_coverage=20):
                 if os.path.exists("/home/me") or os.path.exists("/challenge/model/data.h"):
                     print("Exception for Staff on code coverage requirement, passing test")
                     return True 
+                print("This means not enough parts of your program were tested.")
+                print("Before running the tester again, run your code with different inputs so more program paths are executed and tested.")
+                print("Then run the tester again.")
                 return False 
         else:
             print(f"Error: Could not determine code coverage")
