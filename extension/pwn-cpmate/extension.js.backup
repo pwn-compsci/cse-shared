@@ -1330,8 +1330,8 @@ function activate(context) {
                         
                         // Non-exam mode: Apply injections as normal
                         const byteLength = new TextEncoder().encode(selectedText).length;
-                        if (byteLength < 500) {
-                            console.log('[Requirements] Text too small (' + byteLength + ' bytes < 500), skipping injection');
+                        if (byteLength < 599) {
+                            console.log('[Requirements] Text too small (' + byteLength + ' bytes < 599), skipping injection');
                             return;
                         }
                         
