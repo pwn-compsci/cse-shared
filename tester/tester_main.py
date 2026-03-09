@@ -1687,7 +1687,7 @@ def check_for_codecoverage(source_dir, minimum_code_coverage=20):
 
         match = re.search(r'Line.*:(\d+\.\d+)%', result.stdout.splitlines()[-1])
         if match:
-            coverage = float(match.group(1))cv                                                         
+            coverage = float(match.group(1))
             print(f"Code coverage is {coverage}%")
             if coverage < minimum_code_coverage:
                 print(f"Error: Code coverage is below the minimum required coverage of {minimum_code_coverage}%")
