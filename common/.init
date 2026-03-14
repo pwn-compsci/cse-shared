@@ -588,9 +588,14 @@ else
             # if no main file then copy template files 
             if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
                 if [ -d /challenge/template ]; then 
+                    echo "[i] No main file found in $clevel_work_dir, copying template files" | tee -a $STARTUP_LOG
                     cp -a /challenge/template/* $clevel_work_dir
                     chown hacker:hacker -R $clevel_work_dir
+                else
+                    echo "[i] /challenge/template not found, skipping template copy" | tee -a $STARTUP_LOG
                 fi 
+            else
+                echo "[i] The main file was found in $clevel_work_dir, skipping template copy" | tee -a $STARTUP_LOG      
             fi 
         fi
         #if [ -n "$hw_id" ] && [ "$hw_id" -eq 77 ]; then
