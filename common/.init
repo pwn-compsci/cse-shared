@@ -36,6 +36,11 @@ if [ -f /home/hacker/core ]; then
     fi
 fi
 
+nohup bash -c '
+  [ -f ~/cse240/.vscode/trdb.db ] &&
+  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((500*1024*1024)) ] &&
+  rm -f ~/cse240/.vscode/trdb.db ~/cse240/.vscode/trdb.db-journal ' | tee -a $STARTUP_LOG 2>&1 
+
 # Delete all core files in /home/hacker/cse240
 if find /home/hacker/cse240 -name 'core' -type f -print -quit | grep -q .; then
     echo "[i] Removing core files from /home/hacker/cse240" | tee -a $STARTUP_LOG

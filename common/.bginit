@@ -200,11 +200,5 @@ if [ ! -d /home/me ] ; then
          > /.student &            
 fi
 
-nohup bash -c '
-  [ -f ~/cse240/.vscode/trdb.db ] &&
-  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((500*1024*1024)) ] &&
-  rm -f ~/cse240/.vscode/trdb.db && "
-' >/dev/null 2>&1 &
-
 echo "Finished .bginit at $(date) in pid=$$" | tee -a $STARTUP_LOG
 
