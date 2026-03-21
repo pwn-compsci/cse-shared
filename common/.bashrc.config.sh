@@ -40,7 +40,8 @@ function save_compile(){
     local level_id=$(jq -r 'if .level == null then "" else .level end' /challenge/.config/level.json)
     local clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    local outcome_text=$(cat "$clevel_work_dir/compile.log" | sed "s/'/''/g")
+    # Store the entire compile.log (which now only contains the current compilation since we truncate on each run)
+    local outcome_text=$(cat "$clevel_work_dir/compile.log" 2>/dev/null | sed "s/'/''/g")
 
     sqlite3 /home/hacker/cse240/.vscode/trdb.db <<EOF
     CREATE TABLE IF NOT EXISTS compilations (
@@ -126,9 +127,8 @@ if [ -d $clevel_work_dir ]; then
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        # Log original command
-        echo "" >> "$clevel_work_dir/compile.log"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: gcc $*" >> "$clevel_work_dir/compile.log"
+        # Log original command (truncate log file to start fresh each compilation)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: gcc $*" > "$clevel_work_dir/compile.log"
         
         # If code coverage is enabled, check if we need to split compile and link
         if [ "$codecoverage" -gt 0 ]; then
@@ -231,9 +231,8 @@ if [ -d $clevel_work_dir ]; then
         
         local all_flags="$base_flags $strict_flags $profile_flags"
         
-        # Log original command
-        echo "" >> "$clevel_work_dir/compile.log"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: g++ $*" >> "$clevel_work_dir/compile.log"
+        # Log original command (truncate log file to start fresh each compilation)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Original: g++ $*" > "$clevel_work_dir/compile.log"
         
         # If code coverage is enabled, check if we need to split compile and link
         if [ "$codecoverage" -gt 0 ]; then
@@ -314,9 +313,8 @@ if [ -d $clevel_work_dir ]; then
         return $rc
     }
     make() {
-        # Log make command with timestamp (append mode)
-        echo "" >> "$clevel_work_dir/compile.log"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: make $*" >> "$clevel_work_dir/compile.log"
+        # Log make command with timestamp (truncate log file to start fresh each compilation)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: make $*" > "$clevel_work_dir/compile.log"
         
         # Check level.json for compilation flags
         local limited_gcc_flags=$(jq -r 'if .limited_gcc_flags == true then "true" else "false" end' /challenge/.config/level.json 2>/dev/null || echo "false")

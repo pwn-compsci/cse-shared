@@ -38,7 +38,7 @@ fi
 
 nohup bash -c '
   [ -f ~/cse240/.vscode/trdb.db ] &&
-  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((500*1024*1024)) ] &&
+  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((750*1024*1024)) ] &&
   rm -f ~/cse240/.vscode/trdb.db ~/cse240/.vscode/trdb.db-journal ' | tee -a $STARTUP_LOG 2>&1 
 
 # Delete all core files in /home/hacker/cse240
