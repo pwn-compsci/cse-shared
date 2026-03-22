@@ -19,6 +19,10 @@ chmod 644 /tmp/.startup_log_path
 rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
 
+# Clean up any leftover database backup and journal files to prevent disk space issues
+rm -f /home/hacker/cse240/.vscode/trdb.db.backup_* 2>/dev/null || true
+rm -f /home/hacker/cse240/.vscode/trdb.db-journal 2>/dev/null || true
+
 start_time=$(date +%s)
 if [[ ! -f $STARTUP_LOG ]]; then 
     echo "first time" | tee -a $STARTUP_LOG

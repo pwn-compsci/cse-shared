@@ -419,9 +419,7 @@ if [ -d $clevel_work_dir ]; then
         fi
         if [[ "$clevel_work_dir" != *cse240/exam* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]] && [[ "$clevel_work_dir" != *cse240/pex* ]]; then
             if grep -q '^LAST_LOADED_DIR=' "$ENVFILE"; then
-                printf "before: sed command\n"
                 sed -i 's#^LAST_LOADED_DIR=.*#LAST_LOADED_DIR='$clevel_work_dir'#' "$ENVFILE"
-                printf "after: sed command\n"
             else
                 echo 'LAST_LOADED_DIR='$clevel_work_dir >> "$ENVFILE"
             fi

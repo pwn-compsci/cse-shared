@@ -52,11 +52,13 @@ if [ ! -d /home/me ]; then
         if [ "$DB_SIZE" -gt "$MAX_DB_SIZE" ]; then
             echo "Database exceeds 50MB ($DB_SIZE KB), truncating large compilation outcomes..." | tee -a "$STARTUP_LOG"
             
-            # Create backup before modifying
-            cp "$TRDB_PATH" "${TRDB_PATH}.backup_$(date +%Y%m%d)" 2>/dev/null || true
+            # Remove any old backup files to free up space
+            rm -f "${TRDB_PATH}.backup_"* 2>/dev/null || true
             
             # Truncate large outcome fields and vacuum to reclaim space
+            # Use PRAGMA journal_mode=MEMORY to avoid creating large journal files on disk
             sqlite3 "$TRDB_PATH" <<'EOSQL' 2>/dev/null || true
+PRAGMA journal_mode=MEMORY;
 UPDATE compilations 
 SET outcome = '...[truncated]...' || substr(outcome, -2000) 
 WHERE length(outcome) > 2000;
