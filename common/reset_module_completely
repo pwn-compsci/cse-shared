@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+
+"""
+Reset Module Completely Script
+
+This script resets a module by:
+1. Asking for user verification
+2. Reading the current module from /challenge/.config/level.json
+3. Renaming the module directory under ~/cse240 to old_<module_name>
+4. Finding all VS Code history folders with that module and renaming them to old_<folder>
+5. Instructing user to restart the container
+
+Usage: ./reset_module_completely
+"""
+
+import json
+import os
+import sys
+import shutil
+from pathlib import Path
+
+# Configuration
+LEVEL_CONFIG = "/challenge/.config/level.json"
+CSE240_DIR = os.path.expanduser("~/cse240")
+HISTORY_DIR = os.path.expanduser("~/.local/share/code-server/User/History")
+
+# Colors for output
+RED = '\033[0;31m'
+YELLOW = '\033[1;33m'
+GREEN = '\033[0;32m'
+BLUE = '\033[0;34m'
+NC = '\033[0m'  # No Color
+
+
+def print_warning(message):
+    """Print warning message in yellow"""
+    print(f"{YELLOW}{message}{NC}")
+
+
+def print_error(message):
+    """Print error message in red"""
+    print(f"{RED}{message}{NC}", file=sys.stderr)
+
+
+def print_success(message):
+    """Print success message in green"""
+    print(f"{GREEN}{message}{NC}")
+
+
+def print_info(message):
+    """Print info message in blue"""
+    print(f"{BLUE}{message}{NC}")
+
+
+def ask_verification():
+    """Ask user for verification before proceeding"""
+    print_warning("\n" + "=" * 70)
+    print_warning("WARNING: This will reset your module completely!")
+    print_warning("=" * 70)
+    print_warning("\nThis script will:")
+    print_warning("  1. Rename your module directory to old_<module_name>")
+    print_warning("  2. Rename all VS Code history for this module")
+    print_warning("  3. Require a container restart")
+    print_warning("\nYour old files will still exist with 'old_' prefix")
+    print_warning("but will not be visible in VS Code history.\n")
+    
+    response = input(f"{RED}Are you ABSOLUTELY SURE you want to proceed? (type 'YES' to confirm): {NC}")
+    
+    if response.strip() != "YES":
+        print_info("\nReset cancelled. No changes were made.")
+        sys.exit(0)
+    
+    # Double confirmation
+    print_warning("\nLast chance to cancel...")
+    response2 = input(f"{RED}Type 'RESET' to confirm: {NC}")
+    
+    if response2.strip() != "RESET":
+        print_info("\nReset cancelled. No changes were made.")
+        sys.exit(0)
+    
+    print_success("\nProceeding with reset...\n")
+
+
+def get_current_module():
+    """Get the current module from level.json"""
+    try:
+        if not os.path.exists(LEVEL_CONFIG):
+            print_error(f"Error: {LEVEL_CONFIG} not found")
+            return None
+        
+        with open(LEVEL_CONFIG, 'r') as f:
+            level_data = json.load(f)
+        
+        module = level_data.get('module', '')
+        if not module:
+            # Fallback to 'hw' if module is empty
+            module = level_data.get('hw', '')
+        
+        if not module:
+            print_error("Error: No module found in level.json")
+            return None
+        
+        print_info(f"Current module: {module}")
+        return module
+    
+    except Exception as e:
+        print_error(f"Error reading {LEVEL_CONFIG}: {e}")
+        return None
+
+
+def rename_module_directory(module):
+    """Find and rename the module directory under ~/cse240"""
+    try:
+        if not os.path.exists(CSE240_DIR):
+            print_warning(f"Warning: {CSE240_DIR} does not exist. Skipping module directory rename.")
+            return
+        
+        # Find directories that contain the module name
+        found_dirs = []
+        for item in os.listdir(CSE240_DIR):
+            item_path = os.path.join(CSE240_DIR, item)
+            if os.path.isdir(item_path) and module in item:
+                found_dirs.append(item)
+        
+        if not found_dirs:
+            print_warning(f"Warning: No directories found under {CSE240_DIR} containing '{module}'")
+            return
+        
+        # Rename each found directory
+        for dir_name in found_dirs:
+            old_path = os.path.join(CSE240_DIR, dir_name)
+            new_name = f"old_{dir_name}"
+            new_path = os.path.join(CSE240_DIR, new_name)
+            
+            # Handle case where old_ directory already exists
+            if os.path.exists(new_path):
+                import time
+                timestamp = int(time.time())
+                new_name = f"old_{dir_name}_{timestamp}"
+                new_path = os.path.join(CSE240_DIR, new_name)
+            
+            try:
+                os.rename(old_path, new_path)
+                print_success(f"✓ Renamed: {dir_name} → {new_name}")
+            except Exception as e:
+                print_error(f"✗ Failed to rename {dir_name}: {e}")
+    
+    except Exception as e:
+        print_error(f"Error processing module directories: {e}")
+
+
+def rename_history_folders(module):
+    """Find and rename VS Code history folders containing the module"""
+    try:
+        if not os.path.exists(HISTORY_DIR):
+            print_warning(f"Warning: {HISTORY_DIR} does not exist. Skipping history rename.")
+            return
+        
+        renamed_count = 0
+        
+        # Walk through all history directories
+        for folder_name in os.listdir(HISTORY_DIR):
+            folder_path = os.path.join(HISTORY_DIR, folder_name)
+            
+            if not os.path.isdir(folder_path):
+                continue
+            
+            entries_file = os.path.join(folder_path, 'entries.json')
+            
+            if not os.path.exists(entries_file):
+                continue
+            
+            try:
+                # Read entries.json
+                with open(entries_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Check if module appears in any resource field
+                has_module = False
+                
+                if isinstance(data, dict):
+                    # Single entry format
+                    resource = data.get('resource', '')
+                    if module in resource:
+                        has_module = True
+                elif isinstance(data, list):
+                    # Multiple entries format
+                    for entry in data:
+                        if isinstance(entry, dict):
+                            resource = entry.get('resource', '')
+                            if module in resource:
+                                has_module = True
+                                break
+                
+                # Rename the folder if it contains the module
+                if has_module:
+                    new_folder_name = f"old_{folder_name}"
+                    new_folder_path = os.path.join(HISTORY_DIR, new_folder_name)
+                    
+                    # Handle case where old_ folder already exists
+                    if os.path.exists(new_folder_path):
+                        import time
+                        timestamp = int(time.time())
+                        new_folder_name = f"old_{folder_name}_{timestamp}"
+                        new_folder_path = os.path.join(HISTORY_DIR, new_folder_name)
+                    
+                    os.rename(folder_path, new_folder_path)
+                    renamed_count += 1
+                    print_success(f"✓ Renamed history: {folder_name[:16]}... → {new_folder_name[:20]}...")
+            
+            except Exception as e:
+                # Silently skip files we can't process
+                continue
+        
+        if renamed_count > 0:
+            print_success(f"\n✓ Renamed {renamed_count} history folder(s)")
+        else:
+            print_warning("No history folders found containing this module")
+    
+    except Exception as e:
+        print_error(f"Error processing history folders: {e}")
+
+
+def main():
+    """Main execution function"""
+    print_info("\n" + "=" * 70)
+    print_info("  Module Reset Script")
+    print_info("=" * 70 + "\n")
+    
+    # Step 1: Ask for verification
+    ask_verification()
+    
+    # Step 2: Get current module
+    module = get_current_module()
+    if not module:
+        print_error("\nFailed to determine current module. Exiting.")
+        sys.exit(1)
+    
+    print()
+    
+    # Step 3: Rename module directory
+    print_info("Renaming module directory...")
+    rename_module_directory(module)
+    print()
+    
+    # Step 4: Rename history folders
+    print_info("Renaming VS Code history folders...")
+    rename_history_folders(module)
+    print()
+    
+    # Step 5: Instructions for restart
+    print_success("=" * 70)
+    print_success("  Reset Complete!")
+    print_success("=" * 70)
+    print_warning("\nIMPORTANT: You must now restart the container!")
+    print_warning("\nTo restart the container:")
+    print_warning("  → Click the circular arrow icon (↻) on the bottom right")
+    print_warning("     below the VS Code interface")
+    print_warning("\nOr use the command: docker restart <container_name>")
+    print_warning("\nThe container must restart for changes to take effect.\n")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print_info("\n\nReset cancelled by user. No further changes made.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"\nUnexpected error: {e}")
+        sys.exit(1)
