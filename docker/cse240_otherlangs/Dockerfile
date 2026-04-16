@@ -6,8 +6,8 @@ ENV LC_CTYPE=C.UTF-8
 
 RUN mkdir -p /run/challenge/share/code/extensions
 
-COPY ../pwn-cpmate-0.0.2.vsix /run/challenge/share/code/extensions
-COPY ../AmauryRabouan.new-vsc-prolog-1.1.12.vsix /run/challenge/share/code/extensions
+COPY ./pwn-cpmate-0.0.2.vsix /run/challenge/share/code/extensions
+COPY ./AmauryRabouan.new-vsc-prolog-1.1.12.vsix /run/challenge/share/code/extensions
 
 # Install code-server
 RUN curl -fsSL https://code-server.dev/install.sh | bash

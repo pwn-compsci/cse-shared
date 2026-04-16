@@ -294,6 +294,7 @@ if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_
 fi
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
+echo "206.206.192.179   git.cse240.com" >> /etc/hosts 
 
 ##### Create /opt/.ring for api access
 printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
