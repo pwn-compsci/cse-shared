@@ -46,7 +46,18 @@ class TeeOutput:
         self.log_file = log_file
         
     def write(self, text):
-        self.original_stream.write(text)
+        try:
+            self.original_stream.write(text)
+            self.original_stream.flush()
+        except:
+            # If writing to original stream fails, try writing directly to /dev/tty
+            try:
+                with open('/dev/tty', 'w') as tty:
+                    tty.write(text)
+                    tty.flush()
+            except:
+                pass
+        
         if self.log_file and not self.log_file.closed:
             try:
                 # Strip ANSI color codes for the log file
@@ -58,7 +69,10 @@ class TeeOutput:
                 pass  # Don't let log writing errors break the program
                 
     def flush(self):
-        self.original_stream.flush()
+        try:
+            self.original_stream.flush()
+        except:
+            pass
         if self.log_file and not self.log_file.closed:
             try:
                 self.log_file.flush()

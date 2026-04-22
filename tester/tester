@@ -9,7 +9,11 @@ import argparse
 import os
 import sys
 
+# Add the directory containing this script to the path first, then /challenge/bin
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
 sys.path.append("/challenge/bin")
+
 from tester_main import run_tests
 from tester_db import init_db
 
