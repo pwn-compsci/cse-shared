@@ -44,8 +44,7 @@ fi
 
 while [ $attempts -lt $max_attempts ]; do
   echo "[c] Attempting to start code server." >> $STARTUP_LOG
-  cmd=$(printf "
-    # landrun 
+  # landrun 
     #   --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
     #   --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
     #   --rwx /proc
@@ -61,6 +60,7 @@ while [ $attempts -lt $max_attempts ]; do
     #   --rwx /run/dojo/var 
     ##   --  
     # /run/dojo/bin/dojo-service start code-service/code-server
+  cmd=$(printf "
     /run/dojo/bin/code-server
           --auth=none 
           --bind-addr=127.0.0.1:4200 
