@@ -81,7 +81,12 @@ while [ $attempts -lt $max_attempts ]; do
     source ~/.profile >/dev/null 2>&1 || true
     source ~/.bashrc >/dev/null 2>&1 || true
     cd '$clevel_work_dir' || exit 1
-    $cmd 2>&1 
+    if command -v nohup >/dev/null 2>&1; then
+      nohup $cmd >/dev/null 2>&1 &
+    else
+      $cmd >/dev/null 2>&1 &
+    fi
+    echo "[c] Started code-server launch command in background (pid=$!)" >> "$STARTUP_LOG"
   ")
   res=$?
   
