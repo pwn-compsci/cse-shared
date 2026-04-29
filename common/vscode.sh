@@ -75,7 +75,14 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
-  output=$(su - hacker -c "$cmd ")
+  output=$(su - hacker -s /bin/bash -c "
+    set -o pipefail
+    source /etc/profile >/dev/null 2>&1 || true
+    source ~/.profile >/dev/null 2>&1 || true
+    source ~/.bashrc >/dev/null 2>&1 || true
+    cd '$clevel_work_dir' || exit 1
+    $cmd 2>&1 
+  ")
   res=$?
   
   cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
