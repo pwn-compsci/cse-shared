@@ -41,7 +41,11 @@ if ps -ef | grep -q "/code-server/"; then
     pkill -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.log 
 fi
-# landrun 
+
+while [ $attempts -lt $max_attempts ]; do
+  echo "[c] Attempting to start code server." >> $STARTUP_LOG
+  cmd=$(printf "
+    # landrun 
     #   --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
     #   --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
     #   --rwx /proc
@@ -56,9 +60,6 @@ fi
     #   --rwx /tmp 
     #   --rwx /run/dojo/var 
     ##   --  
-while [ $attempts -lt $max_attempts ]; do
-  echo "[c] Attempting to start code server." >> $STARTUP_LOG
-  cmd=$(printf " 
     /run/dojo/bin/dojo-service start code-service/code-server
           /run/dojo/bin/code-server
           --auth=none 
@@ -74,14 +75,7 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
-  output=$(su - hacker -s /bin/bash -c "
-    set -o pipefail
-    source /etc/profile >/dev/null 2>&1 || true
-    source ~/.profile >/dev/null 2>&1 || true
-    source ~/.bashrc >/dev/null 2>&1 || true
-    cd '$clevel_work_dir' || exit 1
-    $cmd 2>&1 | tee -a /tmp/vscode.log
-  ")
+  output=$(su - hacker -c "$cmd ")
   res=$?
   
   cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
