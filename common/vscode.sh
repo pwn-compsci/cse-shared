@@ -86,7 +86,7 @@ while [ $attempts -lt $max_attempts ]; do
     else
       $cmd >/dev/null 2>&1 &
     fi
-    echo "[c] Started code-server launch command in background (pid=$!)" >> "$STARTUP_LOG"
+    echo \"[c] Started code-server launch command in background (pid=$!)\" >> '$STARTUP_LOG'
   ")
   res=$?
   
