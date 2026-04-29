@@ -94,7 +94,7 @@ while [ $attempts -lt $max_attempts ]; do
     attempts=$((attempts + 1))
     pkill -9 -f "/code-server/" || true
     
-    for i in {1..10}; do
+    for i in {1..20}; do
       if ! pgrep -f "/code-server/" > /dev/null; then
         echo "[c] code-server process no longer running after $i seconds." >> $STARTUP_LOG
         break
