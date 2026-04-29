@@ -60,8 +60,8 @@ while [ $attempts -lt $max_attempts ]; do
     #   --rwx /tmp 
     #   --rwx /run/dojo/var 
     ##   --  
-    /run/dojo/bin/dojo-service start code-service/code-server
-          /run/dojo/bin/code-server
+    # /run/dojo/bin/dojo-service start code-service/code-server
+    /run/dojo/bin/code-server
           --auth=none 
           --bind-addr=127.0.0.1:4200 
           --trusted-origins='*' 
