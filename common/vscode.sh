@@ -41,11 +41,7 @@ if ps -ef | grep -q "/code-server/"; then
     pkill -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.log 
 fi
-
-while [ $attempts -lt $max_attempts ]; do
-  echo "[c] Attempting to start code server." >> $STARTUP_LOG
-  cmd=$(printf "
-    # landrun 
+# landrun 
     #   --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
     #   --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
     #   --rwx /proc
@@ -60,6 +56,9 @@ while [ $attempts -lt $max_attempts ]; do
     #   --rwx /tmp 
     #   --rwx /run/dojo/var 
     ##   --  
+while [ $attempts -lt $max_attempts ]; do
+  echo "[c] Attempting to start code server." >> $STARTUP_LOG
+  cmd=$(printf " 
     /run/dojo/bin/dojo-service start code-service/code-server
           /run/dojo/bin/code-server
           --auth=none 
