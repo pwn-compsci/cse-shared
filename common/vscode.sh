@@ -74,20 +74,21 @@ while [ $attempts -lt $max_attempts ]; do
   echo "[c] Running command:" >> $STARTUP_LOG
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
-  
-  output=$(su - hacker -s /bin/bash -c "
-    set -o pipefail
-    source /etc/profile >/dev/null 2>&1 || true
-    source ~/.profile >/dev/null 2>&1 || true
-    source ~/.bashrc >/dev/null 2>&1 || true
-    cd '$clevel_work_dir' || exit 1
-    if command -v nohup >/dev/null 2>&1; then
-      nohup $cmd >/dev/null 2>&1 &
-    else
-      $cmd >/dev/null 2>&1 &
-    fi
-    echo \"[c] Started code-server launch command in background (pid=$!)\" >> '$STARTUP_LOG'
-  ")
+  echo "VER 1.0" >> $STARTUP_LOG
+  output=$(su - hacker -c "%cmd | tee /tmp/vscode.log 2>&1" )
+  # output=$(su - hacker -s /bin/bash -c "
+  #   set -o pipefail
+  #   source /etc/profile >/dev/null 2>&1 || true
+  #   source ~/.profile >/dev/null 2>&1 || true
+  #   source ~/.bashrc >/dev/null 2>&1 || true
+  #   cd '$clevel_work_dir' || exit 1
+  #   if command -v nohup >/dev/null 2>&1; then
+  #     nohup $cmd >/dev/null 2>&1 &
+  #   else
+  #     $cmd >/dev/null 2>&1 &
+  #   fi
+  #   echo \"[c] Started code-server launch command in background (pid=$!)\" >> '$STARTUP_LOG'
+  # ")
   res=$?
   
   cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
