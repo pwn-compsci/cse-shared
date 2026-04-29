@@ -14,6 +14,7 @@ FROM ubuntu:24.04 AS essentials
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_CTYPE=C.UTF-8
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -47,7 +48,7 @@ RUN <<EOF
     --disable-telemetry \
     --extensions-dir=/run/challenge/share/code/extensions \
     --install-extension /run/challenge/share/code/extensions/cpptools-linux.vsix \
-    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix
+    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix \
     --install-extension evzen-wybitul.magic-racket \
     --install-extension /run/challenge/share/code/extensions/AmauryRabouan.new-vsc-prolog-1.1.12.vsix
 EOF
@@ -96,7 +97,10 @@ EOF
 # Run unminimize immediately after package installation
 RUN printf 'y\n' | /usr/local/sbin/unminimize || printf 'y\n' | unminimize || true
 
-RUN pip install fastecdsa
+RUN for i in 1 2 3; do \
+            python3 -m pip install --no-cache-dir --prefer-binary "fastecdsa>=2.3.2,<3" && break || \
+            ( [ "$i" -eq 3 ] && exit 1 || echo "Retrying fastecdsa install ($i/3) ..." ); \
+        done
 
 ################################################################################
 
@@ -186,7 +190,7 @@ RUN mkdir -p /challenge/bin
 ################################################################################
 
 RUN mkdir -p /run/challenge/share/code/extensions
-COPY --link --from=vscoder /run/challenge/share/code/extensions /run/challenge/share/code/extensions
+COPY --from=vscoder /run/challenge/share/code/extensions /run/challenge/share/code/extensions
 
 # COPYING exec-suid from pwncollege docker image
 ADD --chown=0:0 --chmod=6755 http://github.com/pwncollege/exec-suid/releases/latest/download/exec-suid /usr/bin/exec-suid
@@ -275,7 +279,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v94 && touch "/cse240_v94/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v98 && touch "/cse240_v98/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final
