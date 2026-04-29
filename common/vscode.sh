@@ -59,7 +59,7 @@ while [ $attempts -lt $max_attempts ]; do
     #   --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
     #   --rwx /tmp 
     #   --rwx /run/dojo/var 
-    #   -- 
+    ##   --  
     /run/dojo/bin/dojo-service start code-service/code-server
           /run/dojo/bin/code-server
           --auth=none 
