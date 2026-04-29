@@ -116,7 +116,7 @@ while [ $attempts -lt $max_attempts ]; do
   sleep .3
 
   success=0
-  for i in {1..5}; do
+  for i in {1..20}; do
     if pgrep -f "/code-server/" > /dev/null; then
       echo "[c] code-server process detected after $i attempt(s)." >> $STARTUP_LOG
       success=1
@@ -125,7 +125,7 @@ while [ $attempts -lt $max_attempts ]; do
     echo "[c] Waiting for code-server process... ($i/5)" >> $STARTUP_LOG
     sleep 1
   done
-
+ 
   if [ $res -eq 0 ] && [ $success -eq 1 ]; then
     echo "[c] landrun and code-server command returned 0 and process is running." >> $STARTUP_LOG
     break
@@ -141,7 +141,7 @@ done # end of while loop
 if pgrep -f "/code-server/"; then
   echo "[c] Waiting for code-server to start..." >> $STARTUP_LOG
 
-  for i in {1..10}; do
+  for i in {1..20}; do
     if /run/dojo/bin/curl -s localhost:4200 >/dev/null; then
       echo "[c] code-server responded on port 4200 after $i attempt(s)." >> $STARTUP_LOG
       echo "[c] Code-server is up and running with user data dir: $code_server_data_dir and extensions dir: $EXTENSIONS_DIR" >> $STARTUP_LOG
