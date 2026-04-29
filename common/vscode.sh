@@ -44,24 +44,23 @@ fi
 
 while [ $attempts -lt $max_attempts ]; do
   echo "[c] Attempting to start code server." >> $STARTUP_LOG
-  # landrun 
-    #   --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
-    #   --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
-    #   --rwx /proc
-    #   --rox /challenge,/.admin_access
-    #   --rw /run/landrun-cmd.fifo 
-    #   --ro  $coder_workspace_file,/.user_info
-    #   --rw /home/hacker/.cache,/home/hacker/.local/
-    #   --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
-    #   --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env,/home/hacker/.profile,/etc/bash.bashrc,/home/hacker/.bash_history
-    #   --rwx $clevel_work_dir
-    #   --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
-    #   --rwx /tmp 
-    #   --rwx /run/dojo/var 
-    ##   --  
-    # /run/dojo/bin/dojo-service start code-service/code-server
   cmd=$(printf "
-    /run/dojo/bin/code-server
+    landrun 
+      --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
+      --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
+      --rwx /proc
+      --rox /challenge,/.admin_access
+      --rw /run/landrun-cmd.fifo 
+      --ro  $coder_workspace_file,/.user_info
+      --rw /home/hacker/.cache,/home/hacker/.local/
+      --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
+      --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env,/home/hacker/.profile,/etc/bash.bashrc,/home/hacker/.bash_history
+      --rwx $clevel_work_dir
+      --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
+      --rwx /tmp 
+      --rwx /run/dojo/var 
+      -- /run/dojo/bin/dojo-service start code-service/code-server
+          /run/dojo/bin/code-server
           --auth=none 
           --bind-addr=127.0.0.1:4200 
           --trusted-origins='*' 
@@ -74,21 +73,8 @@ while [ $attempts -lt $max_attempts ]; do
   echo "[c] Running command:" >> $STARTUP_LOG
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
-  echo "VER 1.0" >> $STARTUP_LOG
-  output=$(su - hacker -c "%cmd | tee /tmp/vscode.log 2>&1" )
-  # output=$(su - hacker -s /bin/bash -c "
-  #   set -o pipefail
-  #   source /etc/profile >/dev/null 2>&1 || true
-  #   source ~/.profile >/dev/null 2>&1 || true
-  #   source ~/.bashrc >/dev/null 2>&1 || true
-  #   cd '$clevel_work_dir' || exit 1
-  #   if command -v nohup >/dev/null 2>&1; then
-  #     nohup $cmd >/dev/null 2>&1 &
-  #   else
-  #     $cmd >/dev/null 2>&1 &
-  #   fi
-  #   echo \"[c] Started code-server launch command in background (pid=$!)\" >> '$STARTUP_LOG'
-  # ")
+  
+  output=$(su - hacker -c "$cmd | tee -a /tmp/vscode.log 2>&1")
   res=$?
   
   cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
@@ -108,12 +94,12 @@ while [ $attempts -lt $max_attempts ]; do
     attempts=$((attempts + 1))
     pkill -9 -f "/code-server/" || true
     
-    for i in {1..20}; do
+    for i in {1..10}; do
       if ! pgrep -f "/code-server/" > /dev/null; then
         echo "[c] code-server process no longer running after $i seconds." >> $STARTUP_LOG
         break
       fi
-      echo "[c] Checking if code-server is still running... ($i/20)" >> $STARTUP_LOG
+      echo "[c] Checking if code-server is still running... ($i/10)" >> $STARTUP_LOG
       sleep 1
     done
 
@@ -130,7 +116,7 @@ while [ $attempts -lt $max_attempts ]; do
   sleep .3
 
   success=0
-  for i in {1..20}; do
+  for i in {1..5}; do
     if pgrep -f "/code-server/" > /dev/null; then
       echo "[c] code-server process detected after $i attempt(s)." >> $STARTUP_LOG
       success=1
@@ -139,7 +125,7 @@ while [ $attempts -lt $max_attempts ]; do
     echo "[c] Waiting for code-server process... ($i/5)" >> $STARTUP_LOG
     sleep 1
   done
- 
+
   if [ $res -eq 0 ] && [ $success -eq 1 ]; then
     echo "[c] landrun and code-server command returned 0 and process is running." >> $STARTUP_LOG
     break
@@ -155,7 +141,7 @@ done # end of while loop
 if pgrep -f "/code-server/"; then
   echo "[c] Waiting for code-server to start..." >> $STARTUP_LOG
 
-  for i in {1..20}; do
+  for i in {1..10}; do
     if /run/dojo/bin/curl -s localhost:4200 >/dev/null; then
       echo "[c] code-server responded on port 4200 after $i attempt(s)." >> $STARTUP_LOG
       echo "[c] Code-server is up and running with user data dir: $code_server_data_dir and extensions dir: $EXTENSIONS_DIR" >> $STARTUP_LOG
