@@ -111,6 +111,24 @@ while [ $attempts -lt $max_attempts ]; do
   echo "[c] Output variable length: ${#output}" >> $STARTUP_LOG
   echo "[c] /challenge/vscode.log size: $(stat -c%s /challenge/vscode.log 2>&1)" >> $STARTUP_LOG
   
+  # Check if PID file was created (indicates daemonization succeeded)
+  if [ -f /run/dojo/var/code-service/code-server.pid ]; then
+      pid=$(cat /run/dojo/var/code-service/code-server.pid 2>/dev/null)
+      echo "[c] PID file created with PID: $pid" >> $STARTUP_LOG
+      if ps -p "$pid" > /dev/null 2>&1; then
+          echo "[c] Process $pid is running" >> $STARTUP_LOG
+          ps -p "$pid" -o pid,ppid,cmd >> $STARTUP_LOG 2>&1
+      else
+          echo "[c] Process $pid is NOT running (died immediately after fork)" >> $STARTUP_LOG
+      fi
+  else
+      echo "[c] PID file was not created - daemonization may have failed" >> $STARTUP_LOG
+  fi
+  
+  # List all files in the code-service directory
+  echo "[c] Contents of /run/dojo/var/code-service/:" >> $STARTUP_LOG
+  ls -la /run/dojo/var/code-service/ >> $STARTUP_LOG 2>&1
+  
   
   if [ -f /run/dojo/var/code-service/code-server.log ]; then 
       echo "[c] After output execute command dumping /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
