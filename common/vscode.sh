@@ -37,8 +37,17 @@ if [ -z "$clevel_work_dir" ] || [ -z "$cs_user_data_dir" ] || [ -z "$coder_works
   exit 1
 fi
 
+# Ensure the code-service directory exists before trying to interact with files in it
+mkdir -p /run/dojo/var/code-service
+echo "[c] Ensured /run/dojo/var/code-service directory exists" >> $STARTUP_LOG
+
 if ps -ef | grep -q "/code-server/"; then
     echo "[c] Code-server is already running. Killing existing process before initial attempt" >> $STARTUP_LOG
+    if [ -f /run/dojo/var/code-service/code-server.pid ]; then
+        echo "[c] PID file exists before cleanup: $(cat /run/dojo/var/code-service/code-server.pid 2>/dev/null || echo 'cannot read')" >> $STARTUP_LOG
+    else
+        echo "[c] PID file does not exist before cleanup" >> $STARTUP_LOG
+    fi
     pkill -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     mv /run/dojo/var/code-service/code-server.log /challenge/old_code-server.log || true 
@@ -76,9 +85,26 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
+  echo "[c] About to execute command as hacker user" >> $STARTUP_LOG
+  echo "[c] Current user running script: $(whoami)" >> $STARTUP_LOG
+  echo "[c] Current PATH: $PATH" >> $STARTUP_LOG
+  echo "[c] /challenge/vscode.log permissions: $(ls -l /challenge/vscode.log 2>&1)" >> $STARTUP_LOG
+  echo "[c] Checking if /run/dojo/bin/dojo-service exists and is executable:" >> $STARTUP_LOG
+  ls -l /run/dojo/bin/dojo-service >> $STARTUP_LOG 2>&1
+  file /run/dojo/bin/dojo-service >> $STARTUP_LOG 2>&1
+  echo "[c] Checking if landrun is available:" >> $STARTUP_LOG
+  which landrun >> $STARTUP_LOG 2>&1 || echo "[c] landrun not found in PATH" >> $STARTUP_LOG
+  ls -l /usr/bin/landrun >> $STARTUP_LOG 2>&1 || echo "[c] /usr/bin/landrun not found" >> $STARTUP_LOG
+  echo "[c] Environment as hacker:" >> $STARTUP_LOG
+  su - hacker -c "echo PATH=\$PATH; echo HOME=\$HOME; which landrun; which python3" >> $STARTUP_LOG 2>&1
+  
   # this puts the output of the command in the log and also in the variable $output for checking if it contains "already running"  
   output=$(su - hacker -c "$cmd" 2>&1 | tee -a /challenge/vscode.log) 
   res=$?
+  
+  echo "[c] Command completed with exit code: $res" >> $STARTUP_LOG
+  echo "[c] Output variable length: ${#output}" >> $STARTUP_LOG
+  echo "[c] /challenge/vscode.log size: $(stat -c%s /challenge/vscode.log 2>&1)" >> $STARTUP_LOG
   
   
   if [ -f /run/dojo/var/code-service/code-server.log ]; then 
@@ -102,6 +128,11 @@ while [ $attempts -lt $max_attempts ]; do
   if echo "$output" | grep -q "already running"; then
     echo "[c] Code-server is already running. Killing existing process and retrying..." >> $STARTUP_LOG
     attempts=$((attempts + 1))
+    if [ -f /run/dojo/var/code-service/code-server.pid ]; then
+        echo "[c] PID file exists in retry loop: $(cat /run/dojo/var/code-service/code-server.pid 2>/dev/null || echo 'cannot read')" >> $STARTUP_LOG
+    else
+        echo "[c] PID file does not exist in retry loop" >> $STARTUP_LOG
+    fi
     pkill -9 -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     
