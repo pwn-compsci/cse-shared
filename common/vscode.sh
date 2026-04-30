@@ -56,7 +56,7 @@ fi
 while [ $attempts -lt $max_attempts ]; do
   echo "[c] Attempting to start code server." >> $STARTUP_LOG
   cmd=$(printf "
-    landrun 
+    /run/dojo/bin/landrun 
       --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
       --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
       --rwx /proc
