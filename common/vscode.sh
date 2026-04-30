@@ -39,7 +39,9 @@ fi
 
 # Ensure the code-service directory exists before trying to interact with files in it
 mkdir -p /run/dojo/var/code-service
-echo "[c] Ensured /run/dojo/var/code-service directory exists" >> $STARTUP_LOG
+chown hacker:hacker /run/dojo/var/code-service
+chmod 755 /run/dojo/var/code-service
+echo "[c] Ensured /run/dojo/var/code-service directory exists with hacker ownership" >> $STARTUP_LOG
 
 if ps -ef | grep -q "/code-server/"; then
     echo "[c] Code-server is already running. Killing existing process before initial attempt" >> $STARTUP_LOG
