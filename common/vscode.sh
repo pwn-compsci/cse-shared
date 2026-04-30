@@ -40,6 +40,7 @@ fi
 if ps -ef | grep -q "/code-server/"; then
     echo "[c] Code-server is already running. Killing existing process before initial attempt" >> $STARTUP_LOG
     pkill -f "/code-server/" || true
+    rm -f /run/dojo/var/code-service/code-server.pid || true
     mv /run/dojo/var/code-service/code-server.log /challenge/old_code-server.log || true 
 fi
 
@@ -75,8 +76,7 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
-  touch /challenge/vscode.log || chown hacker:hacker /challenge/vscode.log
-
+  # this puts the output of the command in the log and also in the variable $output for checking if it contains "already running"  
   output=$(su - hacker -c "$cmd" 2>&1 | tee -a /challenge/vscode.log) 
   res=$?
   
@@ -103,6 +103,7 @@ while [ $attempts -lt $max_attempts ]; do
     echo "[c] Code-server is already running. Killing existing process and retrying..." >> $STARTUP_LOG
     attempts=$((attempts + 1))
     pkill -9 -f "/code-server/" || true
+    rm -f /run/dojo/var/code-service/code-server.pid || true
     
     for i in {1..10}; do
       if ! pgrep -f "/code-server/" > /dev/null; then
