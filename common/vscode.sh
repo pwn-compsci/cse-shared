@@ -75,10 +75,17 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
-  output=$(su - hacker -c "$cmd | tee -a /challenge/vscode.log 2>&1")
+  output=$(su - hacker -c "$cmd 2>&1 | tee -a /challenge/vscode.log")
   res=$?
   
-  cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
+  
+  if [ -f /run/dojo/var/code-service/code-server.log ]; then 
+      echo "[c] After output execute command dumping /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
+      cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG 2>/dev/null || true
+      echo "---------------------------------------------------------------------------" >> $STARTUP_LOG
+  else 
+      echo "[c] /run/dojo/var/code-service/code-server.log does not exist after command execution." >> $STARTUP_LOG
+  fi
 
   ps -ef | grep "/code-server/" >> $STARTUP_LOG
 
@@ -106,7 +113,7 @@ while [ $attempts -lt $max_attempts ]; do
 
     if [ -f /run/dojo/var/code-service/code-server.log ]; then 
       echo "[c] Dumping /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
-      cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG ; 
+      cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG 2>/dev/null || true
       echo "---------------------------------------------------------------------------" >> $STARTUP_LOG
     fi
     sleep 1
