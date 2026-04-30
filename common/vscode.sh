@@ -60,9 +60,9 @@ while [ $attempts -lt $max_attempts ]; do
   cmd=$(printf "
     /run/dojo/bin/landrun 
       --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
-      --rox /bin,/lib,/run,/nix,/challenge,/lib64,/opt,/sys,/usr,/sbin,/etc  
+      --rox /bin,/lib,/nix,/lib64,/opt,/sys,/usr,/sbin,/etc
       --rwx /proc
-      --rox /challenge,/.admin_access
+      --rox /.admin_access
       --rw /run/landrun-cmd.fifo 
       --ro  $coder_workspace_file,/.user_info
       --rw /home/hacker/.cache,/home/hacker/.local/
@@ -71,7 +71,8 @@ while [ $attempts -lt $max_attempts ]; do
       --rwx $clevel_work_dir
       --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
       --rwx /tmp 
-      --rwx /run/dojo/var 
+      --rwx /run
+      --rwx /challenge
       -- /run/dojo/bin/dojo-service start code-service/code-server
           /run/dojo/bin/code-server
           --auth=none 
