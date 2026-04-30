@@ -104,10 +104,14 @@ while [ $attempts -lt $max_attempts ]; do
   which landrun >> $STARTUP_LOG 2>&1 || echo "[c] landrun not found in PATH" >> $STARTUP_LOG
   ls -l /run/dojo/bin/landrun >> $STARTUP_LOG 2>&1 || echo "[c] /run/dojo/bin/landrun not found" >> $STARTUP_LOG
   echo "[c] Environment as hacker:" >> $STARTUP_LOG
-  su - hacker -c "echo PATH=\$PATH; echo HOME=\$HOME; which landrun; which python3" >> $STARTUP_LOG 2>&1
+  runuser -u hacker -- bash -c "echo PATH=\$PATH; echo HOME=\$HOME; which landrun; which python3" >> $STARTUP_LOG 2>&1
+  
+  # Write command to temp file to avoid quoting issues
+  echo "$cmd" > /tmp/vscode-cmd.sh
+  chmod +x /tmp/vscode-cmd.sh
   
   # this puts the output of the command in the log and also in the variable $output for checking if it contains "already running"  
-  output=$(su - hacker -c "$cmd" 2>&1 | tee -a /challenge/vscode.log) 
+  output=$(runuser -u hacker -- /tmp/vscode-cmd.sh 2>&1 | tee -a /challenge/vscode.log) 
   res=$?
   
   echo "[c] Command completed with exit code: $res" >> $STARTUP_LOG
