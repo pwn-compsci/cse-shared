@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 # Read the log file path created by .init
 if [ -f /tmp/.startup_log_path ]; then
@@ -39,7 +40,7 @@ fi
 if ps -ef | grep -q "/code-server/"; then
     echo "[c] Code-server is already running. Killing existing process before initial attempt" >> $STARTUP_LOG
     pkill -f "/code-server/" || true
-    rm -f /run/dojo/var/code-service/code-server.log 
+    mv /run/dojo/var/code-service/code-server.log /challenge/old_code-server.log || true 
 fi
 
 while [ $attempts -lt $max_attempts ]; do
