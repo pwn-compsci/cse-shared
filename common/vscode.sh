@@ -87,14 +87,19 @@ while [ $attempts -lt $max_attempts ]; do
   
   echo "[c] About to execute command as hacker user" >> $STARTUP_LOG
   echo "[c] Current user running script: $(whoami)" >> $STARTUP_LOG
-  echo "[c] Current PATH: $PATH" >> $STARTUP_LOG
+  echo "[c] Original PATH: $PATH" >> $STARTUP_LOG
+  
+  # Ensure PATH includes necessary directories for landrun and dojo commands
+  export PATH="/run/challenge/bin:/run/dojo/bin:$PATH:/challenge/"
+  echo "[c] Updated PATH: $PATH" >> $STARTUP_LOG
+  
   echo "[c] /challenge/vscode.log permissions: $(ls -l /challenge/vscode.log 2>&1)" >> $STARTUP_LOG
   echo "[c] Checking if /run/dojo/bin/dojo-service exists and is executable:" >> $STARTUP_LOG
   ls -l /run/dojo/bin/dojo-service >> $STARTUP_LOG 2>&1
   file /run/dojo/bin/dojo-service >> $STARTUP_LOG 2>&1
   echo "[c] Checking if landrun is available:" >> $STARTUP_LOG
   which landrun >> $STARTUP_LOG 2>&1 || echo "[c] landrun not found in PATH" >> $STARTUP_LOG
-  ls -l /usr/bin/landrun >> $STARTUP_LOG 2>&1 || echo "[c] /usr/bin/landrun not found" >> $STARTUP_LOG
+  ls -l /run/dojo/bin/landrun >> $STARTUP_LOG 2>&1 || echo "[c] /run/dojo/bin/landrun not found" >> $STARTUP_LOG
   echo "[c] Environment as hacker:" >> $STARTUP_LOG
   su - hacker -c "echo PATH=\$PATH; echo HOME=\$HOME; which landrun; which python3" >> $STARTUP_LOG 2>&1
   
