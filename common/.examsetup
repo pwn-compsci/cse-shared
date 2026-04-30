@@ -304,7 +304,7 @@ fi
 echo "[e] Starting vscode with $clevel_work_dir, $cs_user_data_dir, and $coder_workspace_file " | tee -a $STARTUP_LOG
 
 # background is necessary because landrun blocks waiting for ready but .init blocks ready
-/challenge/bin/vscode.sh "$clevel_work_dir" "$cs_user_data_dir" "$coder_workspace_file"  | tee -a $STARTUP_LOG 2>&1 &
+/challenge/bin/vscode.sh "$clevel_work_dir" "$cs_user_data_dir" "$coder_workspace_file" 2>&1 | tee -a $STARTUP_LOG &
 
 # Start nginx with error checking
 if command -v nginx >/dev/null 2>&1; then
