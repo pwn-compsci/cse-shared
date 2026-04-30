@@ -75,7 +75,9 @@ while [ $attempts -lt $max_attempts ]; do
   echo "$cmd" >> $STARTUP_LOG
   printf "\n**END**\n" >> $STARTUP_LOG
   
-  output=$(su - hacker -c "$cmd 2>&1 | tee -a /challenge/vscode.log")
+  touch /challenge/vscode.log || chown hacker:hacker /challenge/vscode.log
+
+  output=$(su - hacker -c "$cmd" 2>&1 | tee -a /challenge/vscode.log) 
   res=$?
   
   
