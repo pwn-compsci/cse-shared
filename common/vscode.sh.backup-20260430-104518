@@ -18,7 +18,6 @@ if [ -d /run/challenge/share/code/extensions ]; then
 else
   EXTENSIONS_DIR="/nix/store/5b5cpsjwl6y8qbpypl5kgfdv8cab5zbw-code-service/share/code/extensions"
 fi
-
 code_server_data_dir=/home/hacker/.local/share/code-server-exam/
 if [ ! -d $code_server_data_dir ]; then
   mkdir -p $code_server_data_dir
@@ -33,27 +32,25 @@ cs_user_data_dir=$2
 coder_workspace_file=$3
 
 if [ -z "$clevel_work_dir" ] || [ -z "$cs_user_data_dir" ] || [ -z "$coder_workspace_file" ]; then
-  echo "[c] ERROR: Missing required parameters" >> $STARTUP_LOG
+  echo "[c] Error: One or more required parameters are missing." >> $STARTUP_LOG
   exit 1
 fi
 
-# Ensure code-service directory exists with correct ownership
+# Ensure the code-service directory exists before trying to interact with files in it
 mkdir -p /run/dojo/var/code-service
 chown hacker:hacker /run/dojo/var/code-service
 chmod 755 /run/dojo/var/code-service
-echo "[c] Created /run/dojo/var/code-service with hacker ownership" >> $STARTUP_LOG
+echo "[c] Ensured /run/dojo/var/code-service directory exists with hacker ownership" >> $STARTUP_LOG
 
-# Clean up any existing code-server processes
 if ps -ef | grep -q "/code-server/"; then
-    echo "[c] Code-server already running - cleaning up" >> $STARTUP_LOG
+    echo "[c] Code-server already running - cleaning up before start" >> $STARTUP_LOG
     pkill -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     mv /run/dojo/var/code-service/code-server.log /challenge/old_code-server.log 2>/dev/null || true 
 fi
 
 while [ $attempts -lt $max_attempts ]; do
-  echo "[c] Start attempt $((attempts + 1))/$max_attempts" >> $STARTUP_LOG
-  
+  echo "[c] Attempting to start code server." >> $STARTUP_LOG
   cmd=$(printf "
     /run/dojo/bin/landrun 
       --best-effort --add-exec --unrestricted-network -env PATH --env HOME 
@@ -81,59 +78,87 @@ while [ $attempts -lt $max_attempts ]; do
           --config=/dev/null
     " | tr -d "\n" |tr -s " ")
   
-  echo "[c] Command: $cmd" >> $STARTUP_LOG
+  echo "[c] Running command:" >> $STARTUP_LOG
+  echo "$cmd" >> $STARTUP_LOG
   
-  # Ensure PATH includes necessary directories
+  # Ensure PATH includes necessary directories for landrun and dojo commands
   export PATH="/run/challenge/bin:/run/dojo/bin:$PATH:/challenge/"
   
   # Write command to temp file to avoid quoting issues
   echo "$cmd" > /tmp/vscode-cmd.sh
   chmod +x /tmp/vscode-cmd.sh
   
-  # Execute as hacker user
+  # this puts the output of the command in the log and also in the variable $output for checking if it contains "already running"  
   output=$(runuser -u hacker -- /tmp/vscode-cmd.sh 2>&1 | tee -a /challenge/vscode.log) 
   res=$?
   
-  echo "[c] Exit code: $res" >> $STARTUP_LOG
+  echo "[c] Command completed with exit code: $res" >> $STARTUP_LOG
+  echo "[c] Output variable length: ${#output}" >> $STARTUP_LOG
+  echo "[c] /challenge/vscode.log size: $(stat -c%s /challenge/vscode.log 2>&1)" >> $STARTUP_LOG
   
-  # Verify PID file was created
+  # Verify daemonization succeeded
   if [ -f /run/dojo/var/code-service/code-server.pid ]; then
       pid=$(cat /run/dojo/var/code-service/code-server.pid 2>/dev/null)
       echo "[c] PID file created: $pid" >> $STARTUP_LOG
       ps -p "$pid" > /dev/null 2>&1 || echo "[c] WARNING: Process $pid not running" >> $STARTUP_LOG
   else
-      echo "[c] WARNING: PID file not created" >> $STARTUP_LOG
+      echo "[c] WARNING: PID file not created - daemonization may have failed" >> $STARTUP_LOG
   fi
-  
-  # Log any code-server output
+  if [ -f /run/dojo/var/code-service/code-server.log ]; then 
+      echo "[c] After output execute command dumping /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
+      cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG 2>/dev/null || true
+      echo "---------------------------------------------------------------------------" >> $STARTUP_LOG
+  else 
+      echo "[c] /run/dojo/var/code-service/code-server.log does not exist after command execution." >> $STARTUP_LOG
+  fi
+
+  ps -ef | grep "/code-server/" >> $STARTUP_LOG
+
+  if [ -z "$output" ]; then
+  # Log code-server output if present
   if [ -n "$output" ]; then
-    echo "[c] Output: $output" >> $STARTUP_LOG
-  fi
-  
-  # Check if already running error occurred
-  if echo "$output" | grep -q "already running"; then
-    echo "[c] Code-server already running - retrying..." >> $STARTUP_LOG
+    echo "[c] Command output: $output
+    rm -f /run/dojo/var/code-service/code-server.pid || true
+    
+    for i in {1..10}; do
+      if ! pgrep -f "/code-server/" > /dev/null; then
+        echo "[c] code-server process no longer running after $i seconds." >> $STARTUP_LOG
+        break
+      fi
+      echo "[c] Checking if code-server is still running... ($i/10)" >> $STARTUP_LOG
+      sleep 1
+    done
+
+    if [ -f /run/dojo/var/code-service/code-server.log ]; then 
+      echo "[c] Dumping /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
+      cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG 2>/dev/null || true
+      echo "--------------already running - killing and retrying..." >> $STARTUP_LOG
     attempts=$((attempts + 1))
     pkill -9 -f "/code-server/" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     
     # Wait for process to die
     for i in {1..10}; do
-      pgrep -f "/code-server/" > /dev/null || break
+      if ! pgrep -f "/code-server/" > /dev/null; then
+        break
+      fi
       sleep 1
     done
     
     sleep 1
-    continue
+    echo "[c] Retry attempt #$((attempts + 1))/run/dojo/var/code-service/code-server.log >> $STARTUP_LOG ; fi
+    attempts=$((attempts + 1))
+    sleep $((1 * attempts))
   fi
-  
-  sleep .3
 
+done # end of while loop
+
+if pgrep -f "/code-server/"; then
   # Verify process started
   success=0
   for i in {1..5}; do
     if pgrep -f "/code-server/" > /dev/null; then
-      echo "[c] Process verified running" >> $STARTUP_LOG
+      echo "[c] Code-server process detected" >> $STARTUP_LOG
       success=1
       break
     fi
@@ -144,29 +169,20 @@ while [ $attempts -lt $max_attempts ]; do
     echo "[c] Code-server started successfully" >> $STARTUP_LOG
     break
   else
-    echo "[c] Start failed" >> $STARTUP_LOG
+    echo "[c] Start failed (attempt $((attempts + 1))/$max_attempts)" >> $STARTUP_LOG
     if [ -f /run/dojo/var/code-service/code-server.log ]; then 
       cat /run/dojo/var/code-service/code-server.log >> $STARTUP_LOG
-    fi
-    attempts=$((attempts + 1))
-    sleep $((1 * attempts))
-  fi
-
-done
+   
 
 # Wait for HTTP server to respond
-if pgrep -f "/code-server/"; then
   for i in {1..10}; do
     if /run/dojo/bin/curl -s localhost:4200 >/dev/null; then
-      echo "[c] Code-server ready on port 4200 (attempt $i)" >> $STARTUP_LOG
+      echo "[c] Code-server ready on port 4200" >> $STARTUP_LOG
       echo "[c] User data: $code_server_data_dir | Extensions: $EXTENSIONS_DIR" >> $STARTUP_LOG
       echo "[c] Logs: /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
       break
     fi
-    echo "[c] Waiting for HTTP response on port 4200... ($i/10)" >> $STARTUP_LOG
     sleep 1
   done
-  echo "[c] Code-server log available at: /run/dojo/var/code-service/code-server.log" >> $STARTUP_LOG
 else
-  echo "[c] ERROR: Failed to start code-server after $max_attempts attempts" >> $STARTUP_LOG
-fi
+  echo "[c] ERROR: Failed to start code-server after $max_attempts attempts
