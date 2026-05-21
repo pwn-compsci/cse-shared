@@ -220,7 +220,7 @@ if [ ! -d /home/me ] ; then
     fi
     module=$(jq -r '.module' /challenge/.config/level.json)    
     api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
-    pwn_college_id=$(grep "pwn_college_id=" /.user_info | cut -d"'" -f2 | tr -d '[:space:]')
+    pwn_college_id=$(grep "^pwn_college_id=" /.user_info | cut -d"'" -f2 | tr -d '[:space:]')
     pwn_flag=$(cat /flag)
     curl --max-time 10  "https://api.cse545.com/is_student" \
          -H "Content-Type: application/json" \

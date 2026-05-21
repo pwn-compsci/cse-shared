@@ -482,6 +482,22 @@
         // MCQ_QUESTIONS is set from the Jinja template variable 'mcqs'
         const MCQ_QUESTIONS = {{ mcqs|tojson }}; 
         console.log("MCQ_QUESTIONS value:", MCQ_QUESTIONS);
+        
+        // Diagnostic: Check for smart quotes in the data
+        if (MCQ_QUESTIONS && MCQ_QUESTIONS.length > 0) {
+            MCQ_QUESTIONS.forEach((mcq, idx) => {
+                if (mcq.question && (mcq.question.includes('"') || mcq.question.includes('"'))) {
+                    console.warn(`Smart quotes found in MCQ ${idx} question:`, mcq.question);
+                }
+                if (mcq.options) {
+                    mcq.options.forEach((opt, optIdx) => {
+                        if (opt.text && (opt.text.includes('"') || opt.text.includes('"'))) {
+                            console.warn(`Smart quotes found in MCQ ${idx} option ${optIdx}:`, opt.text);
+                        }
+                    });
+                }
+            });
+        }
 
         // This function is called automatically by YouTube when the API is ready
         if (IFRAME_URL && IFRAME_URL.trim() !== "" && !IFRAME_URL.includes("{{") && !IFRAME_URL.includes("}}")) {
@@ -1094,6 +1110,28 @@
             // DOM already loaded, attach immediately
             attachMcqFormListener();
         }
+        
+        // Normalize smart quotes to straight quotes in MCQ content
+        document.addEventListener('DOMContentLoaded', function() {
+            function normalizeQuotes(element) {
+                const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                let node;
+                while (node = walker.nextNode()) {
+                    if (node.nodeValue) {
+                        // Replace smart double quotes with straight quotes
+                        node.nodeValue = node.nodeValue
+                            .replace(/[\u201C\u201D]/g, '"')  // " and "
+                            .replace(/[\u2018\u2019]/g, "'"); // ' and '
+                    }
+                }
+            }
+            
+            const mcqContainer = document.getElementById('mcq-container');
+            if (mcqContainer) {
+                // Normalize quotes in the entire MCQ container
+                normalizeQuotes(mcqContainer);
+            }
+        });
         
         // Detect copy events on MCQ container
         document.addEventListener('DOMContentLoaded', function() {

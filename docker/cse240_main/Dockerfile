@@ -47,7 +47,7 @@ RUN <<EOF
     --disable-telemetry \
     --extensions-dir=/run/challenge/share/code/extensions \
     --install-extension /run/challenge/share/code/extensions/cpptools-linux.vsix \
-    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix
+    --install-extension /run/challenge/share/code/extensions/pwn-cpmate-0.0.2.vsix \
     --install-extension evzen-wybitul.magic-racket \
     --install-extension /run/challenge/share/code/extensions/AmauryRabouan.new-vsc-prolog-1.1.12.vsix
 EOF
@@ -90,13 +90,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python-is-python3
         python3-dev
         python3-pip
+        python3-inotify
         libseccomp2         
 EOF
 
 # Run unminimize immediately after package installation
 RUN printf 'y\n' | /usr/local/sbin/unminimize || printf 'y\n' | unminimize || true
 
-RUN pip install fastecdsa
+RUN pip install --break-system-packages fastecdsa
 
 ################################################################################
 
@@ -203,9 +204,9 @@ EOF
 # link from /etc/bash.bashrc to /etc/bashrc is because /bin/bash uses /etc/bash.bashrc but /run/dojo/bin/bash uses /etc/bash
 ################################################################################
 
-RUN pip install flask requests gevent gevent-websocket
-RUN pip install --user flask requests gevent gevent-websocket
-RUN pip install psutil 
+RUN pip install --break-system-packages flask requests gevent gevent-websocket
+RUN pip install --break-system-packages --user flask requests gevent gevent-websocket
+RUN pip install --break-system-packages psutil 
 # RUN python3 -c "import gevent; print(gevent.__version__)" 
 
 # Build and update man database for offline operation
@@ -275,7 +276,7 @@ RUN mkdir -p /usr/share/racket/collects && \
     cp -a /usr/share/racket/pkgs/racket-langserver /usr/share/racket/collects/racket-langserver && \
     chmod -R a+rX /usr/share/racket/collects/racket-langserver || true
 
-RUN mkdir -p /cse240_v94 && touch "/cse240_v94/$(date +%Y-%m-%d_%H-%M-%S).dat"
+RUN mkdir -p /cse240_v96 && touch "/cse240_v96/$(date +%Y-%m-%d_%H-%M-%S).dat"
 
 # -------- Final stage: inherit everything from builder and fix collects perms --------
 FROM builder AS final

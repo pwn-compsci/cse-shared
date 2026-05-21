@@ -445,8 +445,19 @@ if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then
     export SHELL=$(which zsh)
 else
     echo "############################# " >> /etc/bash.bashrc
-    inst_id="$(basename $(jq -r '. | "\(.hwdir)"' /challenge/.config/level.json)) $(jq -r '. | "\(.level)"' /challenge/.config/level.json)"
-    echo "export PROMPT_COMMAND='HISTTIMEFORMAT=\"%F %T ${inst_id} | \" history 1 >> ~/.local/share/ultima/c.dat && history -a'" >> /etc/bash.bashrc
+    # Extract module and level info once for session tracking
+    inst_id="$(jq -r '"\(.hwdir | split("/") | last) \(.level)"' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
+    
+    # Set as environment variable for cleaner access
+    echo "export INST_ID='${inst_id}'" >> /etc/bash.bashrc
+    
+    # Log command history with context - using function for clarity
+    cat >> /etc/bash.bashrc << 'HIST_EOF'
+log_cmd() {
+    [ -n "$BASH_COMMAND" ] && history 1 | sed "s/^/$(date '+%F %T') ${INST_ID} | /" >> ~/.local/share/ultima/c.dat 2>/dev/null || true
+}
+export PROMPT_COMMAND='log_cmd; history -a'
+HIST_EOF
     
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/bash.bashrc
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/bash.bashrc
@@ -1079,6 +1090,15 @@ fi
         chmod 0644 /var/log/attendance_check.log
         chmod 770 /challenge/bin/attendance_check.py
         python3 /challenge/bin/attendance_check.py >> $STARTUP_LOG 2>&1 &
+    fi
+    # Start file change monitor to track edits not captured by VSCode
+    if [ -f /challenge/bin/file_change_monitor.py ] && [ -d "$clevel_work_dir" ]; then 
+        touch /var/log/file_changes.log
+        chmod 0666 /var/log/file_changes.log
+        chmod 770 /challenge/bin/file_change_monitor.py
+        echo "[i] Starting file change monitor for $clevel_work_dir" | tee -a $STARTUP_LOG
+        python3 /challenge/bin/file_change_monitor.py "$clevel_work_dir" /var/log/file_changes.log >> /var/log/file_change_monitor.log 2>&1 &
+        echo "[i] File change monitor started with PID $!" | tee -a $STARTUP_LOG
     fi  
 # fi
 
