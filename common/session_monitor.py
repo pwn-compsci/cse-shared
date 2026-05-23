@@ -492,10 +492,10 @@ def check_exam_attendance():
             data = response.json()
             logger.info(f"Exam attendance API response: {json.dumps(data, indent=2)}")
             
-            # Check for error/message fields indicating no session
-            if 'error' in data or 'message' in data:
-                error_msg = data.get('error', data.get('message', 'Unknown error'))
-                logger.warning(f"Session attendance check returned error: {error_msg}")
+            # Check valid_session field to determine if a proctor session exists
+            valid_session = data.get('valid_session', False)
+            if not valid_session:
+                logger.warning(f"No valid proctor session found: {data.get('message', 'Unknown reason')}")
                 return {'attending': False}
             
             # Return the attending status, container action, and session info
