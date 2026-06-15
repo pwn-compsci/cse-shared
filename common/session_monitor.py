@@ -146,6 +146,85 @@ def check_student_exemption():
         logger.error(f"Unexpected error checking exemption: {e}")
         return None
 
+def get_exam_admin_type():
+    """
+    Get exam administration type from API endpoint
+    
+    Returns:
+        str: Exam administration type, defaults to "Proctoring plus Lockdown Browser" on error
+    """
+    try:
+        # Read the user_info file to get pwn_college_id
+        with open('/.user_info', 'r') as f:
+            user_info_content = f.read()
+        
+        # Extract pwn_college_id using regex
+        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+        
+        if not match:
+            logger.error("Could not find pwn_college_id in /.user_info")
+            return "Proctoring plus Lockdown Browser"
+        
+        pwn_college_id = match.group(1)
+        
+        # Read level.json to get module and challenge information
+        try:
+            with open('/challenge/.config/level.json', 'r') as f:
+                level_data = json.load(f)
+                module = level_data.get('module')
+                challenge = level_data.get('challenge') or level_data.get('level')
+                
+                if not module or not challenge:
+                    logger.error("Could not find module or challenge in level.json")
+                    return "Proctoring plus Lockdown Browser"
+                    
+            logger.info(f"Checking exam admin type for module: {module}, challenge: {challenge}")
+            
+        except FileNotFoundError:
+            logger.error("/challenge/.config/level.json not found")
+            return "Proctoring plus Lockdown Browser"
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse level.json: {e}")
+            return "Proctoring plus Lockdown Browser"
+        
+        # API token and URL
+        api_token = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+        api_url = "http://localhost:8080/exam_admin_type"
+        
+        payload = {
+            "api_token": api_token,
+            "pwn_college_id": int(pwn_college_id),
+            "module": module,
+            "challenge": challenge
+        }
+        
+        try:
+            logger.info(f"Requesting exam admin type from {api_url}")
+            response = requests.post(api_url, json=payload, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                admin_type = data.get('exam_administration_type', 'Proctoring plus Lockdown Browser')
+                logger.info(f"Exam administration type: {admin_type}")
+                return admin_type
+            else:
+                logger.error(f"Exam admin type API returned status {response.status_code}")
+                return "Proctoring plus Lockdown Browser"
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get exam admin type: {e}")
+            return "Proctoring plus Lockdown Browser"
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse exam admin type response: {e}")
+            return "Proctoring plus Lockdown Browser"
+            
+    except FileNotFoundError:
+        logger.error("/.user_info file not found")
+        return "Proctoring plus Lockdown Browser"
+    except Exception as e:
+        logger.error(f"Unexpected error getting exam admin type: {e}")
+        return "Proctoring plus Lockdown Browser"
+
 def extract_encrypted_files():
     """Extract encrypted backup files to the challenge level directory"""
     try:
@@ -412,6 +491,12 @@ def check_exam_attendance():
             
             data = response.json()
             logger.info(f"Exam attendance API response: {json.dumps(data, indent=2)}")
+            
+            # Check valid_session field to determine if a proctor session exists
+            valid_session = data.get('valid_session', False)
+            if not valid_session:
+                logger.warning(f"No valid proctor session found: {data.get('message', 'Unknown reason')}")
+                return {'attending': False}
             
             # Return the attending status, container action, and session info
             result = {
@@ -751,6 +836,33 @@ def main():
     logger.info(f"Parent Process ID: {os.getppid()}")
     current_time = get_current_utc_time()
     logger.info(f"Current UTC time: {current_time.isoformat()}")
+
+    # Get exam administration type
+    logger.info("Checking exam administration type...")
+    exam_admin_type = get_exam_admin_type()
+    logger.info(f"Exam administration type: {exam_admin_type}")
+    
+    # Check if this exam type requires attendance monitoring
+    requires_attendance_monitoring = exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring"]
+    
+    if not requires_attendance_monitoring:
+        logger.info(f"Exam type '{exam_admin_type}' does not require attendance monitoring")
+        logger.info("Setting session.dat to active and exiting")
+        
+        # Set session to active and exit
+        try:
+            with open(SESSION_FILE, 'w') as f:
+                f.write("active\n")
+            os.chown(SESSION_FILE, 0, 0)
+            os.chmod(SESSION_FILE, 0o644)
+            logger.info(f"Set {SESSION_FILE} to active - monitoring not needed")
+        except Exception as e:
+            logger.error(f"Error setting session.dat: {e}")
+        
+        return  # Exit - no monitoring needed
+    
+    # If we get here, this exam type requires attendance monitoring
+    logger.info(f"Exam type '{exam_admin_type}' requires attendance monitoring - starting monitor loop")
 
     # Get session times
     start_time, end_time = get_session_times()
