@@ -34,7 +34,7 @@ sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 if [ -f /challenge/.config/.extra_cfg ]; then 
     chown root:root /challenge/.config/.extra_cfg
     chmod 600 /challenge/.config/.extra_cfg
-fi 
+fi  
 
 STARTUP_ID_FILE="/opt/exam_attempt_startup_id"
 
