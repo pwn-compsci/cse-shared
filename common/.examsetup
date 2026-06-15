@@ -36,6 +36,16 @@ if [ -f /challenge/.config/.extra_cfg ]; then
     chmod 600 /challenge/.config/.extra_cfg
 fi 
 
+STARTUP_ID_FILE="/opt/exam_attempt_startup_id"
+
+if [ ! -s "$STARTUP_ID_FILE" ]; then
+    cat /proc/sys/kernel/random/uuid > "$STARTUP_ID_FILE"
+fi
+
+chown root:root "$STARTUP_ID_FILE"
+chmod 0644 "$STARTUP_ID_FILE"
+
+echo "[e] startup id is $STARTUP_ID_FILE" | tee -a $STARTUP_LOG
 echo "[e] pwn.college id is $pwn_college_id" | tee -a $STARTUP_LOG
 
 current_module=$(jq -r '.module // empty' /challenge/.config/level.json)

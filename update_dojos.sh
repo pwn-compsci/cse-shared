@@ -3,9 +3,8 @@
 # List of update scripts
 scripts=(
   "/cse/intro-to-programming-languages/update_dojo.sh"
-  "/cse/cse240-fc25/update_dojo.sh"
-  "/cse/cse240-fb25/update_dojo.sh"
-  "/cse/cse240-sc26/update_dojo.sh"
+  "/cse/cse240-sml26/update_dojo.sh"
+  "/cse/cse240-smo26/update_dojo.sh"  
   # Add more paths here as needed
 )
 
