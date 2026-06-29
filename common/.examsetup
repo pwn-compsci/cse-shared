@@ -356,7 +356,7 @@ fi
 
 # Add session status check to bash.bashrc
 echo "[e] Adding session status check to /etc/bash.bashrc" | tee -a $STARTUP_LOG
-cat >> /etc/bash.bashrc << 'EOF'
+cat >> /etc/bash.bashrc << 'EOF' 
 
 # Session status check
 if [ -f /challenge/.config/session.dat ]; then

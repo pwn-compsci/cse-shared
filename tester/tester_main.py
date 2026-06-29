@@ -155,6 +155,18 @@ SYSTEM_TESTS_DIR = f"{CHALLENGE_DIR}/system_tests"
 LEVEL_CONFIG_FP = os.path.join(CHALLENGE_DIR, ".config", "level.json")
 ED_ENV = False
 
+
+def is_practice_exam():
+    if not os.path.exists(LEVEL_CONFIG_FP):
+        return False
+
+    try:
+        with open(LEVEL_CONFIG_FP, "r") as cf:
+            return json.load(cf).get("is_practice_exam") is True
+    except (OSError, json.JSONDecodeError):
+        return False
+
+
 # if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
 #     BASE_HOME_DIR = "/home/"
 #     BASE_CSE240_DIR = f"{BASE_HOME_DIR}"
@@ -1742,6 +1754,9 @@ def is_stripped(binary_path):
         return False
 
 def check_if_session_active():
+    if is_practice_exam():
+        return True
+
     SESSION_FILE = "/challenge/.config/session.dat"
     try:
         # if no session file then we aren't worried about session
