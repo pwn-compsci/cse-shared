@@ -14,6 +14,8 @@ import logging
 import stat
 from datetime import datetime
 
+API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+
 def setup_logger():
     """Setup logger to write to /challenge/startup.log"""
     logger = logging.getLogger('exam_reporter')
@@ -95,7 +97,7 @@ def report_exam_attempt():
             level_config = json.load(f)
             
         module = level_config.get('module')
-        challenge = level_config.get('examLevel')
+        challenge = level_config.get('challenge') or level_config.get('examLevel')
         
         if not module or not challenge:
             logger.info(f"Missing module or examLevel in config. module={module}, examLevel={challenge}")
@@ -132,7 +134,12 @@ def report_exam_attempt():
             try:
                 logger.info(f"Attempt {attempt}/{max_attempts}: Sending request to {api_url}")
                 
-                response = requests.post(api_url, json=payload, timeout=30)
+                response = requests.post(
+                    api_url,
+                    json=payload,
+                    headers={'X-API-Token': API_TOKEN},
+                    timeout=30
+                )
                 
                 logger.info(f"Attempt {attempt} - API Response - Status: {response.status_code}, Body: {response.text}")
                 

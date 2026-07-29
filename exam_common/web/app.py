@@ -9,7 +9,7 @@ import subprocess
 import os
 import logging
 import json
-import json
+import html
 
 # Setup logger
 logger = logging.getLogger('gevent.server')
@@ -35,6 +35,7 @@ exam_module = ""
 exam_challenge = ""
 EXAM_ADMIN_API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
 EXAM_ADMIN_API_URL = "https://api.cse545.com/exam_admin_type"
+EXAM_GATE_STATUS_API_URL = "https://api.cse545.com/exam-gates/checkstatus"
 
 # Hardcoded set of pwn_college_id values that skip RLDB check
 #, 97169 
@@ -242,6 +243,116 @@ def check_password_api(pwn_college_id, password):
     except Exception as e:
         logger.error(f"Unexpected error checking password: {e}")
         return False
+
+def get_level_exam_challenge(level_config):
+    """Handle both historical examLevel and current challenge keys."""
+    return level_config.get("challenge") or level_config.get("examLevel") or ""
+
+def check_exam_gate_status(pwn_college_id, module, challenge):
+    """Check configured exam gates through the class_sync REST API."""
+    if not pwn_college_id or not module or not challenge:
+        logger.warning("Missing required parameters for exam gate check")
+        return {
+            "allowed": False,
+            "reason": "invalid_request",
+            "message": "This exam environment is missing problem metadata. Please notify your professor or proctor.",
+            "requirements": []
+        }
+
+    try:
+        payload = {
+            "pwn_college_id": str(pwn_college_id),
+            "module": module,
+            "challenge": challenge
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Token": EXAM_ADMIN_API_TOKEN
+        }
+        logger.info(f"Checking exam gates for PWN ID {pwn_college_id}, {module}/{challenge}")
+        response = requests.post(EXAM_GATE_STATUS_API_URL, headers=headers, json=payload, timeout=10)
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            result = {
+                "allowed": False,
+                "reason": "invalid_response",
+                "message": "The exam gate service returned an invalid response."
+            }
+
+        if response.status_code == 200:
+            logger.info(f"Exam gate status response: {result}")
+            return result
+
+        logger.error(f"Exam gate status API returned {response.status_code}: {response.text}")
+        return {
+            "allowed": False,
+            "reason": result.get("reason", "gate_check_failed"),
+            "message": result.get("message", "Could not verify exam gate requirements. Please notify your professor or proctor."),
+            "requirements": result.get("requirements", [])
+        }
+    except requests.RequestException as e:
+        logger.error(f"Error calling exam gate status API: {e}")
+        return {
+            "allowed": False,
+            "reason": "gate_check_unavailable",
+            "message": "Could not contact the exam gate service. Please notify your professor or proctor.",
+            "requirements": []
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error checking exam gates: {e}")
+        return {
+            "allowed": False,
+            "reason": "gate_check_error",
+            "message": "Could not verify exam gate requirements. Please notify your professor or proctor.",
+            "requirements": []
+        }
+
+def render_gate_denied(gate_status):
+    """Show unmet exam gate requirements without exposing the password prompt."""
+    unmet = gate_status.get("unmet_requirements") or [
+        req for req in gate_status.get("requirements", [])
+        if not req.get("satisfied")
+    ]
+    if unmet:
+        items = []
+        for req in unmet:
+            req_type = req.get("requirement_type", "requirement")
+            assignment_name = req.get("required_assignment_name")
+            detail = html.escape(str(req.get("detail") or "Not complete"))
+            if req_type == "assignment":
+                label = assignment_name or "Required assignment"
+            elif req_type == "pwn":
+                label = assignment_name or req.get("required_assignment_module_id") or "Required pwn.college work"
+            elif req_type == "consultation":
+                label = "Instructor or TA consultation"
+            else:
+                label = "Required gate"
+            items.append(f"<li><strong>{html.escape(str(label))}</strong><br>{detail}</li>")
+        requirements_html = "<ul>" + "".join(items) + "</ul>"
+    else:
+        requirements_html = "<p>The gate status service did not provide specific missing requirements.</p>"
+
+    message = html.escape(str(gate_status.get("message") or "You have exam gate requirements to complete before accessing this problem."))
+    return render_template_string(f"""
+        <style>
+            body {{ color: #FFFFFF; background-color: #1E1E1E; font-family: monospace; padding: 20px; }}
+            .error {{ color: #ffb86b; background-color: #2b2418; border: 1px solid #ffb86b; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            .info {{ color: #d0d0d0; background-color: #252525; border: 1px solid #555; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            li {{ margin: 12px 0; }}
+            a {{ color: #4dabf7; text-decoration: underline; }}
+            a:hover {{ color: #74c0fc; }}
+        </style>
+        <h2>Exam Access Not Available Yet</h2>
+        <div class="error">
+            <p><strong>Gate requirement not met.</strong></p>
+            <p>{message}</p>
+        </div>
+        <div class="info">
+            {requirements_html}
+        </div>
+        <p>Complete the requirement above, then return to this exam problem.</p>
+    """), 403
 
 def check_rldb_user_agent(user_agent, pwn_college_id, sec_ch_ua_platform):
     """Check if user agent contains valid CLDB pattern for Respondus LockDown Browser"""
@@ -598,6 +709,14 @@ def process_login(exam_password, ip_addr):
     if is_practice_exam:
         logger.info("Practice exam detected - bypassing all authentication requirements")
     protections_bypassed = is_admin or is_practice_exam
+
+    if not protections_bypassed:
+        gate_status = check_exam_gate_status(pwn_college_id, exam_module, exam_challenge)
+        if not gate_status.get("allowed", False):
+            logger.info(f"Exam gate blocked access: {gate_status}")
+            return render_gate_denied(gate_status)
+        logger.info(f"Exam gate check allowed access: {gate_status.get('reason')}")
+
     # Check session attendance based on exam administration type
     attending = False
     session_password = None
@@ -718,10 +837,9 @@ def process_login(exam_password, ip_addr):
             logger.error(f"Error writing to file: {e}")
         # Check if a process with "code-server" in the name is running
         
-        # Start exam attempt reporter as separate process now that they have successfully logged in.
-        start_exam_reporter()
-    
         if check_code_server_status():
+            # Start exam attempt reporter only after access is fully working.
+            start_exam_reporter()
             return response
         else:
             return loginpage(message="Login failed, code-server not running, please wait 10 seconds and try again")
@@ -849,7 +967,7 @@ if __name__ == '__main__':
             with open(LEVEL_CONFIG_PATH, 'r') as f:
                 level_config = json.load(f)
                 exam_module = level_config.get("module", "")
-                exam_challenge = level_config.get("challenge", "")
+                exam_challenge = get_level_exam_challenge(level_config)
                 logger.info(f"Loaded exam info: {exam_module}/{exam_challenge}")
     except Exception as e:
         logger.error(f"Error reading exam info from {LEVEL_CONFIG_PATH}: {e}")
