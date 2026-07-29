@@ -1018,14 +1018,14 @@ if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then
             
         fi
     else
-        echo "Not starting racket server b/c $hw_id <= 8 or $lab_id <= 10 " | tee -a $STARTUP_LOG
+        echo "Not starting racket server b/c $clevel_work_dir does not contain 'scheme'" | tee -a $STARTUP_LOG
     fi 
 fi 
 
 # Create .bash_history
 if [ ! -f "/home/hacker/.bash_history" ]; then
     touch "/home/hacker/.bash_history"      
-    echo "[i] Created .bash_history and chowned to hacker:hacker"
+    echo "[i] Created .bash_history and chowned to hacker:hacker" | tee -a $STARTUP_LOG
 fi
 chown hacker:hacker "/home/hacker/.bash_history"   
 
@@ -1137,5 +1137,4 @@ else
 fi 
 
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
-
 
