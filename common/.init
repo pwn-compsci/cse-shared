@@ -348,6 +348,11 @@ if [ -f /challenge/checker.py ]; then
     chmod 700 /challenge/bin/checker.py    
 fi 
 
+if [ -f /challenge/checkstatus.py ]; then
+    mv /challenge/checkstatus.py /challenge/bin/checkstatus.py
+    chmod 700 /challenge/bin/checkstatus.py
+fi
+
 if [ ! -d /home/hacker/.local/share/ultima/skipped ]; then     
     mkdir -p /home/hacker/.local/share/ultima/skipped
     chown hacker:hacker /home/hacker/.local 
@@ -683,6 +688,10 @@ fi
 if [ -f /challenge/tester ]; then
     chmod u+s /challenge/tester
 fi 
+
+if [ -f /challenge/checkstatus ]; then
+    chmod u+s /challenge/checkstatus
+fi
 
 if [ -f /challenge/bin/tester_main.py ]; then
     chmod 700 /challenge/bin/tester_main.py
