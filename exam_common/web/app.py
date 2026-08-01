@@ -350,6 +350,36 @@ def render_gate_field(label, value):
         f"</div>"
     )
 
+def render_gate_requirement_item(req):
+    label = gate_requirement_label(req)
+    mode = gate_requirement_mode(req)
+    satisfied = bool(req.get("satisfied"))
+    status_class = "ok" if satisfied else "missing"
+    status_text = "Complete" if satisfied else "Still needed"
+    detail = html.escape(str(req.get("detail") or "Not complete"))
+    deadline_detail = req.get("attempt_deadline_detail")
+    deadline_html = ""
+    if deadline_detail:
+        deadline_class = "deadline-expired" if req.get("attempt_deadline_passed") else "deadline-active"
+        deadline_html = f"<div class=\"{deadline_class}\">{html.escape(str(deadline_detail))}</div>"
+    missing_levels = req.get("missing_levels") or []
+    missing_levels_html = ""
+    if missing_levels:
+        missing_levels_html = f"<div class=\"requirement-subtle\">Missing levels: {html.escape(', '.join(str(level) for level in missing_levels))}</div>"
+    mode_html = f"<div class=\"requirement-subtle\">{html.escape(mode)}</div>" if mode else ""
+    return (
+        f"<li class=\"requirement-item {status_class}\">"
+        f"<div class=\"requirement-top\">"
+        f"<strong>{html.escape(str(label))}</strong>"
+        f"<span class=\"status-pill {status_class}\">{status_text}</span>"
+        f"</div>"
+        f"{mode_html}"
+        f"<div>{detail}</div>"
+        f"{deadline_html}"
+        f"{missing_levels_html}"
+        f"</li>"
+    )
+
 def render_gate_denied(gate_status):
     """Show unmet exam gate requirements without exposing the password prompt."""
     requirements = gate_status.get("requirements") or []
@@ -359,38 +389,33 @@ def render_gate_denied(gate_status):
     ]
     display_requirements = requirements or unmet
     if display_requirements:
-        items = []
+        groups = []
         for req in sorted(display_requirements, key=lambda item: (item.get("attempt_number") or 2, item.get("gate_requirement_id") or 0)):
-            label = gate_requirement_label(req)
-            attempt = gate_attempt_label(req.get("attempt_number"))
-            mode = gate_requirement_mode(req)
-            satisfied = bool(req.get("satisfied"))
-            status_class = "ok" if satisfied else "missing"
-            status_text = "Complete" if satisfied else "Still needed"
-            detail = html.escape(str(req.get("detail") or "Not complete"))
-            deadline_detail = req.get("attempt_deadline_detail")
-            deadline_html = ""
-            if deadline_detail:
-                deadline_class = "deadline-expired" if req.get("attempt_deadline_passed") else "deadline-active"
-                deadline_html = f"<div class=\"{deadline_class}\">{html.escape(str(deadline_detail))}</div>"
-            missing_levels = req.get("missing_levels") or []
-            missing_levels_html = ""
-            if missing_levels:
-                missing_levels_html = f"<div class=\"requirement-subtle\">Missing levels: {html.escape(', '.join(str(level) for level in missing_levels))}</div>"
-            mode_html = f"<span>{html.escape(mode)}</span>" if mode else ""
-            items.append(
-                f"<li class=\"requirement-item {status_class}\">"
-                f"<div class=\"requirement-top\">"
-                f"<strong>{html.escape(str(label))}</strong>"
-                f"<span class=\"status-pill {status_class}\">{status_text}</span>"
-                f"</div>"
-                f"<div class=\"requirement-subtle\">{html.escape(attempt)}{(' / ' if mode else '')}{mode_html}</div>"
-                f"<div>{detail}</div>"
-                f"{deadline_html}"
-                f"{missing_levels_html}"
-                f"</li>"
+            attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
+            if not groups or groups[-1]["attempt_number"] != attempt_number:
+                groups.append({"attempt_number": attempt_number, "requirements": []})
+            groups[-1]["requirements"].append(req)
+
+        group_html = []
+        for group in groups:
+            group_requirements = group["requirements"]
+            missing_count = sum(1 for req in group_requirements if not req.get("satisfied"))
+            complete_count = len(group_requirements) - missing_count
+            summary = (
+                f"{complete_count} complete, {missing_count} still needed"
+                if missing_count
+                else f"{complete_count} complete"
             )
-        requirements_html = "<ul class=\"requirements\">" + "".join(items) + "</ul>"
+            group_html.append(
+                f"<section class=\"requirement-attempt-group\">"
+                f"<div class=\"requirement-attempt-header\">"
+                f"<strong>{html.escape(gate_attempt_label(group['attempt_number']))}</strong>"
+                f"<span>{html.escape(summary)}</span>"
+                f"</div>"
+                f"<ul class=\"requirements\">{''.join(render_gate_requirement_item(req) for req in group_requirements)}</ul>"
+                f"</section>"
+            )
+        requirements_html = "".join(group_html)
     else:
         requirements_html = "<p>The gate status service did not provide specific missing requirements.</p>"
 
@@ -437,7 +462,11 @@ def render_gate_denied(gate_status):
             .status-field {{ background-color: #1f1f1f; border: 1px solid #555; border-radius: 5px; padding: 10px; }}
             .status-field span {{ display: block; color: #a8a8a8; font-size: 0.85em; margin-bottom: 4px; }}
             .status-field strong {{ color: #ffffff; }}
-            .requirements {{ list-style: none; padding-left: 0; }}
+            .requirement-attempt-group {{ margin-top: 12px; border: 1px solid #444; border-radius: 5px; overflow: hidden; background-color: #202020; }}
+            .requirement-attempt-header {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; background-color: #2d2d2d; border-bottom: 1px solid #444; }}
+            .requirement-attempt-header strong {{ color: #ffffff; }}
+            .requirement-attempt-header span {{ color: #a8a8a8; font-size: 0.9em; }}
+            .requirements {{ list-style: none; padding: 0 12px; margin: 0; }}
             .requirement-item {{ margin: 12px 0; padding: 12px; border-radius: 5px; background-color: #1f1f1f; border: 1px solid #555; }}
             .requirement-item.missing {{ border-color: #ffb86b; }}
             .requirement-item.ok {{ border-color: #50fa7b; opacity: 0.82; }}
