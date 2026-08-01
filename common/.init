@@ -491,6 +491,7 @@ clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.jso
 
 level=$(jq -r '.level' /challenge/.config/level.json)    
 module=$(jq -r '.module' /challenge/.config/level.json)    
+challenge=$(jq -r '.challenge // .level' /challenge/.config/level.json)
 
 # we either have a labid or a hw
 if grep "labid" /challenge/.config/level.json; then 
@@ -568,6 +569,87 @@ if [ ! -f /home/hacker/.cache ]; then
 fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
+
+report_pwn_level_attempt() {
+    if [ -z "$pwn_college_id" ] || [ -z "$module" ] || [ -z "$challenge" ]; then
+        echo "[i] Skipping pwn level attempt report: missing pwn_college_id/module/challenge" >> "$STARTUP_LOG"
+        return 0
+    fi
+    if [ ! -f /opt/.ring ]; then
+        echo "[i] Skipping pwn level attempt report: missing API token" >> "$STARTUP_LOG"
+        return 0
+    fi
+
+    PWN_COLLEGE_ID="$pwn_college_id" \
+    MODULE_ID="$module" \
+    CHALLENGE_ID="$challenge" \
+    LEVEL_ID="$level" \
+    STARTUP_ID="$(cat /tmp/.start 2>/dev/null || date --iso-8601=seconds)" \
+    python3 - <<'PY' >> "$STARTUP_LOG" 2>&1 || true
+import json
+import os
+import urllib.error
+import urllib.request
+
+token_path = "/opt/.ring"
+try:
+    with open(token_path, "r", encoding="utf-8") as token_file:
+        api_token = token_file.read().strip()
+except OSError as exc:
+    print(f"[i] Could not read API token for pwn level attempt report: {exc}")
+    raise SystemExit(0)
+
+pwn_college_id = os.environ.get("PWN_COLLEGE_ID", "")
+module = os.environ.get("MODULE_ID", "")
+challenge = os.environ.get("CHALLENGE_ID", "")
+level = os.environ.get("LEVEL_ID", "")
+startup_id = os.environ.get("STARTUP_ID", "")
+
+def post_json(url, payload):
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=6) as response:
+        return response.status, response.read().decode("utf-8", errors="replace")
+
+student_payload = {
+    "pwn_college_id": pwn_college_id,
+    "module": module,
+    "challenge": challenge,
+    "api_token": api_token,
+}
+
+try:
+    status, body = post_json("https://api.cse545.com/is_student", student_payload)
+    is_student = body.strip().lower() == "true"
+    if status != 200 or not is_student:
+        print(f"[i] PWN level attempt not reported: is_student status={status} body={body.strip()!r}")
+        raise SystemExit(0)
+
+    attempt_payload = {
+        "pwn_college_id": pwn_college_id,
+        "module": module,
+        "challenge": challenge,
+        "level": level,
+        "source": "level_start",
+        "startup_id": startup_id,
+        "api_token": api_token,
+    }
+    status, body = post_json("https://api.cse545.com/pwn-level-attempt", attempt_payload)
+    print(f"[i] PWN level attempt report status={status} body={body[:200]!r}")
+except urllib.error.HTTPError as exc:
+    body = exc.read().decode("utf-8", errors="replace")
+    print(f"[i] PWN level attempt report HTTP error {exc.code}: {body[:200]!r}")
+except Exception as exc:
+    print(f"[i] PWN level attempt report skipped after error: {exc}")
+PY
+}
+
+report_pwn_level_attempt
 
 
 #if [ "$admin_access" = true ]; then
@@ -1137,4 +1219,3 @@ else
 fi 
 
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
-

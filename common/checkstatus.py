@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import sys
+import textwrap
 
 import requests
 
@@ -92,21 +93,57 @@ def terminal_width():
 def print_box(title, lines, color=Color.CYAN, color_enabled=True):
     width = terminal_width()
     inner_width = width - 4
-    top = "+" + "-" * (width - 2) + "+"
+    top = "╭" + "─" * (width - 2) + "╮"
+    sep = "├" + "─" * (width - 2) + "┤"
+    bottom = "╰" + "─" * (width - 2) + "╯"
     print(colorize(top, color, color_enabled))
-    print(colorize("| ", color, color_enabled) + colorize(title[:inner_width].ljust(inner_width), Color.BOLD, color_enabled) + colorize(" |", color, color_enabled))
-    print(colorize("|" + "-" * (width - 2) + "|", color, color_enabled))
+    print(
+        colorize("│ ", color, color_enabled)
+        + visible_ljust(colorize(title[:inner_width], Color.BOLD, color_enabled), inner_width)
+        + colorize(" │", color, color_enabled)
+    )
+    print(colorize(sep, color, color_enabled))
     for line in lines:
-        while len(strip_ansi(line)) > inner_width:
-            cut = inner_width
-            print(colorize("| ", color, color_enabled) + line[:cut].ljust(inner_width) + colorize(" |", color, color_enabled))
-            line = line[cut:]
-        print(colorize("| ", color, color_enabled) + line.ljust(inner_width) + colorize(" |", color, color_enabled))
-    print(colorize(top, color, color_enabled))
+        for wrapped in wrap_visible(str(line), inner_width):
+            print(
+                colorize("│ ", color, color_enabled)
+                + visible_ljust(wrapped, inner_width)
+                + colorize(" │", color, color_enabled)
+            )
+    print(colorize(bottom, color, color_enabled))
 
 
 def strip_ansi(text):
     return re.sub(r"\033\[[0-9;]*m", "", text)
+
+
+def visible_ljust(text, width):
+    return text + " " * max(0, width - len(strip_ansi(text)))
+
+
+def wrap_visible(text, width):
+    if not text:
+        return [""]
+    plain = strip_ansi(text)
+    indent_match = re.match(r"^(\s+)", plain)
+    subsequent_indent = indent_match.group(1) if indent_match else ""
+    wrapper = textwrap.TextWrapper(
+        width=width,
+        replace_whitespace=False,
+        drop_whitespace=False,
+        subsequent_indent=subsequent_indent,
+    )
+    if plain == text:
+        return wrapper.wrap(text) or [""]
+    if len(plain) <= width:
+        return [text]
+    # ANSI-bearing lines are usually short status labels. If one is long, wrap
+    # the plain text rather than slicing through escape sequences.
+    return wrapper.wrap(plain) or [""]
+
+
+def field(label, value):
+    return f"{label:<18} {value}"
 
 
 def requirement_label(requirement):
@@ -120,6 +157,39 @@ def requirement_label(requirement):
     if req_type == "consultation":
         return "Instructor or TA consultation"
     return "Required gate"
+
+
+def attempt_label(attempt_number):
+    try:
+        attempt_number = int(attempt_number)
+    except (TypeError, ValueError):
+        attempt_number = 2
+    if attempt_number == 0:
+        return "Before start"
+    if attempt_number == 1:
+        return "Attempt 1"
+    return f"Retry {attempt_number - 1}"
+
+
+def requirement_mode(requirement):
+    mode = requirement.get("satisfaction_mode")
+    if requirement.get("requirement_type") == "assignment":
+        return "full credit" if mode == "complete" else "attempt/submitted"
+    if requirement.get("requirement_type") == "pwn":
+        return "attempt level" if mode == "attempt" else "complete level"
+    return ""
+
+
+def deadline_lines(requirement, color_enabled=True, indent="      "):
+    deadline = requirement.get("attempt_deadline_date")
+    detail = requirement.get("attempt_deadline_detail")
+    if not deadline and not detail:
+        return []
+    passed = bool(requirement.get("attempt_deadline_passed"))
+    icon = "⏰" if passed else "🗓️"
+    color = Color.RED if passed else Color.YELLOW
+    text = detail or f"Attempt deadline: {deadline} 11:59 PM Arizona time"
+    return [colorize(f"{indent}{icon} {text}", color, color_enabled)]
 
 
 def print_status(payload, color_enabled=True):
@@ -163,17 +233,32 @@ def print_status(payload, color_enabled=True):
     allowed = gate_status.get("allowed", False)
 
     header_lines = [
-        f"{student} ({pwn_id}) in {course}",
-        f"Most recent unfinished exam: {assignment}",
-        f"Problem: {module} / {challenge_name}",
-        f"Attempts recorded: {attempts}   Last attempt: {last_attempt}",
+        field("Student", f"{student} ({pwn_id})"),
+        field("Course", course),
+        field("Exam", assignment),
+        field("Problem", f"{module} / {challenge_name}"),
+        field("Attempts", f"{attempts} recorded"),
+        field("Last attempt", last_attempt),
     ]
+    actual_attempts = gate_status.get("actual_attempt_count")
+    next_attempt = gate_status.get("next_attempt_number")
+    if actual_attempts is not None and next_attempt is not None:
+        header_lines.append(field("Gate tier", f"{attempt_label(next_attempt)} (actual attempts: {actual_attempts})"))
     if allowed:
-        header_lines.append(colorize("✅ Gate status: ready. Requirements appear complete.", Color.GREEN, color_enabled))
+        header_lines.append(colorize("✅ Ready: requirements appear complete.", Color.GREEN, color_enabled))
     else:
-        header_lines.append(colorize("❌ Gate status: blocked. Complete the items below before retrying.", Color.RED, color_enabled))
+        header_lines.append(colorize("⛔ Blocked: complete the items below before retrying.", Color.RED, color_enabled))
 
     print_box("Exam Access Checklist", header_lines, color=Color.CYAN if allowed else Color.YELLOW, color_enabled=color_enabled)
+
+    missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
+    if missed_deadlines:
+        lines = [
+            colorize("These deadlines have passed, so the current gate tier has advanced.", Color.YELLOW, color_enabled)
+        ]
+        for item in missed_deadlines:
+            lines.append(f"⚠️  {attempt_label(item.get('attempt_number'))}: {item.get('detail') or 'Attempt deadline passed'}")
+        print_box("Missed Attempt Deadlines", lines, color=Color.RED, color_enabled=color_enabled)
 
     requirements = gate_status.get("requirements") or []
     unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
@@ -194,11 +279,16 @@ def print_status(payload, color_enabled=True):
             ok = bool(req.get("satisfied"))
             mark = colorize("✅ DONE", Color.GREEN, color_enabled) if ok else colorize("❌ TODO", Color.RED, color_enabled)
             detail = req.get("detail") or ("Complete" if ok else "Not complete")
-            lines.append(f"{mark}  {requirement_label(req)}")
-            lines.append(f"      {detail}")
+            mode = requirement_mode(req)
+            mode_suffix = f"  ·  {mode}" if mode else ""
+            lines.append(f"{mark}  {attempt_label(req.get('attempt_number'))}: {requirement_label(req)}{mode_suffix}")
+            lines.extend(deadline_lines(req, color_enabled=color_enabled))
+            detail_color = Color.GREEN if ok else Color.YELLOW
+            lines.append(colorize(f"      {detail}", detail_color, color_enabled))
             missing_levels = req.get("missing_levels") or []
             if missing_levels:
                 lines.append(colorize(f"      Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
+            lines.append("")
 
         print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
 

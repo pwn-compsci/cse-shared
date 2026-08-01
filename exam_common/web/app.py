@@ -285,12 +285,13 @@ def check_exam_gate_status(pwn_college_id, module, challenge):
             return result
 
         logger.error(f"Exam gate status API returned {response.status_code}: {response.text}")
-        return {
+        result.update({
             "allowed": False,
             "reason": result.get("reason", "gate_check_failed"),
             "message": result.get("message", "Could not verify exam gate requirements. Please notify your professor or proctor."),
             "requirements": result.get("requirements", [])
-        }
+        })
+        return result
     except requests.RequestException as e:
         logger.error(f"Error calling exam gate status API: {e}")
         return {
@@ -308,30 +309,122 @@ def check_exam_gate_status(pwn_college_id, module, challenge):
             "requirements": []
         }
 
+def gate_attempt_label(attempt_number):
+    try:
+        attempt_number = int(attempt_number)
+    except (TypeError, ValueError):
+        attempt_number = 2
+    if attempt_number == 0:
+        return "Before start"
+    if attempt_number == 1:
+        return "Attempt 1"
+    return f"Retry {attempt_number - 1}"
+
+def gate_requirement_label(req):
+    req_type = req.get("requirement_type", "requirement")
+    assignment_name = req.get("required_assignment_name")
+    if req_type == "assignment":
+        return assignment_name or "Required assignment"
+    if req_type == "pwn":
+        return assignment_name or req.get("required_assignment_module_id") or "Required pwn.college work"
+    if req_type == "consultation":
+        return "Instructor or TA consultation"
+    return "Required gate"
+
+def gate_requirement_mode(req):
+    mode = req.get("satisfaction_mode")
+    req_type = req.get("requirement_type")
+    if req_type == "assignment":
+        return "full credit required" if mode == "complete" else "attempt or submission required"
+    if req_type == "pwn":
+        return "level attempt required" if mode == "attempt" else "level completion required"
+    return ""
+
+def render_gate_field(label, value):
+    if value is None or value == "":
+        value = "not available"
+    return (
+        f"<div class=\"status-field\">"
+        f"<span>{html.escape(str(label))}</span>"
+        f"<strong>{html.escape(str(value))}</strong>"
+        f"</div>"
+    )
+
 def render_gate_denied(gate_status):
     """Show unmet exam gate requirements without exposing the password prompt."""
+    requirements = gate_status.get("requirements") or []
     unmet = gate_status.get("unmet_requirements") or [
         req for req in gate_status.get("requirements", [])
         if not req.get("satisfied")
     ]
-    if unmet:
+    display_requirements = requirements or unmet
+    if display_requirements:
         items = []
-        for req in unmet:
-            req_type = req.get("requirement_type", "requirement")
-            assignment_name = req.get("required_assignment_name")
+        for req in sorted(display_requirements, key=lambda item: (item.get("attempt_number") or 2, item.get("gate_requirement_id") or 0)):
+            label = gate_requirement_label(req)
+            attempt = gate_attempt_label(req.get("attempt_number"))
+            mode = gate_requirement_mode(req)
+            satisfied = bool(req.get("satisfied"))
+            status_class = "ok" if satisfied else "missing"
+            status_text = "Complete" if satisfied else "Still needed"
             detail = html.escape(str(req.get("detail") or "Not complete"))
-            if req_type == "assignment":
-                label = assignment_name or "Required assignment"
-            elif req_type == "pwn":
-                label = assignment_name or req.get("required_assignment_module_id") or "Required pwn.college work"
-            elif req_type == "consultation":
-                label = "Instructor or TA consultation"
-            else:
-                label = "Required gate"
-            items.append(f"<li><strong>{html.escape(str(label))}</strong><br>{detail}</li>")
-        requirements_html = "<ul>" + "".join(items) + "</ul>"
+            deadline_detail = req.get("attempt_deadline_detail")
+            deadline_html = ""
+            if deadline_detail:
+                deadline_class = "deadline-expired" if req.get("attempt_deadline_passed") else "deadline-active"
+                deadline_html = f"<div class=\"{deadline_class}\">{html.escape(str(deadline_detail))}</div>"
+            missing_levels = req.get("missing_levels") or []
+            missing_levels_html = ""
+            if missing_levels:
+                missing_levels_html = f"<div class=\"requirement-subtle\">Missing levels: {html.escape(', '.join(str(level) for level in missing_levels))}</div>"
+            mode_html = f"<span>{html.escape(mode)}</span>" if mode else ""
+            items.append(
+                f"<li class=\"requirement-item {status_class}\">"
+                f"<div class=\"requirement-top\">"
+                f"<strong>{html.escape(str(label))}</strong>"
+                f"<span class=\"status-pill {status_class}\">{status_text}</span>"
+                f"</div>"
+                f"<div class=\"requirement-subtle\">{html.escape(attempt)}{(' / ' if mode else '')}{mode_html}</div>"
+                f"<div>{detail}</div>"
+                f"{deadline_html}"
+                f"{missing_levels_html}"
+                f"</li>"
+            )
+        requirements_html = "<ul class=\"requirements\">" + "".join(items) + "</ul>"
     else:
         requirements_html = "<p>The gate status service did not provide specific missing requirements.</p>"
+
+    missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
+    missed_html = ""
+    if missed_deadlines:
+        missed_items = "".join(
+            f"<li><strong>{html.escape(gate_attempt_label(item.get('attempt_number')))}</strong><br>{html.escape(str(item.get('detail') or 'Attempt deadline passed'))}</li>"
+            for item in missed_deadlines
+        )
+        missed_html = (
+            f"<div class=\"warning\">"
+            f"<strong>Attempt deadline expired</strong>"
+            f"<p>One or more attempt deadlines have passed, so this exam problem is now checking the later gate tier. You may need to complete requirements from the missed tier and the current tier.</p>"
+            f"<ul>{missed_items}</ul>"
+            f"</div>"
+        )
+
+    actual_attempts = gate_status.get("actual_attempt_count")
+    next_attempt = gate_status.get("next_attempt_number")
+    latest_attempt = gate_status.get("latest_attempt_number")
+    last_attempt_at = gate_status.get("last_attempt_at")
+    current_access_attempt = (actual_attempts + 1) if isinstance(actual_attempts, int) else None
+    gate_tier_label = gate_attempt_label(next_attempt) if next_attempt is not None else None
+    status_fields = [
+        render_gate_field("Current access attempt", f"Attempt {current_access_attempt}" if current_access_attempt else None),
+        render_gate_field("Recorded attempts", actual_attempts),
+        render_gate_field("Latest recorded attempt", f"Attempt {latest_attempt}" if latest_attempt else None),
+        render_gate_field("Last recorded at", last_attempt_at),
+        render_gate_field("Gate tier being checked", gate_tier_label),
+    ]
+    if missed_deadlines:
+        status_fields.append(render_gate_field("Deadline-expired tiers", len(missed_deadlines)))
+    attempt_html = f"<div class=\"status-grid\">{''.join(status_fields)}</div>"
 
     message = html.escape(str(gate_status.get("message") or "You have exam gate requirements to complete before accessing this problem."))
     return render_template_string(f"""
@@ -339,6 +432,22 @@ def render_gate_denied(gate_status):
             body {{ color: #FFFFFF; background-color: #1E1E1E; font-family: monospace; padding: 20px; }}
             .error {{ color: #ffb86b; background-color: #2b2418; border: 1px solid #ffb86b; padding: 15px; border-radius: 5px; margin: 15px 0; }}
             .info {{ color: #d0d0d0; background-color: #252525; border: 1px solid #555; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            .warning {{ color: #ffd166; background-color: #2b2618; border: 1px solid #ffd166; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            .status-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }}
+            .status-field {{ background-color: #1f1f1f; border: 1px solid #555; border-radius: 5px; padding: 10px; }}
+            .status-field span {{ display: block; color: #a8a8a8; font-size: 0.85em; margin-bottom: 4px; }}
+            .status-field strong {{ color: #ffffff; }}
+            .requirements {{ list-style: none; padding-left: 0; }}
+            .requirement-item {{ margin: 12px 0; padding: 12px; border-radius: 5px; background-color: #1f1f1f; border: 1px solid #555; }}
+            .requirement-item.missing {{ border-color: #ffb86b; }}
+            .requirement-item.ok {{ border-color: #50fa7b; opacity: 0.82; }}
+            .requirement-top {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 5px; }}
+            .requirement-subtle {{ color: #a8a8a8; font-size: 0.9em; margin: 3px 0; }}
+            .status-pill {{ white-space: nowrap; border-radius: 999px; padding: 3px 8px; font-size: 0.82em; }}
+            .status-pill.missing {{ color: #1E1E1E; background-color: #ffb86b; }}
+            .status-pill.ok {{ color: #1E1E1E; background-color: #50fa7b; }}
+            .deadline-expired {{ color: #ff6b6b; margin-top: 6px; }}
+            .deadline-active {{ color: #ffd166; margin-top: 6px; }}
             li {{ margin: 12px 0; }}
             a {{ color: #4dabf7; text-decoration: underline; }}
             a:hover {{ color: #74c0fc; }}
@@ -349,6 +458,12 @@ def render_gate_denied(gate_status):
             <p>{message}</p>
         </div>
         <div class="info">
+            <strong>Exam attempt status</strong>
+            {attempt_html}
+        </div>
+        {missed_html}
+        <div class="info">
+            <strong>Gate requirements being checked</strong>
             {requirements_html}
         </div>
         <p>Complete the requirement above, then return to this exam problem.</p>
