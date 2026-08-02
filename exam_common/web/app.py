@@ -340,6 +340,27 @@ def gate_requirement_mode(req):
         return "level attempt required" if mode == "attempt" else "level completion required"
     return ""
 
+def format_access_window_remaining(deadline_date):
+    if not deadline_date:
+        return ""
+    try:
+        deadline_day = datetime.strptime(str(deadline_date), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return ""
+    closes_at = datetime.combine(deadline_day, datetime.max.time().replace(microsecond=0))
+    remaining = closes_at - datetime.now()
+    if remaining.total_seconds() <= 0:
+        return ""
+    total_minutes = max(1, int(remaining.total_seconds() // 60))
+    days = total_minutes // (24 * 60)
+    hours = (total_minutes % (24 * 60)) // 60
+    minutes = total_minutes % 60
+    if days:
+        return f"{days} day{'s' if days != 1 else ''}, {hours} hour{'s' if hours != 1 else ''} left"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}, {minutes} minute{'s' if minutes != 1 else ''} left"
+    return f"{minutes} minute{'s' if minutes != 1 else ''} left"
+
 def render_gate_field(label, value):
     if value is None or value == "":
         value = "not available"
@@ -358,9 +379,23 @@ def render_gate_requirement_item(req):
     status_text = "Complete" if satisfied else "Still needed"
     detail = html.escape(str(req.get("detail") or "Not complete"))
     missing_levels = req.get("missing_levels") or []
-    missing_levels_html = ""
+    completed_levels = req.get("completed_levels") or []
+    level_status_html = ""
+    completed_label = "Attempted levels" if req.get("satisfaction_mode") == "attempt" else "Completed levels"
+    if completed_levels:
+        level_status_html += (
+            f"<div class=\"level-list level-complete\">"
+            f"<strong>{html.escape(completed_label)}:</strong> "
+            f"{html.escape(', '.join(str(level) for level in completed_levels))}"
+            f"</div>"
+        )
     if missing_levels:
-        missing_levels_html = f"<div class=\"requirement-subtle\">Missing levels: {html.escape(', '.join(str(level) for level in missing_levels))}</div>"
+        level_status_html += (
+            f"<div class=\"level-list level-missing\">"
+            f"<strong>Missing levels:</strong> "
+            f"{html.escape(', '.join(str(level) for level in missing_levels))}"
+            f"</div>"
+        )
     mode_html = f"<div class=\"requirement-subtle\">{html.escape(mode)}</div>" if mode else ""
     return (
         f"<li class=\"requirement-item {status_class}\">"
@@ -370,7 +405,7 @@ def render_gate_requirement_item(req):
         f"</div>"
         f"{mode_html}"
         f"<div>{detail}</div>"
-        f"{missing_levels_html}"
+        f"{level_status_html}"
         f"</li>"
     )
 
@@ -386,6 +421,10 @@ def gate_attempt_window_label(attempt_number, requirements, missed_deadlines):
             text = str(detail)
             if req.get("attempt_deadline_passed"):
                 text = text.replace("Access window closed", "Access window expired", 1)
+            else:
+                remaining = format_access_window_remaining(req.get("attempt_deadline_date"))
+                if remaining:
+                    text = f"{text} ({remaining})"
             return text, bool(req.get("attempt_deadline_passed"))
     return "", False
 
@@ -485,6 +524,9 @@ def render_gate_denied(gate_status):
             .status-pill.ok {{ color: #1E1E1E; background-color: #50fa7b; }}
             .deadline-expired {{ color: #ff6b6b; margin-top: 6px; }}
             .deadline-active {{ color: #ffd166; margin-top: 6px; }}
+            .level-list {{ margin-top: 6px; font-size: 0.92em; }}
+            .level-complete {{ color: #50fa7b; }}
+            .level-missing {{ color: #ffb86b; }}
             li {{ margin: 12px 0; }}
             a {{ color: #4dabf7; text-decoration: underline; }}
             a:hover {{ color: #74c0fc; }}

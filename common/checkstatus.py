@@ -8,6 +8,7 @@ student can regain access.
 """
 
 import argparse
+from datetime import datetime
 import json
 import os
 import re
@@ -180,6 +181,28 @@ def requirement_mode(requirement):
     return ""
 
 
+def format_access_window_remaining(deadline_date):
+    if not deadline_date:
+        return ""
+    try:
+        deadline_day = datetime.strptime(str(deadline_date), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return ""
+    closes_at = datetime.combine(deadline_day, datetime.max.time().replace(microsecond=0))
+    remaining = closes_at - datetime.now()
+    if remaining.total_seconds() <= 0:
+        return ""
+    total_minutes = max(1, int(remaining.total_seconds() // 60))
+    days = total_minutes // (24 * 60)
+    hours = (total_minutes % (24 * 60)) // 60
+    minutes = total_minutes % 60
+    if days:
+        return f"{days} day{'s' if days != 1 else ''}, {hours} hour{'s' if hours != 1 else ''} left"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}, {minutes} minute{'s' if minutes != 1 else ''} left"
+    return f"{minutes} minute{'s' if minutes != 1 else ''} left"
+
+
 def access_windows_by_attempt(gate_status):
     windows = {}
     for req in gate_status.get("requirements") or []:
@@ -192,6 +215,7 @@ def access_windows_by_attempt(gate_status):
             windows[attempt_number] = {
                 "passed": bool(req.get("attempt_deadline_passed")),
                 "detail": detail or f"Access window closes at {deadline} 11:59 PM Arizona time",
+                "deadline": deadline,
             }
 
     for missed in gate_status.get("missed_attempt_deadlines") or []:
@@ -199,6 +223,7 @@ def access_windows_by_attempt(gate_status):
         windows[attempt_number] = {
             "passed": True,
             "detail": missed.get("detail") or "Access window closed",
+            "deadline": missed.get("attempt_deadline_date"),
         }
     return windows
 
@@ -311,6 +336,9 @@ def print_status(payload, color_enabled=True):
                     detail = detail.replace("Access window closed", "Access window expired", 1)
                     header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
                 else:
+                    remaining = format_access_window_remaining(window.get("deadline"))
+                    if remaining:
+                        detail = f"{detail} ({remaining})"
                     header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
             header += colorize(f"  ·  {summary}", Color.DIM, color_enabled)
             lines.append(header)
@@ -325,6 +353,10 @@ def print_status(payload, color_enabled=True):
                 detail_color = Color.GREEN if ok else Color.YELLOW
                 lines.append(colorize(f"        {detail}", detail_color, color_enabled))
                 missing_levels = req.get("missing_levels") or []
+                completed_levels = req.get("completed_levels") or []
+                completed_label = "Attempted levels" if req.get("satisfaction_mode") == "attempt" else "Completed levels"
+                if completed_levels:
+                    lines.append(colorize(f"        {completed_label}: {', '.join(str(level) for level in completed_levels)}", Color.GREEN, color_enabled))
                 if missing_levels:
                     lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
             lines.append("")
