@@ -165,7 +165,7 @@ def attempt_label(attempt_number):
     except (TypeError, ValueError):
         attempt_number = 2
     if attempt_number == 0:
-        return "Before start"
+        return "First Attempt"
     if attempt_number == 1:
         return "Attempt 1"
     return f"Retry {attempt_number - 1}"
@@ -188,8 +188,38 @@ def deadline_lines(requirement, color_enabled=True, indent="      "):
     passed = bool(requirement.get("attempt_deadline_passed"))
     icon = "⏰" if passed else "🗓️"
     color = Color.RED if passed else Color.YELLOW
-    text = detail or f"Attempt deadline: {deadline} 11:59 PM Arizona time"
+    text = detail or f"Access window closes at {deadline} 11:59 PM Arizona time"
     return [colorize(f"{indent}{icon} {text}", color, color_enabled)]
+
+
+def access_window_lines(gate_status, color_enabled=True):
+    windows = {}
+    for req in gate_status.get("requirements") or []:
+        attempt_number = req.get("attempt_number")
+        deadline = req.get("attempt_deadline_date")
+        detail = req.get("attempt_deadline_detail")
+        if not deadline and not detail:
+            continue
+        if attempt_number not in windows:
+            windows[attempt_number] = {
+                "passed": bool(req.get("attempt_deadline_passed")),
+                "detail": detail or f"Access window closes at {deadline} 11:59 PM Arizona time",
+            }
+
+    for missed in gate_status.get("missed_attempt_deadlines") or []:
+        attempt_number = missed.get("attempt_number")
+        windows[attempt_number] = {
+            "passed": True,
+            "detail": missed.get("detail") or "Access window closed",
+        }
+
+    lines = []
+    for attempt_number in sorted(windows, key=lambda value: int(value or 2)):
+        window = windows[attempt_number]
+        color = Color.RED if window["passed"] else Color.YELLOW
+        icon = "⏰" if window["passed"] else "🗓️"
+        lines.append(colorize(f"{icon} {attempt_label(attempt_number)}: {window['detail']}", color, color_enabled))
+    return lines
 
 
 def print_status(payload, color_enabled=True):
@@ -251,14 +281,18 @@ def print_status(payload, color_enabled=True):
 
     print_box("Exam Access Checklist", header_lines, color=Color.CYAN if allowed else Color.YELLOW, color_enabled=color_enabled)
 
+    window_lines = access_window_lines(gate_status, color_enabled=color_enabled)
+    if window_lines:
+        print_box("Access Windows", window_lines, color=Color.YELLOW, color_enabled=color_enabled)
+
     missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
     if missed_deadlines:
         lines = [
-            colorize("These deadlines have passed, so the current gate tier has advanced.", Color.YELLOW, color_enabled)
+            colorize("These access windows have closed, so the current gate tier has advanced.", Color.YELLOW, color_enabled)
         ]
         for item in missed_deadlines:
-            lines.append(f"⚠️  {attempt_label(item.get('attempt_number'))}: {item.get('detail') or 'Attempt deadline passed'}")
-        print_box("Missed Attempt Deadlines", lines, color=Color.RED, color_enabled=color_enabled)
+            lines.append(f"⚠️  {attempt_label(item.get('attempt_number'))}: {item.get('detail') or 'Access window closed'}")
+        print_box("Closed Access Windows", lines, color=Color.RED, color_enabled=color_enabled)
 
     requirements = gate_status.get("requirements") or []
     unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]

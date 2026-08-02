@@ -315,7 +315,7 @@ def gate_attempt_label(attempt_number):
     except (TypeError, ValueError):
         attempt_number = 2
     if attempt_number == 0:
-        return "Before start"
+        return "First Attempt"
     if attempt_number == 1:
         return "Attempt 1"
     return f"Retry {attempt_number - 1}"
@@ -423,13 +423,13 @@ def render_gate_denied(gate_status):
     missed_html = ""
     if missed_deadlines:
         missed_items = "".join(
-            f"<li><strong>{html.escape(gate_attempt_label(item.get('attempt_number')))}</strong><br>{html.escape(str(item.get('detail') or 'Attempt deadline passed'))}</li>"
+            f"<li><strong>{html.escape(gate_attempt_label(item.get('attempt_number')))}</strong><br>{html.escape(str(item.get('detail') or 'Access window closed'))}</li>"
             for item in missed_deadlines
         )
         missed_html = (
             f"<div class=\"warning\">"
-            f"<strong>Attempt deadline expired</strong>"
-            f"<p>One or more attempt deadlines have passed, so this exam problem is now checking the later gate tier. You may need to complete requirements from the missed tier and the current tier.</p>"
+            f"<strong>Access window closed</strong>"
+            f"<p>One or more access windows have closed, so this exam problem is now checking the later gate tier. You may need to complete requirements from the closed window and the current window.</p>"
             f"<ul>{missed_items}</ul>"
             f"</div>"
         )
