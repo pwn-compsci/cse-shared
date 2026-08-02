@@ -180,19 +180,7 @@ def requirement_mode(requirement):
     return ""
 
 
-def deadline_lines(requirement, color_enabled=True, indent="      "):
-    deadline = requirement.get("attempt_deadline_date")
-    detail = requirement.get("attempt_deadline_detail")
-    if not deadline and not detail:
-        return []
-    passed = bool(requirement.get("attempt_deadline_passed"))
-    icon = "⏰" if passed else "🗓️"
-    color = Color.RED if passed else Color.YELLOW
-    text = detail or f"Access window closes at {deadline} 11:59 PM Arizona time"
-    return [colorize(f"{indent}{icon} {text}", color, color_enabled)]
-
-
-def access_window_lines(gate_status, color_enabled=True):
+def access_windows_by_attempt(gate_status):
     windows = {}
     for req in gate_status.get("requirements") or []:
         attempt_number = req.get("attempt_number")
@@ -212,14 +200,7 @@ def access_window_lines(gate_status, color_enabled=True):
             "passed": True,
             "detail": missed.get("detail") or "Access window closed",
         }
-
-    lines = []
-    for attempt_number in sorted(windows, key=lambda value: int(value or 2)):
-        window = windows[attempt_number]
-        color = Color.RED if window["passed"] else Color.YELLOW
-        icon = "⏰" if window["passed"] else "🗓️"
-        lines.append(colorize(f"{icon} {attempt_label(attempt_number)}: {window['detail']}", color, color_enabled))
-    return lines
+    return windows
 
 
 def print_status(payload, color_enabled=True):
@@ -281,18 +262,7 @@ def print_status(payload, color_enabled=True):
 
     print_box("Exam Access Checklist", header_lines, color=Color.CYAN if allowed else Color.YELLOW, color_enabled=color_enabled)
 
-    window_lines = access_window_lines(gate_status, color_enabled=color_enabled)
-    if window_lines:
-        print_box("Access Windows", window_lines, color=Color.YELLOW, color_enabled=color_enabled)
-
     missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
-    if missed_deadlines:
-        lines = [
-            colorize("These access windows have closed, so the current gate tier has advanced.", Color.YELLOW, color_enabled)
-        ]
-        for item in missed_deadlines:
-            lines.append(f"⚠️  {attempt_label(item.get('attempt_number'))}: {item.get('detail') or 'Access window closed'}")
-        print_box("Closed Access Windows", lines, color=Color.RED, color_enabled=color_enabled)
 
     requirements = gate_status.get("requirements") or []
     unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
@@ -308,20 +278,55 @@ def print_status(payload, color_enabled=True):
             color_enabled=color_enabled,
         )
     else:
+        windows = access_windows_by_attempt(gate_status)
+        groups = []
+        for req in sorted(
+            requirements,
+            key=lambda item: (
+                item.get("attempt_number") if item.get("attempt_number") is not None else 2,
+                item.get("gate_requirement_id") or 0,
+            )
+        ):
+            attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
+            if not groups or groups[-1]["attempt_number"] != attempt_number:
+                groups.append({"attempt_number": attempt_number, "requirements": []})
+            groups[-1]["requirements"].append(req)
+
         lines = []
-        for req in requirements:
-            ok = bool(req.get("satisfied"))
-            mark = colorize("✅ DONE", Color.GREEN, color_enabled) if ok else colorize("❌ TODO", Color.RED, color_enabled)
-            detail = req.get("detail") or ("Complete" if ok else "Not complete")
-            mode = requirement_mode(req)
-            mode_suffix = f"  ·  {mode}" if mode else ""
-            lines.append(f"{mark}  {attempt_label(req.get('attempt_number'))}: {requirement_label(req)}{mode_suffix}")
-            lines.extend(deadline_lines(req, color_enabled=color_enabled))
-            detail_color = Color.GREEN if ok else Color.YELLOW
-            lines.append(colorize(f"      {detail}", detail_color, color_enabled))
-            missing_levels = req.get("missing_levels") or []
-            if missing_levels:
-                lines.append(colorize(f"      Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
+        for group in groups:
+            attempt_number = group["attempt_number"]
+            group_requirements = group["requirements"]
+            missing_count = sum(1 for req in group_requirements if not req.get("satisfied"))
+            complete_count = len(group_requirements) - missing_count
+            summary = (
+                f"{complete_count} complete, {missing_count} still needed"
+                if missing_count
+                else f"{complete_count} complete"
+            )
+            header = colorize(f"{attempt_label(attempt_number)}", Color.CYAN, color_enabled)
+            window = windows.get(attempt_number)
+            if window:
+                detail = str(window.get("detail") or "Access window closed")
+                if window.get("passed"):
+                    detail = detail.replace("Access window closed", "Access window expired", 1)
+                    header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
+                else:
+                    header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
+            header += colorize(f"  ·  {summary}", Color.DIM, color_enabled)
+            lines.append(header)
+
+            for req in group_requirements:
+                ok = bool(req.get("satisfied"))
+                mark = colorize("✅ DONE", Color.GREEN, color_enabled) if ok else colorize("❌ TODO", Color.RED, color_enabled)
+                detail = req.get("detail") or ("Complete" if ok else "Not complete")
+                mode = requirement_mode(req)
+                mode_suffix = f"  ·  {mode}" if mode else ""
+                lines.append(f"  {mark}  {requirement_label(req)}{mode_suffix}")
+                detail_color = Color.GREEN if ok else Color.YELLOW
+                lines.append(colorize(f"        {detail}", detail_color, color_enabled))
+                missing_levels = req.get("missing_levels") or []
+                if missing_levels:
+                    lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
             lines.append("")
 
         print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)

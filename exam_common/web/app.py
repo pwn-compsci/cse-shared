@@ -357,11 +357,6 @@ def render_gate_requirement_item(req):
     status_class = "ok" if satisfied else "missing"
     status_text = "Complete" if satisfied else "Still needed"
     detail = html.escape(str(req.get("detail") or "Not complete"))
-    deadline_detail = req.get("attempt_deadline_detail")
-    deadline_html = ""
-    if deadline_detail:
-        deadline_class = "deadline-expired" if req.get("attempt_deadline_passed") else "deadline-active"
-        deadline_html = f"<div class=\"{deadline_class}\">{html.escape(str(deadline_detail))}</div>"
     missing_levels = req.get("missing_levels") or []
     missing_levels_html = ""
     if missing_levels:
@@ -375,10 +370,24 @@ def render_gate_requirement_item(req):
         f"</div>"
         f"{mode_html}"
         f"<div>{detail}</div>"
-        f"{deadline_html}"
         f"{missing_levels_html}"
         f"</li>"
     )
+
+def gate_attempt_window_label(attempt_number, requirements, missed_deadlines):
+    for item in missed_deadlines:
+        if item.get("attempt_number") == attempt_number:
+            detail = str(item.get("detail") or "Access window closed")
+            detail = detail.replace("Access window closed", "Access window expired", 1)
+            return detail, True
+    for req in requirements:
+        detail = req.get("attempt_deadline_detail")
+        if detail:
+            text = str(detail)
+            if req.get("attempt_deadline_passed"):
+                text = text.replace("Access window closed", "Access window expired", 1)
+            return text, bool(req.get("attempt_deadline_passed"))
+    return "", False
 
 def render_gate_denied(gate_status):
     """Show unmet exam gate requirements without exposing the password prompt."""
@@ -388,9 +397,16 @@ def render_gate_denied(gate_status):
         if not req.get("satisfied")
     ]
     display_requirements = requirements or unmet
+    missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
     if display_requirements:
         groups = []
-        for req in sorted(display_requirements, key=lambda item: (item.get("attempt_number") or 2, item.get("gate_requirement_id") or 0)):
+        for req in sorted(
+            display_requirements,
+            key=lambda item: (
+                item.get("attempt_number") if item.get("attempt_number") is not None else 2,
+                item.get("gate_requirement_id") or 0,
+            )
+        ):
             attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
             if not groups or groups[-1]["attempt_number"] != attempt_number:
                 groups.append({"attempt_number": attempt_number, "requirements": []})
@@ -406,11 +422,17 @@ def render_gate_denied(gate_status):
                 if missing_count
                 else f"{complete_count} complete"
             )
+            window_text, window_expired = gate_attempt_window_label(group["attempt_number"], group_requirements, missed_deadlines)
+            window_class = "deadline-expired" if window_expired else "deadline-active"
+            window_html = (
+                f"<span class=\"attempt-window {window_class}\">{html.escape(window_text)}</span>"
+                if window_text else ""
+            )
             group_html.append(
                 f"<section class=\"requirement-attempt-group\">"
                 f"<div class=\"requirement-attempt-header\">"
-                f"<strong>{html.escape(gate_attempt_label(group['attempt_number']))}</strong>"
-                f"<span>{html.escape(summary)}</span>"
+                f"<div><strong>{html.escape(gate_attempt_label(group['attempt_number']))}</strong>{window_html}</div>"
+                f"<span class=\"attempt-summary\">{html.escape(summary)}</span>"
                 f"</div>"
                 f"<ul class=\"requirements\">{''.join(render_gate_requirement_item(req) for req in group_requirements)}</ul>"
                 f"</section>"
@@ -418,21 +440,6 @@ def render_gate_denied(gate_status):
         requirements_html = "".join(group_html)
     else:
         requirements_html = "<p>The gate status service did not provide specific missing requirements.</p>"
-
-    missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
-    missed_html = ""
-    if missed_deadlines:
-        missed_items = "".join(
-            f"<li><strong>{html.escape(gate_attempt_label(item.get('attempt_number')))}</strong><br>{html.escape(str(item.get('detail') or 'Access window closed'))}</li>"
-            for item in missed_deadlines
-        )
-        missed_html = (
-            f"<div class=\"warning\">"
-            f"<strong>Access window closed</strong>"
-            f"<p>One or more access windows have closed, so this exam problem is now checking the later gate tier. You may need to complete requirements from the closed window and the current window.</p>"
-            f"<ul>{missed_items}</ul>"
-            f"</div>"
-        )
 
     actual_attempts = gate_status.get("actual_attempt_count")
     next_attempt = gate_status.get("next_attempt_number")
@@ -448,7 +455,7 @@ def render_gate_denied(gate_status):
         render_gate_field("Gate tier being checked", gate_tier_label),
     ]
     if missed_deadlines:
-        status_fields.append(render_gate_field("Deadline-expired tiers", len(missed_deadlines)))
+        status_fields.append(render_gate_field("Expired access windows", len(missed_deadlines)))
     attempt_html = f"<div class=\"status-grid\">{''.join(status_fields)}</div>"
 
     message = html.escape(str(gate_status.get("message") or "You have exam gate requirements to complete before accessing this problem."))
@@ -465,7 +472,8 @@ def render_gate_denied(gate_status):
             .requirement-attempt-group {{ margin-top: 12px; border: 1px solid #444; border-radius: 5px; overflow: hidden; background-color: #202020; }}
             .requirement-attempt-header {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; background-color: #2d2d2d; border-bottom: 1px solid #444; }}
             .requirement-attempt-header strong {{ color: #ffffff; }}
-            .requirement-attempt-header span {{ color: #a8a8a8; font-size: 0.9em; }}
+            .attempt-summary {{ color: #a8a8a8; font-size: 0.9em; }}
+            .attempt-window {{ display: inline-block; margin-left: 10px; font-size: 0.9em; }}
             .requirements {{ list-style: none; padding: 0 12px; margin: 0; }}
             .requirement-item {{ margin: 12px 0; padding: 12px; border-radius: 5px; background-color: #1f1f1f; border: 1px solid #555; }}
             .requirement-item.missing {{ border-color: #ffb86b; }}
@@ -490,7 +498,6 @@ def render_gate_denied(gate_status):
             <strong>Exam attempt status</strong>
             {attempt_html}
         </div>
-        {missed_html}
         <div class="info">
             <strong>Gate requirements being checked</strong>
             {requirements_html}
