@@ -354,7 +354,19 @@ def print_status(payload, color_enabled=True):
                 lines.append(colorize(f"        {detail}", detail_color, color_enabled))
                 missing_levels = req.get("missing_levels") or []
                 completed_levels = req.get("completed_levels") or []
-                completed_label = "Attempted levels" if req.get("satisfaction_mode") == "attempt" else "Completed levels"
+                required_levels = req.get("required_levels") or []
+                is_attempt_mode = req.get("satisfaction_mode") == "attempt"
+                completed_label = "Attempted levels" if is_attempt_mode else "Completed levels"
+                completed_count_label = "attempted" if is_attempt_mode else "completed"
+                if required_levels or completed_levels or missing_levels:
+                    completed_count = len(completed_levels)
+                    missing_count = len(missing_levels)
+                    total_count = len(required_levels) or completed_count + missing_count
+                    lines.append(colorize(
+                        f"        Level progress: {completed_count} {completed_count_label}, {missing_count} left to complete ({total_count} total)",
+                        Color.CYAN,
+                        color_enabled,
+                    ))
                 if completed_levels:
                     lines.append(colorize(f"        {completed_label}: {', '.join(str(level) for level in completed_levels)}", Color.GREEN, color_enabled))
                 if missing_levels:

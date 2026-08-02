@@ -380,8 +380,22 @@ def render_gate_requirement_item(req):
     detail = html.escape(str(req.get("detail") or "Not complete"))
     missing_levels = req.get("missing_levels") or []
     completed_levels = req.get("completed_levels") or []
+    required_levels = req.get("required_levels") or []
     level_status_html = ""
-    completed_label = "Attempted levels" if req.get("satisfaction_mode") == "attempt" else "Completed levels"
+    is_attempt_mode = req.get("satisfaction_mode") == "attempt"
+    completed_label = "Attempted levels" if is_attempt_mode else "Completed levels"
+    completed_count_label = "attempted" if is_attempt_mode else "completed"
+    if required_levels or completed_levels or missing_levels:
+        completed_count = len(completed_levels)
+        missing_count = len(missing_levels)
+        total_count = len(required_levels) or completed_count + missing_count
+        level_status_html += (
+            f"<div class=\"level-counts\">"
+            f"<span class=\"level-complete\">{completed_count} {html.escape(completed_count_label)}</span>"
+            f"<span class=\"level-missing\">{missing_count} left to complete</span>"
+            f"<span>{total_count} total</span>"
+            f"</div>"
+        )
     if completed_levels:
         level_status_html += (
             f"<div class=\"level-list level-complete\">"
@@ -525,6 +539,7 @@ def render_gate_denied(gate_status):
             .deadline-expired {{ color: #ff6b6b; margin-top: 6px; }}
             .deadline-active {{ color: #ffd166; margin-top: 6px; }}
             .level-list {{ margin-top: 6px; font-size: 0.92em; }}
+            .level-counts {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 0.92em; }}
             .level-complete {{ color: #50fa7b; }}
             .level-missing {{ color: #ffb86b; }}
             li {{ margin: 12px 0; }}
