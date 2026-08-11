@@ -228,7 +228,128 @@ def access_windows_by_attempt(gate_status):
     return windows
 
 
-def print_status(payload, color_enabled=True):
+def build_requirement_lines(gate_status, color_enabled=True):
+    requirements = gate_status.get("requirements") or []
+    unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
+    if not requirements:
+        allowed = gate_status.get("allowed", False)
+        return [
+            colorize("No gate requirements are configured for this exam problem.", Color.GREEN, color_enabled)
+            if allowed else colorize("No detailed requirements were returned. Ask course staff for help.", Color.YELLOW, color_enabled)
+        ], unmet
+
+    windows = access_windows_by_attempt(gate_status)
+    groups = []
+    for req in sorted(
+        requirements,
+        key=lambda item: (
+            item.get("attempt_number") if item.get("attempt_number") is not None else 2,
+            item.get("gate_requirement_id") or 0,
+        )
+    ):
+        attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
+        if not groups or groups[-1]["attempt_number"] != attempt_number:
+            groups.append({"attempt_number": attempt_number, "requirements": []})
+        groups[-1]["requirements"].append(req)
+
+    lines = []
+    for group in groups:
+        attempt_number = group["attempt_number"]
+        group_requirements = group["requirements"]
+        missing_count = sum(1 for req in group_requirements if not req.get("satisfied"))
+        complete_count = len(group_requirements) - missing_count
+        summary = (
+            f"{complete_count} complete, {missing_count} still needed"
+            if missing_count
+            else f"{complete_count} complete"
+        )
+        header = colorize(f"{attempt_label(attempt_number)}", Color.CYAN, color_enabled)
+        window = windows.get(attempt_number)
+        if window:
+            detail = str(window.get("detail") or "Access window closed")
+            if window.get("passed"):
+                detail = detail.replace("Access window closed", "Access window expired", 1)
+                header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
+            else:
+                remaining = format_access_window_remaining(window.get("deadline"))
+                if remaining:
+                    detail = f"{detail} ({remaining})"
+                header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
+        header += colorize(f"  ·  {summary}", Color.DIM, color_enabled)
+        lines.append(header)
+
+        for req in group_requirements:
+            ok = bool(req.get("satisfied"))
+            mark = colorize("✅ DONE", Color.GREEN, color_enabled) if ok else colorize("❌ TODO", Color.RED, color_enabled)
+            detail = req.get("detail") or ("Complete" if ok else "Not complete")
+            mode = requirement_mode(req)
+            mode_suffix = f"  ·  {mode}" if mode else ""
+            lines.append(f"  {mark}  {requirement_label(req)}{mode_suffix}")
+            detail_color = Color.GREEN if ok else Color.YELLOW
+            lines.append(colorize(f"        {detail}", detail_color, color_enabled))
+            missing_levels = req.get("missing_levels") or []
+            completed_levels = req.get("completed_levels") or []
+            required_levels = req.get("required_levels") or []
+            is_attempt_mode = req.get("satisfaction_mode") == "attempt"
+            completed_label = "Attempted levels" if is_attempt_mode else "Completed levels"
+            completed_count_label = "attempted" if is_attempt_mode else "completed"
+            if required_levels or completed_levels or missing_levels:
+                completed_count = len(completed_levels)
+                missing_count = len(missing_levels)
+                total_count = len(required_levels) or completed_count + missing_count
+                lines.append(colorize(
+                    f"        Level progress: {completed_count} {completed_count_label}, {missing_count} left to complete ({total_count} total)",
+                    Color.CYAN,
+                    color_enabled,
+                ))
+            if completed_levels:
+                lines.append(colorize(f"        {completed_label}: {', '.join(str(level) for level in completed_levels)}", Color.GREEN, color_enabled))
+            if missing_levels:
+                lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
+        lines.append("")
+    return lines, unmet
+
+
+def build_target_header_lines(payload, target, color_enabled=True):
+    student = payload.get("student_name", "Student")
+    course = payload.get("course_code", "course")
+    pwn_id = payload.get("pwn_college_id", "unknown")
+    module = target.get("module", "unknown module")
+    challenge = target.get("challenge", "unknown challenge")
+    assignment = target.get("assignment_name") or "Exam"
+    challenge_name = target.get("challenge_name") or challenge
+    attempts = target.get("attempt_count", 0)
+    last_attempt = target.get("last_attempt_at") or "unknown time"
+    gate_status = target.get("gate_status") or {}
+    allowed = gate_status.get("allowed", False)
+    actual_attempts = gate_status.get("actual_attempt_count")
+    expired_attempts = gate_status.get("expired_attempt_count", 0)
+    effective_attempts = gate_status.get("effective_attempt_count")
+    next_attempt = gate_status.get("next_attempt_number")
+
+    lines = [
+        field("Student", f"{student} ({pwn_id})"),
+        field("Course", course),
+        field("Exam", assignment),
+        field("Problem", f"{module} / {challenge_name}"),
+        field("Problem attempts", f"{attempts} recorded"),
+        field("Last attempt", last_attempt),
+    ]
+    if actual_attempts is not None and next_attempt is not None:
+        lines.extend([
+            field("Actual attempts", actual_attempts),
+            field("Expired windows", expired_attempts),
+            field("Effective attempts", effective_attempts),
+            field("Gate tier", attempt_label(next_attempt)),
+        ])
+    if allowed:
+        lines.append(colorize("✅ Ready: requirements appear complete.", Color.GREEN, color_enabled))
+    else:
+        lines.append(colorize("⛔ Blocked: complete the items below before retrying.", Color.RED, color_enabled))
+    return lines
+
+
+def print_status(payload, color_enabled=True, details=False):
     if payload.get("status") != "success":
         print_box(
             "Exam Check Status",
@@ -259,141 +380,63 @@ def print_status(payload, color_enabled=True):
         )
         return 0
 
-    module = target.get("module", "unknown module")
-    challenge = target.get("challenge", "unknown challenge")
-    assignment = target.get("assignment_name") or "Exam"
-    challenge_name = target.get("challenge_name") or challenge
-    attempts = target.get("attempt_count", 0)
-    last_attempt = target.get("last_attempt_at") or "unknown time"
     gate_status = target.get("gate_status") or {}
     allowed = gate_status.get("allowed", False)
 
-    header_lines = [
-        field("Student", f"{student} ({pwn_id})"),
-        field("Course", course),
-        field("Exam", assignment),
-        field("Problem", f"{module} / {challenge_name}"),
-        field("Attempts", f"{attempts} recorded"),
-        field("Last attempt", last_attempt),
-    ]
-    actual_attempts = gate_status.get("actual_attempt_count")
-    next_attempt = gate_status.get("next_attempt_number")
-    if actual_attempts is not None and next_attempt is not None:
-        header_lines.append(field("Gate tier", f"{attempt_label(next_attempt)} (actual attempts: {actual_attempts})"))
-    if allowed:
-        header_lines.append(colorize("✅ Ready: requirements appear complete.", Color.GREEN, color_enabled))
-    else:
-        header_lines.append(colorize("⛔ Blocked: complete the items below before retrying.", Color.RED, color_enabled))
-
+    header_lines = build_target_header_lines(payload, target, color_enabled)
     print_box("Exam Access Checklist", header_lines, color=Color.CYAN if allowed else Color.YELLOW, color_enabled=color_enabled)
 
-    missed_deadlines = gate_status.get("missed_attempt_deadlines") or []
-
-    requirements = gate_status.get("requirements") or []
-    unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
-
-    if not requirements:
-        print_box(
-            "Requirements",
-            [
-                colorize("No gate requirements are configured for this exam problem.", Color.GREEN, color_enabled)
-                if allowed else colorize("No detailed requirements were returned. Ask course staff for help.", Color.YELLOW, color_enabled)
-            ],
-            color=Color.GREEN if allowed else Color.YELLOW,
-            color_enabled=color_enabled,
-        )
-    else:
-        windows = access_windows_by_attempt(gate_status)
-        groups = []
-        for req in sorted(
-            requirements,
-            key=lambda item: (
-                item.get("attempt_number") if item.get("attempt_number") is not None else 2,
-                item.get("gate_requirement_id") or 0,
-            )
-        ):
-            attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
-            if not groups or groups[-1]["attempt_number"] != attempt_number:
-                groups.append({"attempt_number": attempt_number, "requirements": []})
-            groups[-1]["requirements"].append(req)
-
-        lines = []
-        for group in groups:
-            attempt_number = group["attempt_number"]
-            group_requirements = group["requirements"]
-            missing_count = sum(1 for req in group_requirements if not req.get("satisfied"))
-            complete_count = len(group_requirements) - missing_count
-            summary = (
-                f"{complete_count} complete, {missing_count} still needed"
-                if missing_count
-                else f"{complete_count} complete"
-            )
-            header = colorize(f"{attempt_label(attempt_number)}", Color.CYAN, color_enabled)
-            window = windows.get(attempt_number)
-            if window:
-                detail = str(window.get("detail") or "Access window closed")
-                if window.get("passed"):
-                    detail = detail.replace("Access window closed", "Access window expired", 1)
-                    header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
-                else:
-                    remaining = format_access_window_remaining(window.get("deadline"))
-                    if remaining:
-                        detail = f"{detail} ({remaining})"
-                    header += colorize(f"  ·  {detail}", Color.RED, color_enabled)
-            header += colorize(f"  ·  {summary}", Color.DIM, color_enabled)
-            lines.append(header)
-
-            for req in group_requirements:
-                ok = bool(req.get("satisfied"))
-                mark = colorize("✅ DONE", Color.GREEN, color_enabled) if ok else colorize("❌ TODO", Color.RED, color_enabled)
-                detail = req.get("detail") or ("Complete" if ok else "Not complete")
-                mode = requirement_mode(req)
-                mode_suffix = f"  ·  {mode}" if mode else ""
-                lines.append(f"  {mark}  {requirement_label(req)}{mode_suffix}")
-                detail_color = Color.GREEN if ok else Color.YELLOW
-                lines.append(colorize(f"        {detail}", detail_color, color_enabled))
-                missing_levels = req.get("missing_levels") or []
-                completed_levels = req.get("completed_levels") or []
-                required_levels = req.get("required_levels") or []
-                is_attempt_mode = req.get("satisfaction_mode") == "attempt"
-                completed_label = "Attempted levels" if is_attempt_mode else "Completed levels"
-                completed_count_label = "attempted" if is_attempt_mode else "completed"
-                if required_levels or completed_levels or missing_levels:
-                    completed_count = len(completed_levels)
-                    missing_count = len(missing_levels)
-                    total_count = len(required_levels) or completed_count + missing_count
-                    lines.append(colorize(
-                        f"        Level progress: {completed_count} {completed_count_label}, {missing_count} left to complete ({total_count} total)",
-                        Color.CYAN,
-                        color_enabled,
-                    ))
-                if completed_levels:
-                    lines.append(colorize(f"        {completed_label}: {', '.join(str(level) for level in completed_levels)}", Color.GREEN, color_enabled))
-                if missing_levels:
-                    lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
-            lines.append("")
-
-        print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
+    lines, unmet = build_requirement_lines(gate_status, color_enabled)
+    print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
 
     recent = payload.get("recent_unpassed_exams") or []
     if len(recent) > 1:
-        lines = []
-        for exam in recent[1:]:
-            gs = exam.get("gate_status") or {}
-            status = "ready" if gs.get("allowed") else "blocked"
-            lines.append(f"{exam.get('module')} / {exam.get('challenge')}  ({status}, attempts={exam.get('attempt_count', 0)})")
-        print_box("Other Recent Unfinished Exams", lines, color=Color.BLUE, color_enabled=color_enabled)
+        if details:
+            for index, exam in enumerate(recent[1:], start=2):
+                gs = exam.get("gate_status") or {}
+                exam_allowed = gs.get("allowed", False)
+                print_box(
+                    f"Unfinished Exam Problem {index}",
+                    build_target_header_lines(payload, exam, color_enabled),
+                    color=Color.CYAN if exam_allowed else Color.YELLOW,
+                    color_enabled=color_enabled,
+                )
+                detail_lines, detail_unmet = build_requirement_lines(gs, color_enabled)
+                print_box(
+                    "Requirements",
+                    detail_lines,
+                    color=Color.GREEN if not detail_unmet else Color.YELLOW,
+                    color_enabled=color_enabled,
+                )
+        else:
+            lines = []
+            for exam in recent[1:]:
+                gs = exam.get("gate_status") or {}
+                status = "ready" if gs.get("allowed") else "blocked"
+                actual = gs.get("actual_attempt_count", exam.get("attempt_count", 0))
+                expired = gs.get("expired_attempt_count", 0)
+                effective = gs.get("effective_attempt_count", actual)
+                lines.append(
+                    f"{exam.get('module')} / {exam.get('challenge')}  "
+                    f"({status}, actual={actual}, expired_windows={expired}, effective={effective})"
+                )
+            print_box("Other Recent Unfinished Exams", lines, color=Color.BLUE, color_enabled=color_enabled)
 
-    print(colorize("\nTip: run `checkstatus --json` if course staff asks for the raw status output.", Color.DIM, color_enabled))
+    print(colorize("\nTip: run `checkstatus --details --limit 20` for detailed status on more unfinished exam problems, or `checkstatus --json` for raw output.", Color.DIM, color_enabled))
     return 0 if allowed else 1
 
 
 def main():
     parser = argparse.ArgumentParser(description="Show exam access gate status for your most recent unfinished exam.")
     parser.add_argument("--json", action="store_true", help="Print raw JSON from the status endpoint")
+    parser.add_argument("--details", action="store_true", help="Show detailed requirement boxes for every returned unfinished exam problem")
+    parser.add_argument("--all", action="store_true", help="Shortcut for --details --limit 20")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
     parser.add_argument("--limit", type=int, default=5, help="Number of recent unfinished exams to include")
     args = parser.parse_args()
+    if args.all:
+        args.details = True
+        args.limit = 20
 
     try:
         pwn_college_id = read_pwn_college_id()
@@ -401,7 +444,7 @@ def main():
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0 if status_code == 200 and payload.get("status") == "success" else 1
-        return print_status(payload, color_enabled=not args.no_color)
+        return print_status(payload, color_enabled=not args.no_color, details=args.details)
     except Exception as exc:
         payload = {
             "status": "error",

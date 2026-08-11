@@ -37,6 +37,35 @@ EXAM_ADMIN_API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032
 EXAM_ADMIN_API_URL = "https://api.cse545.com/exam_admin_type"
 EXAM_GATE_STATUS_API_URL = "https://api.cse545.com/exam-gates/checkstatus"
 
+def normalized_exam_admin_type(value=None):
+    return (exam_admin_type if value is None else value or "").strip().lower().replace("_", " ").replace("-", " ")
+
+def is_honorlock_exam(value=None):
+    return normalized_exam_admin_type(value).replace(" ", "") == "honorlock"
+
+def requires_active_proctor_session(value=None):
+    exam_type = normalized_exam_admin_type(value)
+    return exam_type in {
+        "proctoring",
+        "proctoring plus lockdown browser",
+        "proctoring with no attendance",
+    }
+
+def requires_attendance_monitoring(value=None):
+    exam_type = normalized_exam_admin_type(value)
+    return exam_type in {
+        "proctoring",
+        "proctoring plus lockdown browser",
+    }
+
+def requires_exam_password(value=None):
+    exam_type = normalized_exam_admin_type(value)
+    return exam_type in {
+        "proctoring",
+        "proctoring plus lockdown browser",
+        "lock down browser",
+    }
+
 # Hardcoded set of pwn_college_id values that skip RLDB check
 #, 97169 
 # 68880 is Weiyu admin account
@@ -495,14 +524,18 @@ def render_gate_denied(gate_status):
         requirements_html = "<p>The gate status service did not provide specific missing requirements.</p>"
 
     actual_attempts = gate_status.get("actual_attempt_count")
+    expired_attempts = gate_status.get("expired_attempt_count", 0)
+    effective_attempts = gate_status.get("effective_attempt_count")
     next_attempt = gate_status.get("next_attempt_number")
     latest_attempt = gate_status.get("latest_attempt_number")
     last_attempt_at = gate_status.get("last_attempt_at")
     current_access_attempt = (actual_attempts + 1) if isinstance(actual_attempts, int) else None
     gate_tier_label = gate_attempt_label(next_attempt) if next_attempt is not None else None
     status_fields = [
-        render_gate_field("Current access attempt", f"Attempt {current_access_attempt}" if current_access_attempt else None),
-        render_gate_field("Recorded attempts", actual_attempts),
+        render_gate_field("Next recorded attempt", f"Attempt {current_access_attempt}" if current_access_attempt else None),
+        render_gate_field("Actual attempts", actual_attempts),
+        render_gate_field("Expired windows", expired_attempts),
+        render_gate_field("Effective attempts", effective_attempts),
         render_gate_field("Latest recorded attempt", f"Attempt {latest_attempt}" if latest_attempt else None),
         render_gate_field("Last recorded at", last_attempt_at),
         render_gate_field("Gate tier being checked", gate_tier_label),
@@ -567,7 +600,7 @@ def check_rldb_user_agent(user_agent, pwn_college_id, sec_ch_ua_platform):
     import re
     
     # Skip RLDB check based on exam administration type
-    if exam_admin_type in ["Proctoring", "Proctoring with no attendance", "Honor Lock", "None", ""]:
+    if normalized_exam_admin_type() in {"proctoring", "proctoring with no attendance", "none", ""} or is_honorlock_exam():
         logger.info(f"RLDB user agent test BYPASSED - exam type is '{exam_admin_type}'")
         return True, f"Bypassed for exam type: {exam_admin_type}"
     
@@ -783,7 +816,7 @@ def exam_api_status():
         # Check if attending session (only if proctoring is required)
         if is_practice_exam:
             status_data["attending_session"] = "N/A - practice exam"
-        elif exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring"]:
+        elif requires_attendance_monitoring():
             session_result = check_session_attendance(pwn_college_id)
             if session_result is None:
                 status_data["attending_session"] = "No session found"
@@ -929,8 +962,9 @@ def process_login(exam_password, ip_addr):
     attending = False
     session_password = None
     
-    # Check session attendance for types requiring proctoring WITH monitoring (skip for admins)
-    if not protections_bypassed and exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring"]:
+    # Check session attendance for types requiring proctoring WITH monitoring (skip for admins).
+    # Honorlock exams are administered by Honorlock and must not require an active proctor session here.
+    if not protections_bypassed and requires_attendance_monitoring():
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
             # No proctor session exists - block login
@@ -942,12 +976,12 @@ def process_login(exam_password, ip_addr):
         else:
             logger.info(f"Student is not attending session yet - will require password")
     # For "Proctoring with no attendance", verify proctor session exists but don't monitor ongoing (skip for admins)
-    elif not protections_bypassed and exam_admin_type == "Proctoring with no attendance":
+    elif not protections_bypassed and requires_active_proctor_session() and not requires_attendance_monitoring():
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
-            logger.warning(f"No active proctor session found for 'Proctoring with no attendance' type")
+            logger.warning(f"No active proctor session found for '{exam_admin_type}' type")
             return loginpage(message="No active proctor session found. Please ensure a proctor session is scheduled.")
-        logger.info(f"Proctor session validated for 'Proctoring with no attendance' - allowing login with password")
+        logger.info(f"Proctor session validated for '{exam_admin_type}' - allowing login with password")
     else:
         logger.info(f"Session attendance check SKIPPED - exam type is '{exam_admin_type}' or admin/practice bypass")
 
@@ -955,7 +989,7 @@ def process_login(exam_password, ip_addr):
     
     # Check if password is needed based on exam type
     # Only proctoring types with attendance monitoring and LDB require password (admins bypass this)
-    password_required = not protections_bypassed and exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring", "Lock Down Browser"]
+    password_required = not protections_bypassed and requires_exam_password()
     logger.info(f"=== Password check === password_required: {password_required}, exam_admin_type: '{exam_admin_type}', is_admin: {is_admin}, is_practice_exam: {is_practice_exam}")
     
     # If this is a GET request and not practice exam or attending or password not required, serve the login page
@@ -1008,7 +1042,7 @@ def process_login(exam_password, ip_addr):
                     # Admins and practice exams get immediate active status
                     session_status = "active"
                     logger.info("Protections bypassed - session.dat set to active")
-                elif exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring"]:
+                elif requires_attendance_monitoring():
                     # These types require attendance monitoring via session_monitor.py
                     # Set to inactive initially - session_monitor will update to active when attending
                     session_status = "inactive"

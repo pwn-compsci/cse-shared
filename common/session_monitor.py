@@ -225,6 +225,15 @@ def get_exam_admin_type():
         logger.error(f"Unexpected error getting exam admin type: {e}")
         return "Proctoring plus Lockdown Browser"
 
+def normalized_exam_admin_type(value):
+    return (value or "").strip().lower().replace("_", " ").replace("-", " ")
+
+def requires_attendance_monitoring_for_exam_type(value):
+    return normalized_exam_admin_type(value) in {
+        "proctoring",
+        "proctoring plus lockdown browser",
+    }
+
 def extract_encrypted_files():
     """Extract encrypted backup files to the challenge level directory"""
     try:
@@ -843,7 +852,7 @@ def main():
     logger.info(f"Exam administration type: {exam_admin_type}")
     
     # Check if this exam type requires attendance monitoring
-    requires_attendance_monitoring = exam_admin_type in ["Proctoring plus Lockdown Browser", "Proctoring"]
+    requires_attendance_monitoring = requires_attendance_monitoring_for_exam_type(exam_admin_type)
     
     if not requires_attendance_monitoring:
         logger.info(f"Exam type '{exam_admin_type}' does not require attendance monitoring")
