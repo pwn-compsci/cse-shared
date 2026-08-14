@@ -228,17 +228,7 @@ def access_windows_by_attempt(gate_status):
     return windows
 
 
-def build_requirement_lines(gate_status, color_enabled=True):
-    requirements = gate_status.get("requirements") or []
-    unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
-    if not requirements:
-        allowed = gate_status.get("allowed", False)
-        return [
-            colorize("No gate requirements are configured for this exam problem.", Color.GREEN, color_enabled)
-            if allowed else colorize("No detailed requirements were returned. Ask course staff for help.", Color.YELLOW, color_enabled)
-        ], unmet
-
-    windows = access_windows_by_attempt(gate_status)
+def group_requirements(requirements):
     groups = []
     for req in sorted(
         requirements,
@@ -251,6 +241,21 @@ def build_requirement_lines(gate_status, color_enabled=True):
         if not groups or groups[-1]["attempt_number"] != attempt_number:
             groups.append({"attempt_number": attempt_number, "requirements": []})
         groups[-1]["requirements"].append(req)
+    return groups
+
+
+def build_requirement_lines(gate_status, color_enabled=True):
+    requirements = gate_status.get("requirements") or []
+    unmet = gate_status.get("unmet_requirements") or [req for req in requirements if not req.get("satisfied")]
+    if not requirements:
+        allowed = gate_status.get("allowed", False)
+        return [
+            colorize("No gate requirements are configured for this exam problem.", Color.GREEN, color_enabled)
+            if allowed else colorize("No detailed requirements were returned. Ask course staff for help.", Color.YELLOW, color_enabled)
+        ], unmet
+
+    windows = access_windows_by_attempt(gate_status)
+    groups = group_requirements(requirements)
 
     lines = []
     for group in groups:
@@ -308,6 +313,26 @@ def build_requirement_lines(gate_status, color_enabled=True):
                 lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
         lines.append("")
     return lines, unmet
+
+
+def build_previous_gate_lines(gate_status, color_enabled=True):
+    completions = gate_status.get("previous_gate_completions") or []
+    if not completions:
+        return []
+
+    lines = [
+        colorize("These requirements were completed and already applied to earlier retries.", Color.DIM, color_enabled)
+    ]
+    for group in group_requirements(completions):
+        lines.append(colorize(f"{attempt_label(group['attempt_number'])}  ·  already used", Color.CYAN, color_enabled))
+        for req in group["requirements"]:
+            mode = requirement_mode(req)
+            mode_suffix = f"  ·  {mode}" if mode else ""
+            detail = req.get("detail") or "Complete"
+            lines.append(f"  {colorize('USED', Color.GREEN, color_enabled)}  {requirement_label(req)}{mode_suffix}")
+            lines.append(colorize(f"        {detail}", Color.GREEN, color_enabled))
+        lines.append("")
+    return lines
 
 
 def build_target_header_lines(payload, target, color_enabled=True):
@@ -388,6 +413,9 @@ def print_status(payload, color_enabled=True, details=False):
 
     lines, unmet = build_requirement_lines(gate_status, color_enabled)
     print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
+    previous_lines = build_previous_gate_lines(gate_status, color_enabled)
+    if previous_lines:
+        print_box("Previously Used Retry Unlocks", previous_lines, color=Color.BLUE, color_enabled=color_enabled)
 
     recent = payload.get("recent_unpassed_exams") or []
     if len(recent) > 1:
@@ -408,6 +436,14 @@ def print_status(payload, color_enabled=True, details=False):
                     color=Color.GREEN if not detail_unmet else Color.YELLOW,
                     color_enabled=color_enabled,
                 )
+                previous_detail_lines = build_previous_gate_lines(gs, color_enabled)
+                if previous_detail_lines:
+                    print_box(
+                        "Previously Used Retry Unlocks",
+                        previous_detail_lines,
+                        color=Color.BLUE,
+                        color_enabled=color_enabled,
+                    )
         else:
             lines = []
             for exam in recent[1:]:

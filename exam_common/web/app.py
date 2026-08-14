@@ -471,6 +471,62 @@ def gate_attempt_window_label(attempt_number, requirements, missed_deadlines):
             return text, bool(req.get("attempt_deadline_passed"))
     return "", False
 
+def group_gate_requirements(requirements):
+    groups = []
+    for req in sorted(
+        requirements,
+        key=lambda item: (
+            item.get("attempt_number") if item.get("attempt_number") is not None else 2,
+            item.get("gate_requirement_id") or 0,
+        )
+    ):
+        attempt_number = req.get("attempt_number") if req.get("attempt_number") is not None else 2
+        if not groups or groups[-1]["attempt_number"] != attempt_number:
+            groups.append({"attempt_number": attempt_number, "requirements": []})
+        groups[-1]["requirements"].append(req)
+    return groups
+
+def render_previous_gate_completions(gate_status):
+    completions = gate_status.get("previous_gate_completions") or []
+    if not completions:
+        return ""
+
+    group_html = []
+    for group in group_gate_requirements(completions):
+        rows = []
+        for req in group["requirements"]:
+            label = gate_requirement_label(req)
+            detail = html.escape(str(req.get("detail") or "Complete"))
+            mode = gate_requirement_mode(req)
+            mode_html = f"<div class=\"requirement-subtle\">{html.escape(mode)}</div>" if mode else ""
+            rows.append(
+                f"<li class=\"requirement-item used\">"
+                f"<div class=\"requirement-top\">"
+                f"<strong>{html.escape(str(label))}</strong>"
+                f"<span class=\"status-pill used\">USED</span>"
+                f"</div>"
+                f"{mode_html}"
+                f"<div>{detail}</div>"
+                f"</li>"
+            )
+        group_html.append(
+            f"<section class=\"requirement-attempt-group previous-gate-group\">"
+            f"<div class=\"requirement-attempt-header\">"
+            f"<div><strong>{html.escape(gate_attempt_label(group['attempt_number']))}</strong></div>"
+            f"<span class=\"attempt-summary\">already used for an earlier retry</span>"
+            f"</div>"
+            f"<ul class=\"requirements\">{''.join(rows)}</ul>"
+            f"</section>"
+        )
+
+    return (
+        f"<div class=\"info previous-gates\">"
+        f"<strong>Previously used retry unlocks</strong>"
+        f"<p>These requirements were completed and already applied to earlier retries.</p>"
+        f"{''.join(group_html)}"
+        f"</div>"
+    )
+
 def render_gate_denied(gate_status):
     """Show unmet exam gate requirements without exposing the password prompt."""
     requirements = gate_status.get("requirements") or []
@@ -543,6 +599,7 @@ def render_gate_denied(gate_status):
     if missed_deadlines:
         status_fields.append(render_gate_field("Expired access windows", len(missed_deadlines)))
     attempt_html = f"<div class=\"status-grid\">{''.join(status_fields)}</div>"
+    previous_gates_html = render_previous_gate_completions(gate_status)
 
     message = html.escape(str(gate_status.get("message") or "You have exam gate requirements to complete before accessing this problem."))
     return render_template_string(f"""
@@ -564,11 +621,15 @@ def render_gate_denied(gate_status):
             .requirement-item {{ margin: 12px 0; padding: 12px; border-radius: 5px; background-color: #1f1f1f; border: 1px solid #555; }}
             .requirement-item.missing {{ border-color: #ffb86b; }}
             .requirement-item.ok {{ border-color: #50fa7b; opacity: 0.82; }}
+            .requirement-item.used {{ border-color: #50fa7b; opacity: 0.88; }}
             .requirement-top {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 5px; }}
             .requirement-subtle {{ color: #a8a8a8; font-size: 0.9em; margin: 3px 0; }}
             .status-pill {{ white-space: nowrap; border-radius: 999px; padding: 3px 8px; font-size: 0.82em; }}
             .status-pill.missing {{ color: #1E1E1E; background-color: #ffb86b; }}
             .status-pill.ok {{ color: #1E1E1E; background-color: #50fa7b; }}
+            .status-pill.used {{ color: #1E1E1E; background-color: #50fa7b; }}
+            .previous-gates p {{ margin: 8px 0 0; color: #d0d0d0; }}
+            .previous-gate-group {{ opacity: 0.92; }}
             .deadline-expired {{ color: #ff6b6b; margin-top: 6px; }}
             .deadline-active {{ color: #ffd166; margin-top: 6px; }}
             .level-list {{ margin-top: 6px; font-size: 0.92em; }}
@@ -592,6 +653,7 @@ def render_gate_denied(gate_status):
             <strong>Gate requirements being checked</strong>
             {requirements_html}
         </div>
+        {previous_gates_html}
         <p>Complete the requirement above, then return to this exam problem.</p>
     """), 403
 
