@@ -15,8 +15,14 @@ import re
 import shutil
 import sys
 import textwrap
+import unicodedata
 
 import requests
+
+try:
+    from wcwidth import wcswidth
+except Exception:
+    wcswidth = None
 
 
 API_URL = os.environ.get("EXAM_STUDENT_CHECKSTATUS_API_URL", "https://api.cse545.com/exam-gates/student-checkstatus")
@@ -118,8 +124,28 @@ def strip_ansi(text):
     return re.sub(r"\033\[[0-9;]*m", "", text)
 
 
+def cell_width(text):
+    plain = strip_ansi(str(text))
+    if wcswidth:
+        width = wcswidth(plain)
+        if width >= 0:
+            return width
+
+    width = 0
+    for char in plain:
+        if unicodedata.combining(char):
+            continue
+        if unicodedata.east_asian_width(char) in ("F", "W"):
+            width += 2
+        elif unicodedata.category(char) == "So" and char not in "│─╭╮├┤╰╯":
+            width += 2
+        else:
+            width += 1
+    return width
+
+
 def visible_ljust(text, width):
-    return text + " " * max(0, width - len(strip_ansi(text)))
+    return text + " " * max(0, width - cell_width(text))
 
 
 def wrap_visible(text, width):
@@ -136,7 +162,7 @@ def wrap_visible(text, width):
     )
     if plain == text:
         return wrapper.wrap(text) or [""]
-    if len(plain) <= width:
+    if cell_width(plain) <= width:
         return [text]
     # ANSI-bearing lines are usually short status labels. If one is long, wrap
     # the plain text rather than slicing through escape sequences.
