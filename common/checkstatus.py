@@ -228,7 +228,7 @@ def access_windows_by_attempt(gate_status):
     return windows
 
 
-def group_requirements(requirements):
+def group_gate_requirements(requirements):
     groups = []
     for req in sorted(
         requirements,
@@ -255,7 +255,7 @@ def build_requirement_lines(gate_status, color_enabled=True):
         ], unmet
 
     windows = access_windows_by_attempt(gate_status)
-    groups = group_requirements(requirements)
+    groups = group_gate_requirements(requirements)
 
     lines = []
     for group in groups:
@@ -323,7 +323,7 @@ def build_previous_gate_lines(gate_status, color_enabled=True):
     lines = [
         colorize("These requirements were completed and already applied to earlier retries.", Color.DIM, color_enabled)
     ]
-    for group in group_requirements(completions):
+    for group in group_gate_requirements(completions):
         lines.append(colorize(f"{attempt_label(group['attempt_number'])}  ·  already used", Color.CYAN, color_enabled))
         for req in group["requirements"]:
             mode = requirement_mode(req)
