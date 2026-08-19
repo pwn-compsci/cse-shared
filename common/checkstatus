@@ -1,18 +1,30 @@
 #!/usr/bin/env bash
 
-if [ ! -x /usr/bin/exec-suid ]; then
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+impl="$script_dir/checkstatus.py"
+
+if [ ! -f "$impl" ] && [ -f /challenge/bin/checkstatus.py ]; then
+    impl=/challenge/bin/checkstatus.py
+fi
+
+if [ ! -f "$impl" ]; then
     cat >&2 <<'EOF'
-checkstatus is only available inside the pwn.college exam environment.
+checkstatus is not available in this environment.
 
 Please ask course staff or a proctor to check your exam access status.
 EOF
     exit 1
 fi
 
-output=$(/usr/bin/exec-suid -- /usr/bin/python3 /challenge/bin/checkstatus.py "$@" 2>&1)
+output=$(/usr/bin/python3 "$impl" "$@" 2>&1)
 status=$?
 
-if [ "$status" -ne 0 ] && [[ "$output" == *"Failed to read init environ"* || "$output" == *"PermissionDenied"* || "$output" == *"stream did not contain valid UTF-8"* ]]; then
+if [ "$status" -ne 0 ] && [ -x /usr/bin/exec-suid ] && [[ "$output" == *"Permission denied"* || "$output" == *"PermissionError"* ]]; then
+    output=$(/usr/bin/exec-suid -- /usr/bin/python3 "$impl" "$@" 2>&1)
+    status=$?
+fi
+
+if [ "$status" -ne 0 ] && [[ "$output" == *"Failed to read init environ"* || "$output" == *"Failed to read init environment"* ]]; then
     cat >&2 <<'EOF'
 checkstatus is not accessible from inside this locked-down exam environment.
 
