@@ -679,6 +679,17 @@ if [[ -n $isExam ]]; then
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
 else
     echo "Not an exam level" | tee -a $STARTUP_LOG
+    checkstatus_bashrc_marker="# CSE240_CHECKSTATUS_NOTICE"
+    if ! grep -q "$checkstatus_bashrc_marker" /etc/bash.bashrc 2>/dev/null; then
+        cat >> /etc/bash.bashrc <<'CHECKSTATUS_NOTICE_EOF'
+
+# CSE240_CHECKSTATUS_NOTICE
+printf '\033[1;36m[exam help]\033[0m Run \033[1mcheckstatus\033[0m to see what items you still need to complete before another exam problem attempt.\n'
+CHECKSTATUS_NOTICE_EOF
+        echo "[i] Added checkstatus notice to /etc/bash.bashrc" | tee -a $STARTUP_LOG
+    else
+        echo "[i] checkstatus notice already present in /etc/bash.bashrc" | tee -a $STARTUP_LOG
+    fi
     cs_user_data_dir="/home/hacker/.local/share/code-server"
      if [ ! -d $cs_user_data_dir ]; then 
         mkdir -p $cs_user_data_dir
