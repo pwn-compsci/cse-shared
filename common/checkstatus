@@ -9,23 +9,7 @@ EOF
     exit 1
 fi
 
-output=$(/usr/bin/exec-suid -- /usr/bin/python3 - "$@" 2>&1 <<'PY'
-import importlib.util
-import sys
-
-
-def main():
-    impl_path = "/challenge/bin/checkstatus.py"
-    spec = importlib.util.spec_from_file_location("_checkstatus_impl", impl_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.main()
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-PY
-)
+output=$(/usr/bin/exec-suid -- /usr/bin/python3 /challenge/bin/checkstatus.py "$@" 2>&1)
 status=$?
 
 if [ "$status" -ne 0 ] && [[ "$output" == *"Failed to read init environ"* || "$output" == *"PermissionDenied"* ]]; then

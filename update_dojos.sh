@@ -4,6 +4,7 @@
 scripts=(
   "/cse/intro-to-programming-languages/update_dojo.sh"
   "/cse/cse240-fa26/update_dojo.sh"
+  "/cse/cse240-fc26/update_dojo.sh"
   # Add more paths here as needed
 )
 
@@ -16,7 +17,7 @@ git commit -m "Update dojo scripts"
 git push
 
 declare -A pids
-declare -A statuses
+declare -A statuses 
 
 # Start all scripts in parallel
 for script in "${scripts[@]}"; do
