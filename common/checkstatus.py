@@ -361,6 +361,50 @@ def build_previous_gate_lines(gate_status, color_enabled=True):
     return lines
 
 
+def build_future_gate_lines(gate_status, color_enabled=True):
+    future_requirements = gate_status.get("future_gate_requirements") or []
+    if not future_requirements:
+        return []
+
+    lines = [
+        colorize("These requirements may apply to later retries, so you can plan ahead.", Color.DIM, color_enabled)
+    ]
+    for group in group_gate_requirements(future_requirements):
+        group_requirements = group["requirements"]
+        missing_count = sum(1 for req in group_requirements if not req.get("satisfied"))
+        complete_count = len(group_requirements) - missing_count
+        summary = (
+            f"{complete_count} complete, {missing_count} still needed"
+            if missing_count
+            else f"{complete_count} complete"
+        )
+        lines.append(colorize(f"{attempt_label(group['attempt_number'])}  ·  {summary}", Color.CYAN, color_enabled))
+        for req in group_requirements:
+            ok = bool(req.get("satisfied"))
+            mark = colorize("DONE", Color.GREEN, color_enabled) if ok else colorize("PLAN", Color.YELLOW, color_enabled)
+            mode = requirement_mode(req)
+            mode_suffix = f"  ·  {mode}" if mode else ""
+            detail = req.get("detail") or ("Complete" if ok else "Not complete")
+            lines.append(f"  {mark}  {requirement_label(req)}{mode_suffix}")
+            lines.append(colorize(f"        {detail}", Color.GREEN if ok else Color.YELLOW, color_enabled))
+            missing_levels = req.get("missing_levels") or []
+            completed_levels = req.get("completed_levels") or []
+            required_levels = req.get("required_levels") or []
+            if required_levels or completed_levels or missing_levels:
+                total_count = len(required_levels) or len(completed_levels) + len(missing_levels)
+                lines.append(colorize(
+                    f"        Level progress: {len(completed_levels)} complete, {len(missing_levels)} left ({total_count} total)",
+                    Color.CYAN,
+                    color_enabled,
+                ))
+            if completed_levels:
+                lines.append(colorize(f"        Completed levels: {', '.join(str(level) for level in completed_levels)}", Color.GREEN, color_enabled))
+            if missing_levels:
+                lines.append(colorize(f"        Missing levels: {', '.join(str(level) for level in missing_levels)}", Color.YELLOW, color_enabled))
+        lines.append("")
+    return lines
+
+
 def build_target_header_lines(payload, target, color_enabled=True):
     student = payload.get("student_name", "Student")
     course = payload.get("course_code", "course")
@@ -437,11 +481,14 @@ def print_status(payload, color_enabled=True, details=False):
     header_lines = build_target_header_lines(payload, target, color_enabled)
     print_box("Exam Access Checklist", header_lines, color=Color.CYAN if allowed else Color.YELLOW, color_enabled=color_enabled)
 
-    lines, unmet = build_requirement_lines(gate_status, color_enabled)
-    print_box("Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
     previous_lines = build_previous_gate_lines(gate_status, color_enabled)
     if previous_lines:
         print_box("Previously Used Retry Unlocks", previous_lines, color=Color.BLUE, color_enabled=color_enabled)
+    lines, unmet = build_requirement_lines(gate_status, color_enabled)
+    print_box("Current Retry Requirements", lines, color=Color.GREEN if not unmet else Color.YELLOW, color_enabled=color_enabled)
+    future_lines = build_future_gate_lines(gate_status, color_enabled)
+    if future_lines:
+        print_box("Future Retry Planning", future_lines, color=Color.BLUE, color_enabled=color_enabled)
 
     recent = payload.get("recent_unpassed_exams") or []
     if len(recent) > 1:
@@ -456,17 +503,25 @@ def print_status(payload, color_enabled=True, details=False):
                     color_enabled=color_enabled,
                 )
                 detail_lines, detail_unmet = build_requirement_lines(gs, color_enabled)
-                print_box(
-                    "Requirements",
-                    detail_lines,
-                    color=Color.GREEN if not detail_unmet else Color.YELLOW,
-                    color_enabled=color_enabled,
-                )
                 previous_detail_lines = build_previous_gate_lines(gs, color_enabled)
                 if previous_detail_lines:
                     print_box(
                         "Previously Used Retry Unlocks",
                         previous_detail_lines,
+                        color=Color.BLUE,
+                        color_enabled=color_enabled,
+                    )
+                print_box(
+                    "Current Retry Requirements",
+                    detail_lines,
+                    color=Color.GREEN if not detail_unmet else Color.YELLOW,
+                    color_enabled=color_enabled,
+                )
+                future_detail_lines = build_future_gate_lines(gs, color_enabled)
+                if future_detail_lines:
+                    print_box(
+                        "Future Retry Planning",
+                        future_detail_lines,
                         color=Color.BLUE,
                         color_enabled=color_enabled,
                     )
