@@ -9,6 +9,17 @@ EOF
     exit 1
 fi
 
+if [ -e /proc/1/environ ] && ! /bin/cat /proc/1/environ >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+checkstatus is not accessible from inside this locked-down exam environment.
+
+The exam sandbox intentionally blocks the privilege change that checkstatus
+normally uses. If you need your exam access status, please ask course staff or
+your proctor to check it for you.
+EOF
+    exit 1
+fi
+
 output=$(/usr/bin/exec-suid -- /usr/bin/python3 /challenge/bin/checkstatus.py "$@" 2>&1)
 status=$?
 
