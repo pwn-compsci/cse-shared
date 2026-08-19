@@ -1,4 +1,15 @@
-#!/usr/bin/exec-suid -- /usr/bin/python3
+#!/usr/bin/env bash
+
+if [ ! -x /usr/bin/exec-suid ]; then
+    cat >&2 <<'EOF'
+checkstatus is only available inside the pwn.college exam environment.
+
+Please ask course staff or a proctor to check your exam access status.
+EOF
+    exit 1
+fi
+
+output=$(/usr/bin/exec-suid -- /usr/bin/python3 - "$@" 2>&1 <<'PY'
 import importlib.util
 import sys
 
@@ -13,3 +24,22 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+PY
+)
+status=$?
+
+if [ "$status" -ne 0 ] && [[ "$output" == *"Failed to read init environ"* || "$output" == *"PermissionDenied"* ]]; then
+    cat >&2 <<'EOF'
+checkstatus is not accessible from inside this locked-down exam environment.
+
+The exam sandbox intentionally blocks the privilege change that checkstatus
+normally uses. If you need your exam access status, please ask course staff or
+your proctor to check it for you.
+EOF
+    exit 1
+fi
+
+if [ -n "$output" ]; then
+    printf '%s\n' "$output"
+fi
+exit "$status"
