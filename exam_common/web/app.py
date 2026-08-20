@@ -42,28 +42,33 @@ last_session_student_name = ""
 def normalized_exam_admin_type(value=None):
     return (exam_admin_type if value is None else value or "").strip().lower().replace("_", " ").replace("-", " ")
 
+def is_proctoring_only(value=None):
+    exam_type = normalized_exam_admin_type(value)
+    return exam_type in {
+        "proctoring",
+        "proctor only",
+        "proctoring only",
+    }
+
 def is_honorlock_exam(value=None):
     return normalized_exam_admin_type(value).replace(" ", "") == "honorlock"
 
 def requires_active_proctor_session(value=None):
     exam_type = normalized_exam_admin_type(value)
-    return exam_type in {
-        "proctoring",
+    return is_proctoring_only(value) or exam_type in {
         "proctoring plus lockdown browser",
         "proctoring with no attendance",
     }
 
 def requires_attendance_monitoring(value=None):
     exam_type = normalized_exam_admin_type(value)
-    return exam_type in {
-        "proctoring",
+    return is_proctoring_only(value) or exam_type in {
         "proctoring plus lockdown browser",
     }
 
 def requires_exam_password(value=None):
     exam_type = normalized_exam_admin_type(value)
     return exam_type in {
-        "proctoring",
         "proctoring plus lockdown browser",
         "lock down browser",
     }
@@ -680,7 +685,7 @@ def check_rldb_user_agent(user_agent, pwn_college_id, sec_ch_ua_platform):
     import re
     
     # Skip RLDB check based on exam administration type
-    if normalized_exam_admin_type() in {"proctoring", "proctoring with no attendance", "none", ""} or is_honorlock_exam():
+    if is_proctoring_only() or normalized_exam_admin_type() in {"proctoring with no attendance", "none", ""} or is_honorlock_exam():
         logger.info(f"RLDB user agent test BYPASSED - exam type is '{exam_admin_type}'")
         return True, f"Bypassed for exam type: {exam_admin_type}"
     
@@ -1083,6 +1088,10 @@ def process_login(exam_password, ip_addr):
     # Only proctoring types with attendance monitoring and LDB require password (admins bypass this)
     password_required = not protections_bypassed and requires_exam_password()
     logger.info(f"=== Password check === password_required: {password_required}, exam_admin_type: '{exam_admin_type}', is_admin: {is_admin}, is_practice_exam: {is_practice_exam}")
+
+    if not protections_bypassed and requires_attendance_monitoring() and not attending and not password_required:
+        logger.info("=== Showing loginpage === because proctor-only attendance is not active")
+        return loginpage(message=last_session_attendance_error or "You are not marked as attending an exam session.")
     
     # If this is a GET request and not practice exam or attending or password not required, serve the login page
     if not is_practice_exam and not attending and password_required and not exam_password:

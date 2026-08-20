@@ -11,19 +11,25 @@ scripts=(
 # Change to the directory of this script
 cd "$(dirname "$0")" || exit 1
 
+run_as=()
+if [[ "$(id -un)" == "etrickel" ]]; then
+  run_as=(sudo -H -u duck --)
+  echo "Logged in as etrickel; running dojo update commands as duck."
+fi
+
 # Git add, commit, and push
-git add .
-git commit -m "Update dojo scripts"
-git push
+"${run_as[@]}" git add .
+"${run_as[@]}" git commit -m "Update dojo scripts"
+"${run_as[@]}" git push
 
 declare -A pids
 declare -A statuses 
 
 # Start all scripts in parallel
 for script in "${scripts[@]}"; do
-  touch "$script"  # Ensure the script exists
+  "${run_as[@]}" touch "$script"  # Ensure the script exists
   echo "🔄 Running: $script"
-  "$script" &
+  "${run_as[@]}" "$script" &
   pids["$script"]=$!
 done
 
