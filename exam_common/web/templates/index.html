@@ -137,7 +137,7 @@
       <input type="hidden" name="pwn_college_id" value="{{ pwn_college_id }}">
       {% endif %}
       <div>
-        <label for="token_resp" style="font-size: 1.2em;">{{ studentinfo|default("Student: Unknown") }}</label><br>
+        <label for="level-password" style="font-size: 1.2em;">{{ studentinfo|default("Student: Unknown") }}</label><br>
         
         <input id="level-password" name="exam_password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus><br>
       </div>
@@ -155,9 +155,11 @@
   </div>
   <script>
     // Make extra sure nothing blocks programmatic input/paste
-    const pw = document.getElementById('exam-password');
-    pw.onpaste = null;
-    pw.addEventListener('paste', e => { /* allow */ }, true);
+    const pw = document.getElementById('level-password');
+    if (pw) {
+      pw.onpaste = null;
+      pw.addEventListener('paste', e => { /* allow */ }, true);
+    }
     // Avoid any checks like if (!e.isTrusted) throw ...
   </script>
   <script>
@@ -172,7 +174,7 @@
     });
 
     function validateForm() {
-        const tokenResp = document.getElementById('token_resp').value.trim();
+        const tokenResp = document.getElementById('level-password').value.trim();
        
         if (!tokenResp) {
             // Show themed warning instead of alert

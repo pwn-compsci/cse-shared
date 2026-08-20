@@ -36,6 +36,8 @@ exam_challenge = ""
 EXAM_ADMIN_API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
 EXAM_ADMIN_API_URL = "https://api.cse545.com/exam_admin_type"
 EXAM_GATE_STATUS_API_URL = "https://api.cse545.com/exam-gates/checkstatus"
+last_session_attendance_error = ""
+last_session_student_name = ""
 
 def normalized_exam_admin_type(value=None):
     return (exam_admin_type if value is None else value or "").strip().lower().replace("_", " ").replace("-", " ")
@@ -177,6 +179,9 @@ def check_session_attendance(pwn_college_id):
         (False, password): Session exists but not attending yet
         (True, password): Currently attending session
     """
+    global last_session_attendance_error, last_session_student_name
+    last_session_attendance_error = ""
+    last_session_student_name = ""
     if not pwn_college_id:
         logger.warning("No PWN College ID provided for session attendance check")
         return None
@@ -196,24 +201,37 @@ def check_session_attendance(pwn_college_id):
         # 404 means no session exists at all
         if response.status_code == 404:
             logger.warning(f"No proctor session found (404): {response.text}")
+            try:
+                last_session_attendance_error = response.json().get("message", response.text)
+            except json.JSONDecodeError:
+                last_session_attendance_error = response.text
             return None
         
         if response.status_code == 200:
             result = response.json()
             logger.info(f"Session attendance response: {result}")
+            last_session_student_name = result.get("student_name", "") or ""
             
             # Check valid_session field to determine if a proctor session exists
             valid_session = result.get("valid_session", False)
             if not valid_session:
+                last_session_attendance_error = result.get("message", "No valid proctor session found")
                 logger.warning(f"No valid proctor session found: {result.get('message', 'Unknown reason')}")
                 return None
             
             attending = result.get("attending", False)
             password = result.get("password", None)
+            attendance_status = result.get("attendance_status", {})
+            diagnostic = result.get("attendance_diagnostic") or attendance_status.get("attendance_diagnostic") or {}
+            if not attending and diagnostic.get("hint"):
+                last_session_attendance_error = f"You are not marked as attending an exam session. {diagnostic.get('hint')}"
+            elif not attending:
+                last_session_attendance_error = result.get("message", "A valid session was found, but you are not marked as attending an exam session.")
             
             logger.info(f"Valid session found - Attendance status: {attending}, Password: {password}")
             return attending, password
         else:
+            last_session_attendance_error = f"Session attendance check failed with status {response.status_code}. Please notify your professor or proctor."
             logger.error(f"Session attendance check failed with status {response.status_code}: {response.text}")
             return None
             
@@ -251,13 +269,13 @@ def check_password_api(pwn_college_id, password):
             logger.info(f"Password check response: {result}")
             
             status = result.get("status", "")
-            value = result.get("value", False)
+            valid = result.get("valid", False)
             
-            if status == "success" and value is True:
+            if status == "success" and valid is True:
                 logger.info("Password validation successful")
                 return True
             else:
-                logger.info(f"Password validation failed: status={status}, value={value}")
+                logger.info(f"Password validation failed: status={status}, valid={valid}")
                 return False
         else:
             logger.error(f"Password check failed with status {response.status_code}: {response.text}")
@@ -776,6 +794,18 @@ def showflag():
     
 def get_student_info(pwn_college_id):
     INFO_FILE = "/challenge/.config/info.dat"
+    if last_session_student_name:
+        return f"Student: {last_session_student_name}, id: {pwn_college_id}"
+
+    try:
+        with open('/.user_info', 'r') as f:
+            content = f.read()
+            match = re.search(r"display_name=['\"]([^'\"]+)['\"]", content)
+            if match:
+                return f"Student: {match.group(1)}, id: {pwn_college_id}"
+    except Exception as e:
+        logger.info(f"Could not read display_name from /.user_info: {e}")
+
     try:
         with open(INFO_FILE, 'r') as f:
             first_row = f.readline().strip()
@@ -1031,7 +1061,7 @@ def process_login(exam_password, ip_addr):
         if session_result is None:
             # No proctor session exists - block login
             logger.error(f"No active proctor session found for exam type '{exam_admin_type}'")
-            return loginpage(message="No active proctor session found. Exams with proctoring require an active session.")
+            return loginpage(message=last_session_attendance_error or "No active proctor session found. Exams with proctoring require an active session.")
         attending, session_password = session_result
         if attending:
             logger.info(f"Student is attending session, using session password: {session_password}")
@@ -1042,7 +1072,7 @@ def process_login(exam_password, ip_addr):
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
             logger.warning(f"No active proctor session found for '{exam_admin_type}' type")
-            return loginpage(message="No active proctor session found. Please ensure a proctor session is scheduled.")
+            return loginpage(message=last_session_attendance_error or "No active proctor session found. Please ensure a proctor session is scheduled.")
         logger.info(f"Proctor session validated for '{exam_admin_type}' - allowing login with password")
     else:
         logger.info(f"Session attendance check SKIPPED - exam type is '{exam_admin_type}' or admin/practice bypass")
@@ -1057,7 +1087,7 @@ def process_login(exam_password, ip_addr):
     # If this is a GET request and not practice exam or attending or password not required, serve the login page
     if not is_practice_exam and not attending and password_required and not exam_password:
         logger.info("=== Showing loginpage === because password required and not provided")
-        return loginpage()
+        return loginpage(message=last_session_attendance_error or "A password is required because you are not marked as attending an exam session.")
     
     # If password not required but this is a GET (no form submission), allow direct access
     if not password_required and not exam_password and not is_practice_exam:
