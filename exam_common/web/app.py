@@ -33,6 +33,7 @@ FLAG_EXEMPTED_PATH = "/flag_exempted"
 exam_admin_type = "Proctoring plus Lockdown Browser"  # Default to most restrictive
 exam_module = ""
 exam_challenge = ""
+exam_admin_type_lookup_error = ""
 EXAM_ADMIN_API_TOKEN = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
 EXAM_ADMIN_API_URL = "https://api.cse545.com/exam_admin_type"
 EXAM_GATE_STATUS_API_URL = "https://api.cse545.com/exam-gates/checkstatus"
@@ -72,6 +73,9 @@ def requires_exam_password(value=None):
         "proctoring plus lockdown browser",
         "lock down browser",
     }
+
+def has_exam_admin_type_lookup_error():
+    return bool(exam_admin_type_lookup_error)
 
 # Hardcoded set of pwn_college_id values that skip RLDB check
 #, 97169 
@@ -122,9 +126,13 @@ MISSING_VAR_NOTICE = """
 
 def get_exam_admin_type(pwn_college_id, module, challenge):
     """Get exam administration type from API endpoint"""
+    global exam_admin_type_lookup_error
+    exam_admin_type_lookup_error = ""
+
     if not pwn_college_id or not module or not challenge:
-        logger.warning("Missing required parameters for exam admin type check, using default")
-        return "Proctoring plus Lockdown Browser"
+        exam_admin_type_lookup_error = "Exam settings could not be loaded because the student identity or challenge information is missing."
+        logger.warning(exam_admin_type_lookup_error)
+        return ""
     
     try:
         payload = {
@@ -134,7 +142,7 @@ def get_exam_admin_type(pwn_college_id, module, challenge):
             "challenge": challenge
         }
         
-        logger.info(f"Requesting exam admin type for PWN ID {pwn_college_id}, {module}/{challenge}, {EXAM_ADMIN_API_URL}, {payload}")
+        logger.info(f"Requesting exam admin type for PWN ID {pwn_college_id}, {module}/{challenge}, {EXAM_ADMIN_API_URL}")
         response = requests.post(EXAM_ADMIN_API_URL, json=payload, timeout=10)
         
         if response.status_code == 200:
@@ -144,14 +152,20 @@ def get_exam_admin_type(pwn_college_id, module, challenge):
             return admin_type
         else:
             logger.error(f"Exam admin type API returned status {response.status_code}: {response.text}")
-            return "Proctoring plus Lockdown Browser"
+            if response.status_code == 404:
+                exam_admin_type_lookup_error = "This pwn.college account is not registered in the course database yet, so exam access settings could not be loaded."
+            else:
+                exam_admin_type_lookup_error = "Exam access settings could not be loaded from the course database. Please notify your professor."
+            return ""
             
     except requests.RequestException as e:
         logger.error(f"Error calling exam admin type API: {e}")
-        return "Proctoring plus Lockdown Browser"
+        exam_admin_type_lookup_error = "Exam access settings could not be loaded from the course database. Please notify your professor."
+        return ""
     except Exception as e:
         logger.error(f"Unexpected error getting exam admin type: {e}")
-        return "Proctoring plus Lockdown Browser"
+        exam_admin_type_lookup_error = "Exam access settings could not be loaded. Please notify your professor."
+        return ""
 
 def check_code_server_status():
     found_code_server = False
@@ -765,6 +779,32 @@ def nolockdown():
         <p><a href="">Return to login page</a></p>
     """), 403
 
+def render_exam_config_error():
+    message = html.escape(exam_admin_type_lookup_error or "Exam access settings could not be loaded.")
+    student = html.escape(get_student_info(pwn_college_id))
+    module = html.escape(exam_module or "Unknown")
+    challenge = html.escape(exam_challenge or "Unknown")
+
+    return render_template_string(f"""
+        <style>
+            body {{ color: #FFFFFF; background-color: #1E1E1E; font-family: monospace; padding: 20px; }}
+            .error {{ color: #ff6b35; background-color: #2a1f1f; border: 1px solid #ff6b35; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            .info {{ color: #17a2b8; background-color: #1f2a2e; border: 1px solid #17a2b8; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.9em; }}
+            a {{ color: #4dabf7; text-decoration: underline; }}
+            a:hover {{ color: #74c0fc; }}
+        </style>
+        <h2>Access Denied</h2>
+        <div class="error">
+            <p><strong>Exam access settings unavailable</strong></p>
+            <p>{message}</p>
+        </div>
+        <div class="info">
+            <p><strong>Student:</strong> {student}</p>
+            <p><strong>Problem:</strong> {module}/{challenge}</p>
+        </div>
+        <p><a href="">Return to login page</a></p>
+    """), 403
+
 def showflag():
     """Display the flag when exemption exists"""
     flag_content = ""
@@ -1035,6 +1075,10 @@ def reset():
 def process_login(exam_password, ip_addr):
     
     logger.info(f"=== process_login called === exam_admin_type: '{exam_admin_type}', exam_password: {exam_password is not None}, is_practice_exam: {is_practice_exam}, pwn_college_id: {pwn_college_id}")
+
+    if has_exam_admin_type_lookup_error():
+        logger.error(f"Blocking login because exam admin type lookup failed: {exam_admin_type_lookup_error}")
+        return render_exam_config_error()
     
     # Check if this is an admin/bypass user (convert to int for comparison)
     try:
@@ -1202,6 +1246,9 @@ def login_or_proxy():
         return render_template_string(MISSING_VAR_NOTICE), 500
     if os.path.exists(FLAG_EXEMPTED_PATH):
         return showflag()
+    if has_exam_admin_type_lookup_error():
+        logger.error(f"Blocking access before RLDB check because exam admin type lookup failed: {exam_admin_type_lookup_error}")
+        return render_exam_config_error()
     exam_password = request.form.get('exam_password')
     
     ip_addr = request.remote_addr

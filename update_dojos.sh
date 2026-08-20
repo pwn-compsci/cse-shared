@@ -21,6 +21,7 @@ fi
 "${run_as[@]}" git add .
 "${run_as[@]}" git commit -m "Update dojo scripts"
 "${run_as[@]}" git push
+expected_shared_commit=$("${run_as[@]}" git rev-parse HEAD)
 
 declare -A pids
 declare -A statuses 
@@ -46,6 +47,33 @@ for script in "${scripts[@]}"; do
     echo "✅ $script completed successfully."
   else
     echo "❌ $script failed with exit code ${statuses[$script]}."
+    all_success=false
+  fi
+done
+
+# Verify each dojo actually picked up the cse-shared commit we just pushed.
+for script in "${scripts[@]}"; do
+  repo_dir="$(dirname "$script")"
+  shared_dir="$repo_dir/cse-shared"
+
+  if [[ ! -d "$shared_dir/.git" && ! -f "$shared_dir/.git" ]]; then
+    echo "❌ $repo_dir does not have a cse-shared submodule checkout."
+    all_success=false
+    continue
+  fi
+
+  actual_shared_commit=$("${run_as[@]}" git -C "$shared_dir" rev-parse HEAD 2>/dev/null || true)
+  if [[ "$actual_shared_commit" != "$expected_shared_commit" ]]; then
+    echo "❌ $repo_dir/cse-shared is at ${actual_shared_commit:-unknown}, expected $expected_shared_commit."
+    all_success=false
+  fi
+
+  shared_status=$("${run_as[@]}" git -C "$shared_dir" status --porcelain 2>/dev/null || true)
+  if [[ -n "$shared_status" ]]; then
+    echo "❌ $repo_dir/cse-shared has local changes:"
+    while IFS= read -r line; do
+      echo "   $line"
+    done <<< "$shared_status"
     all_success=false
   fi
 done
