@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
 
-course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
-course_home=${course_home:-"/home/hacker/$course_code"}
-course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
-
 # Read the log file path created by .init
 if [ -f /tmp/.startup_log_path ]; then
     STARTUP_LOG=$(cat /tmp/.startup_log_path)
 else
     # Fallback if .init hasn't run yet
-    STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
-    mkdir -p "$course_home/.vscode/logs"
+    STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p /home/hacker/cse240/.vscode/logs
 fi
 
 echo "[e] Exam level found" | tee -a $STARTUP_LOG
 if [ "$admin_access" = false ]; then
     # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
-    # if grep "practice" /flag; then
+    # if grep "practice" /flag; then 
     #     echo "[e] No non-admin access to exam in practice mode" | tee -a $STARTUP_LOG
-    #     pkill -9 -f /run/dojo/bin/sleep
+    #     pkill -9 -f /run/dojo/bin/sleep 
     # fi
-    # TODO: REENBLE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # TODO: REENBLE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
     nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1  &
 fi
 timestamp=$(date '+%Y-%m-%d_%H%M')
@@ -35,10 +31,10 @@ sed -i 's/AUTHCHALLENGE/firstpass/g' /challenge/web/app.py
 sed -i 's/LETMEIN/luckystar/g' /challenge/web/app.py
 sed -i "s/SHAPASS_VALUE/$shapass/g" /challenge/web/app.py
 
-if [ -f /challenge/.config/.extra_cfg ]; then
+if [ -f /challenge/.config/.extra_cfg ]; then 
     chown root:root /challenge/.config/.extra_cfg
     chmod 600 /challenge/.config/.extra_cfg
-fi
+fi  
 
 STARTUP_ID_FILE="/opt/exam_attempt_startup_id"
 
@@ -54,7 +50,7 @@ echo "[e] pwn.college id is $pwn_college_id" | tee -a $STARTUP_LOG
 
 current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
 
-if [ -z "$pwn_college_id" ]; then
+if [ -z "$pwn_college_id" ]; then 
     echo "[e] pwn.colege id not found" | tee -a $STARTUP_LOG
     sed -i "s/LEVEL_ID/$current_module $level/g" /challenge/web/js/exam-badge.js
 else
@@ -65,7 +61,7 @@ else
         student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z0-9\-_ ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
         echo "[e] found file studentinfo $student_info" | tee -a $STARTUP_LOG
         if [ -z "$student_info" ]; then
-            student_info="Student not found"
+            student_info="Student not found"            
         elif [ ${#student_info} -gt 15 ]; then
             student_info="${student_info:0:12}..."
         fi
@@ -75,21 +71,21 @@ else
         echo "[e] /challenge/.config/info.dat not found, using pwn_college_id only" | tee -a $STARTUP_LOG
         combined="$pwn_college_id - No student info"
     fi
-
+        
     echo "[e] attempting to re-write exam-badge.js" | tee -a $STARTUP_LOG
     sed -i "s/LEVEL_ID/$current_module $level - $combined/g" /challenge/web/js/exam-badge.js
+    
+fi 
 
-fi
-
-if [ -d /home/me ]; then
+if [ -d /home/me ]; then 
     echo "[e] Running as_user, not configuring problem" | tee -a $STARTUP_LOG
 else
-
+        
     echo "[e] Using clevel_work_dir = $clevel_work_dir for exam base directory" | tee -a $STARTUP_LOG
-    if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then
+    if [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; then         
         mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
         echo "[e] created backup of old answer attempt" | tee -a $STARTUP_LOG
-    fi
+    fi 
 
     # List only directories in /challenge/problems
     dirs=($(find /challenge/problems -mindepth 1 -maxdepth 1 -type d -printf '%f\n'))
@@ -104,29 +100,29 @@ else
     chosen_problem="${dirs[RANDOM % ${#dirs[@]}]}"
     echo "[e] Randomly chosen problem: $chosen_problem" >> $STARTUP_LOG
 
-    # Add problem override, when last start of exam was within 15 minutes
-    if [ -f "$course_home/.vscode/starts.log" ] && [ ${#dirs[@]} -gt 1 ]; then
+    # Add problem override, when last start of exam was within 15 minutes 
+    if [ -f /home/hacker/cse240/.vscode/starts.log ] && [ ${#dirs[@]} -gt 1 ]; then
         # Get the module and level from the current environment
         current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
         current_level=$(jq -r '.level // empty' /challenge/.config/level.json)
-
+        
         # Find the most recent entry for this module and level
-        last_entry=$(grep "module=$current_module.*level=$current_level" "$course_home/.vscode/starts.log" | tail -1)
-
+        last_entry=$(grep "module=$current_module.*level=$current_level" /home/hacker/cse240/.vscode/starts.log | tail -1)
+        
         if [ -n "$last_entry" ]; then
             # Extract the previous chosen_problem and starttime
             prev_chosen_problem=$(echo "$last_entry" | sed -n 's/.*chosen_problem=\([^|]*\).*/\1/p')
             prev_starttime=$(echo "$last_entry" | sed -n 's/.*starttime=\([^|]*\).*/\1/p')
-
+            
             if [ -n "$prev_starttime" ] && [ -n "$prev_chosen_problem" ]; then
                 # Convert timestamps to seconds since epoch for comparison
                 current_timestamp=$(date +%s)
                 prev_timestamp=$(date -d "$prev_starttime" +%s 2>/dev/null)
-
+                
                 if [ $? -eq 0 ]; then
                     # Calculate time difference in minutes
                     time_diff=$(( (current_timestamp - prev_timestamp) / 60 ))
-
+                    
                     # If last start was 15 minutes or less ago, keep the same chosen_problem
                     if [ $time_diff -le 15 ] && [ -d "/challenge/problems/$prev_chosen_problem" ]; then
                         chosen_problem="$prev_chosen_problem"
@@ -149,13 +145,13 @@ else
                 fi
             fi
         fi
-    fi
+    fi 
 
     # for debugging
     # override random if examLevel is set
-    if [ -f "$course_home/.examproblems.json" ]; then
-        examLevel=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('examLevel', ''))" 2>/dev/null)
-        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' "$course_home/.examproblems.json")
+    if [ -f /home/hacker/cse240/.examproblems.json ]; then
+        examLevel=$(python3 -c "import json; data=json.load(open('/challenge/.config/level.json')); print(data.get('examLevel', ''))" 2>/dev/null)        
+        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' /home/hacker/cse240/.examproblems.json)
         if [ -n "$exam_problem" ]; then
             chosen_problem="$exam_problem"
             echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" | tee -a $STARTUP_LOG
@@ -164,7 +160,7 @@ else
 
     echo "[e] Setting up problem $chosen_problem in $clevel_work_dir" | tee -a $STARTUP_LOG
     echo "chosen_problem=$chosen_problem" >> /challenge/.config/chosen_problem.dat
-
+    
     cp -a /challenge/problems/$chosen_problem/. /challenge/
     if [ $? -eq 0 ]; then
         echo "[e] Successfully copied problem files from /challenge/problems/$chosen_problem to /challenge" | tee -a $STARTUP_LOG
@@ -177,18 +173,18 @@ else
 
     # Record module, level, and starttime to starts.log for .examsetup
     starttime=$(date '+%Y-%m-%d %H:%M:%S')
-    mkdir -p "$course_home/.vscode"
-    echo "module=$module|level=$level|chosen_problem=$chosen_problem|starttime=$starttime" >> "$course_home/.vscode/starts.log"
+    mkdir -p /home/hacker/cse240/.vscode
+    echo "module=$module|level=$level|chosen_problem=$chosen_problem|starttime=$starttime" >> /home/hacker/cse240/.vscode/starts.log
 
 
     # removed /challenge/system_tests/*.json
     if [ "$admin_access" = false ]; then
-        rm -rf /challenge/problems
-        rm -rf /challenge/model
+        rm -rf /challenge/problems 
+        rm -rf /challenge/model 
         # move history file location
         echo 'export HISTFILE="/tmp/.bash_history"' >> /etc/bash.bashrc
     fi
-
+    
 
     json_tests=""
     dat_tests=""
@@ -197,101 +193,84 @@ else
     model_code=$(find /challenge/model -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.java" -o -name "*.java.j2" -o -name "Makefile*" -o -name "*.rkt.j2" \) 2>/dev/null |  tr '\n' ' ')
 
     json_tests=$(find /challenge/system_tests/ -type f \( -name "*.json" -o -name "*.json.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "*Makefile.j2" \) 2>/dev/null | tr '\n' ' ')
-
+    
     template_files=$(find /challenge/template -type f \( -name "*.c" -o -name "*.c.j2" -o -name "*.h" -o -name "*.h.j2" -o -name "*.cpp" -o -name "*.cpp.j2" -o -name "*.java" -o -name "*.java.j2" -o -name "*.dat" -o -name "*.dat.j2" -o -name "Makefile*" -o -name "*.rkt.j2" -o -name 'README.*' \) 2>/dev/null  | tr '\n' ' ')
 
     levelinit_file=$(find /challenge/ -type f \( -name ".levelinit*" -o -name ".testprobleminit.j2"  -o -name 'readme.html' -o -name 'README.*' \) 2>/dev/null  | tr '\n' ' ')
-
+    
     # Call problem_generator.py with the appropriate arguments
     echo python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a $STARTUP_LOG 2>&1
-
+    
     python3 /challenge/bin/problem_generator.py /challenge/web/nginx.conf $model_code $levelinit_file $template_files $json_tests $dat_tests | tee -a $STARTUP_LOG 2>&1
-
+    
     if [ $? -eq 0 ]; then
         echo "[e] problem_generator.py completed successfully" | tee -a $STARTUP_LOG
     else
         echo -e "\033[31m[e] ERROR: problem_generator.py failed\033[0m" | tee -a $STARTUP_LOG
     fi
-
+   
     # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a $STARTUP_LOG
         ls -la /challenge | tee -a /challenge/challenge.log
         mkdir -p "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
+        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
         ls -la "$clevel_work_dir" | tee -a $STARTUP_LOG
     elif [ -L "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a $STARTUP_LOG
         rm "$clevel_work_dir/system_tests"
         mkdir -p "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
+        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true 
     fi
-    find $clevel_work_dir -type f -name 'stest*hidden*' -exec rm -f {} \;
-fi
+    find $clevel_work_dir -type f -name 'stest*hidden*' -exec rm -f {} \;    
+fi 
 
 if [ -f /challenge/.testprobleminit ]; then
     source /challenge/.testprobleminit
     echo "[e] Completed .testprobleminit" >> "$STARTUP_LOG"
     # rm /challenge/.testprobleminit
-fi
+fi 
 
 # c_level_work_dir comes from parent call .init, .examsetup is sourced
 echo "[e] creating clevel_work_dir = $clevel_work_dir in .examsetup" | tee -a $STARTUP_LOG
 
 mkdir -p $clevel_work_dir
-if [ -d /challenge/template ]; then
-    if [ "$course_code" != "cse545" ] || { [ ! -f "$clevel_work_dir/main.c" ] && [ ! -f "$clevel_work_dir/solve.py" ] && [ ! -f "$clevel_work_dir/main.cpp" ]; }; then
-        echo "[e] Copying template files to $clevel_work_dir from /challenge/template " | tee -a $STARTUP_LOG
-        echo "[e] Listing /challenge/template contents:" | tee -a $STARTUP_LOG
-        ls -la /challenge/template | tee -a $STARTUP_LOG
-        echo "******************************************************" | tee -a $STARTUP_LOG
-        cp -a /challenge/template/* $clevel_work_dir
-        echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
-        chown hacker:hacker -R $clevel_work_dir
-    else
-        echo "[e] Existing CSE545 work found in $clevel_work_dir, skipping template overwrite." | tee -a $STARTUP_LOG
-    fi
-fi
+if [ -d /challenge/template ]; then 
+    echo "[e] Copying template files to $clevel_work_dir from /challenge/template " | tee -a $STARTUP_LOG
+    echo "[e] Listing /challenge/template contents:" | tee -a $STARTUP_LOG
+    ls -la /challenge/template | tee -a $STARTUP_LOG
+    echo "******************************************************" | tee -a $STARTUP_LOG
+    cp -a /challenge/template/* $clevel_work_dir
+    echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
+    chown hacker:hacker -R $clevel_work_dir
+fi 
 if [ "$admin_access" = true ]; then
     if [ -d /challenge/model ]; then
-        mkdir -p $clevel_work_dir/template
+        mkdir -p $clevel_work_dir/template 
         cp -a /challenge/template/. $clevel_work_dir/template/ || true
         cp -a /challenge/model/* $clevel_work_dir
         chown hacker:hacker -R $clevel_work_dir
     fi
-fi
+fi 
 
-# bridges to tester because tester must run using setuid
-if [ -f /challenge/bin/bridge_landrun.sh ]; then
-    /challenge/bin/bridge_landrun.sh > /var/log/bridge_landrun.log 2>&1 &
-elif [ -f /challenge/.level_bridge_landrun.sh ]; then
-    chmod 700 /challenge/.level_bridge_landrun.sh
-    /challenge/.level_bridge_landrun.sh > /var/log/bridge_landrun.log 2>&1 &
-    if [ -f /challenge/bin/broadcaster.py ]; then
-        python3 /challenge/bin/broadcaster.py &
-    fi
-fi
+# bridges to tester because tester must run using setuid 
+/challenge/bin/bridge_landrun.sh > /var/log/bridge_landrun.log 2>&1 &
 
 sleep .1
 
-# # need all directories setup before
+# # need all directories setup before 
 # # landrun secures the directories
 
-hwdir=$(jq -r '.hwdir // empty' /challenge/.config/level.json)
+hwdir=$(jq -r '.hwdir' /challenge/.config/level.json)
 echo "[e] project directory is $hwdir, setting up coder_workspace_file"
 # hw_id and level come from parent call .init, .examsetup is sourced
-if [ -n "$hwdir" ] && [ -n "$hw_id" ]; then
-    coder_workspace_file="$hwdir/proj-$hw_id-$level.code-workspace"
-else
-    coder_workspace_file="$course_home/$module/exam.code-workspace"
-fi
-mkdir -p "$(dirname "$coder_workspace_file")"
+coder_workspace_file="$hwdir/proj-$hw_id-$level.code-workspace"
 
-if [ ! -f "$coder_workspace_file" ]; then
+if [ ! -f "$coder_workspace_file" ]; then 
     touch $coder_workspace_file
-    # coder_workspace_file="$course_home/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
-fi
-chown hacker:hacker $coder_workspace_file
+    # coder_workspace_file="/home/hacker/cse240/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
+fi 
+chown hacker:hacker $coder_workspace_file 
 
 # cs_user_data_dir comes from parent call .init, .examsetup is sourced
 mkdir -p $cs_user_data_dir
@@ -301,7 +280,7 @@ chown hacker:hacker $cs_user_data_dir
 
 echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
 
-if [ -f /challenge/bin/cserver.py ]; then
+if [ -f /challenge/bin/cserver.py ]; then 
     echo "[e] starting command server" | tee -a $STARTUP_LOG
     touch /var/log/cserver.log
     chmod 644 /var/log/cserver.log
@@ -311,56 +290,6 @@ if [ -f /challenge/bin/cserver.py ]; then
     echo "alias killmain='printf \"kill\n\" | nc 0.0.0.0 1040'" >> /etc/bash.bashrc
 else
     echo "[e] WARNING: /challenge/bin/cserver.py not found, skipping command server startup" | tee -a $STARTUP_LOG
-fi
-
-if [ "$course_code" = "cse545" ]; then
-    mkdir -p /home/hacker/.ssh "$clevel_work_dir/Desktop"
-    ln -s /home/hacker/.ssh "$clevel_work_dir/.ssh" 2>/dev/null || true
-
-    for rcfile in .gdbinit .vimrc .bashrc .profile; do
-        if [ -f "/home/hacker/$rcfile" ]; then
-            cp "/home/hacker/$rcfile" "$clevel_work_dir/$rcfile"
-        fi
-    done
-
-    echo "[e] Machine ID(.examsetup): $(cat /etc/machine-id 2>/dev/null)" | tee -a $STARTUP_LOG
-    [ -s /etc/machine-id ] || /run/dojo/bin/dbus-uuidgen | tr -d '-' > /etc/machine-id
-
-    echo "[e] Setting up GEF for gdb" | tee -a $STARTUP_LOG
-    ln -s /nix/store/r6bm2g58ns3s4r9vs1nwxpppjambyxrg-gef-2025.01/share/gef /opt/ 2>/dev/null || echo "[e] Gef setup failed, skipping" | tee -a $STARTUP_LOG
-
-    if [ -L /run/dojo/share/applications/ida-free.desktop ]; then
-        echo "[e] Configuring IDA Pro launcher" | tee -a $STARTUP_LOG
-        rm /run/dojo/share
-        cp -a /run/current-system/sw/share /run/dojo/share >> "$STARTUP_LOG" 2>&1
-        cp "$(readlink -f /run/dojo/share/applications/ida-free.desktop)" /run/dojo/share/applications/ida-free2.desktop >> "$STARTUP_LOG" 2>&1
-        rm /run/dojo/share/applications/ida-free.desktop >> "$STARTUP_LOG" 2>&1
-        sed -i \
-            -e "/^Exec=/ s|=.*|=env IDAUSR=${clevel_work_dir}/.idapro HOME=${clevel_work_dir} /run/current-system/sw/bin/ida64|" \
-            -e "/^Path=/ s|=.*|=${clevel_work_dir}|" \
-            /run/dojo/share/applications/ida-free2.desktop
-        if ! grep -q '^Path=' /run/dojo/share/applications/ida-free2.desktop; then
-            sed -i "/^Exec=/a Path=${clevel_work_dir}" /run/dojo/share/applications/ida-free2.desktop
-        fi
-    else
-        echo "[e] ida-free.desktop symlink not found, skipping IDA setup" | tee -a $STARTUP_LOG
-    fi
-
-    echo "[e] Starting desktop" | tee -a $STARTUP_LOG
-    if [ ! -d /run/dojo/var/desktop-service ]; then
-        su hacker -c "mkdir -p /run/dojo/var/desktop-service"
-    fi
-    su hacker -c "env clevel_work_dir='$clevel_work_dir' env cs_user_data_dir='$cs_user_data_dir' nohup /challenge/bin/dojo-desktop.sh >> /run/dojo/var/desktop-service/desktop-startup.log 2>&1" >> "$STARTUP_LOG" 2>&1 &
-
-    echo "[e] Starting terminal service" | tee -a $STARTUP_LOG
-    if [ ! -d /run/dojo/var/terminal-service ]; then
-        su hacker -c "mkdir -p /run/dojo/var/terminal-service"
-    fi
-    su hacker -c "env clevel_work_dir='$clevel_work_dir' env cs_user_data_dir='$cs_user_data_dir' nohup /challenge/bin/dojo-terminal.sh >> /run/dojo/var/terminal-service/terminal-startup.log 2>&1" >> "$STARTUP_LOG" 2>&1 &
-
-    ln -s /challenge/startup.log /var/log/startup.log 2>/dev/null || true
-    ln -s /run/dojo/var/desktop-service /var/log/desktop-service 2>/dev/null || true
-    chmod 400 /flag || echo "[i] Could not set /flag to 400 permissions" | tee -a $STARTUP_LOG
 fi
 
 history_dir="$cs_user_data_dir/User/History"
@@ -396,13 +325,13 @@ else
 fi
 
 echo "[e] Starting flask app" | tee -a $STARTUP_LOG
-nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 &
+nohup python3 /challenge/web/app.py > /var/log/nginx/flask.log 2>&1 & 
 
 echo "[e] Completed code-server" | tee -a $STARTUP_LOG
 
 echo "[e] $(date '+%Y-%m-%d %H:%M:%S.%3N') waiting for nginx and app server to startup" | tee -a $STARTUP_LOG
 
-count=0
+count=0 
 max_attempts=10
 
 while [ $count -lt $max_attempts ]; do
@@ -427,7 +356,7 @@ fi
 
 # Add session status check to bash.bashrc
 echo "[e] Adding session status check to /etc/bash.bashrc" | tee -a $STARTUP_LOG
-cat >> /etc/bash.bashrc << 'EOF'
+cat >> /etc/bash.bashrc << 'EOF' 
 
 # Session status check
 if [ -f /challenge/.config/session.dat ]; then
@@ -445,12 +374,12 @@ echo "[e] Creating password-protected tarball of $clevel_work_dir" | tee -a $STA
 if [ -d "$clevel_work_dir" ]; then
     tarball_path="/tmp/encrypted_clevel_work.tar.gz.enc"
     tarball_password="mosquito unicorn salad of goodness nibor"
-
+    
     # Write password to /.helper (root-only readable)
     echo "$tarball_password" > /.helper
     chmod 400 /.helper
     chown root:root /.helper
-
+    
     cd "$(dirname "$clevel_work_dir")" && tar -czf - "$(basename "$clevel_work_dir")" | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$tarball_password" -out "$tarball_path"
     if [ $? -eq 0 ]; then
         echo "[e] Created encrypted tarball at $tarball_path" | tee -a $STARTUP_LOG
@@ -463,16 +392,14 @@ else
 fi
 
 # /home/me means we are doing an as_user
-# this should be run the first time after all the encryption stuff and removal
+# this should be run the first time after all the encryption stuff and removal 
 if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
-
-    if [ "$course_code" = "cse240" ]; then
-        rm -rf $clevel_work_dir/*
-    fi
+    
+    rm -rf $clevel_work_dir/*
 
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a $STARTUP_LOG
-    touch /var/log/session_monitor.log
-    chmod 644 /var/log/session_monitor.log
+    touch /var/log/session_monitor.log 
+    chmod 644 /var/log/session_monitor.log 
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
     chmod 700 /opt/session_monitor.py
     python3 /opt/session_monitor.py &
@@ -480,7 +407,7 @@ else
     echo "[e] session_monitor.py not found, skipping" | tee -a $STARTUP_LOG
 fi
 
-if [ -f /challenge/bin/.exam_attempts_check ]; then
+if [ -f /challenge/bin/.exam_attempts_check ]; then 
     echo "[e] Found .exam_attempts_check, setting permissions" | tee -a $STARTUP_LOG
     chmod 700 /challenge/bin/.exam_attempts_check
     chown root:root /challenge/bin/.exam_attempts_check 2>/dev/null || true
