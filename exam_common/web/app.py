@@ -54,6 +54,13 @@ def is_proctoring_only(value=None):
 def is_honorlock_exam(value=None):
     return normalized_exam_admin_type(value).replace(" ", "") == "honorlock"
 
+def is_lockdown_browser_exam(value=None):
+    exam_type = normalized_exam_admin_type(value)
+    return exam_type in {
+        "lock down browser",
+        "lockdown browser",
+    }
+
 def requires_active_proctor_session(value=None):
     exam_type = normalized_exam_admin_type(value)
     return is_proctoring_only(value) or exam_type in {
@@ -953,7 +960,7 @@ def exam_api_status():
         # Check if attending session (only if proctoring is required)
         if is_practice_exam:
             status_data["attending_session"] = "N/A - practice exam"
-        elif requires_attendance_monitoring():
+        elif requires_attendance_monitoring() or is_honorlock_exam() or is_lockdown_browser_exam():
             session_result = check_session_attendance(pwn_college_id)
             if session_result is None:
                 status_data["attending_session"] = "No session found"
@@ -1103,19 +1110,40 @@ def process_login(exam_password, ip_addr):
     attending = False
     session_password = None
     
-    # Check session attendance for types requiring proctoring WITH monitoring (skip for admins).
-    # Honorlock exams are administered by Honorlock and must not require an active proctor session here.
-    if not protections_bypassed and requires_attendance_monitoring():
+    attendance_marker_required = (
+        not protections_bypassed
+        and (requires_attendance_monitoring() or is_honorlock_exam())
+    )
+
+    lockdown_session_password_bypass = (
+        not protections_bypassed
+        and is_lockdown_browser_exam()
+    )
+
+    # Check session attendance for types that must be launched through the course exam flow.
+    if attendance_marker_required:
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
-            # No proctor session exists - block login
-            logger.error(f"No active proctor session found for exam type '{exam_admin_type}'")
-            return loginpage(message=last_session_attendance_error or "No active proctor session found. Exams with proctoring require an active session.")
+            logger.error(f"No active session found for exam type '{exam_admin_type}'")
+            return loginpage(message=last_session_attendance_error or "No active exam session found. Start this exam from the Honorlock page in Canvas.")
         attending, session_password = session_result
         if attending:
             logger.info(f"Student is attending session, using session password: {session_password}")
+        elif is_honorlock_exam():
+            logger.info("Honorlock exam access blocked because no cse240.com exam attendance marker is active")
+            return loginpage(message=last_session_attendance_error or "Honorlock exams must be started from the Honorlock page in Canvas after Honorlock enters the exam password.")
         else:
             logger.info(f"Student is not attending session yet - will require password")
+    elif lockdown_session_password_bypass:
+        session_result = check_session_attendance(pwn_college_id)
+        if session_result is None:
+            logger.info(f"No active session found for LockDown Browser exam type '{exam_admin_type}' - password still required")
+        else:
+            attending, session_password = session_result
+            if attending:
+                logger.info("LockDown Browser exam access has active session attendance - password will not be required")
+            else:
+                logger.info("LockDown Browser exam access has no active attendance marker - password still required")
     # For "Proctoring with no attendance", verify proctor session exists but don't monitor ongoing (skip for admins)
     elif not protections_bypassed and requires_active_proctor_session() and not requires_attendance_monitoring():
         session_result = check_session_attendance(pwn_college_id)
@@ -1130,10 +1158,14 @@ def process_login(exam_password, ip_addr):
     
     # Check if password is needed based on exam type
     # Only proctoring types with attendance monitoring and LDB require password (admins bypass this)
-    password_required = not protections_bypassed and requires_exam_password()
+    password_required = (
+        not protections_bypassed
+        and requires_exam_password()
+        and not (lockdown_session_password_bypass and attending)
+    )
     logger.info(f"=== Password check === password_required: {password_required}, exam_admin_type: '{exam_admin_type}', is_admin: {is_admin}, is_practice_exam: {is_practice_exam}")
 
-    if not protections_bypassed and requires_attendance_monitoring() and not attending and not password_required:
+    if attendance_marker_required and not attending and not password_required:
         logger.info("=== Showing loginpage === because proctor-only attendance is not active")
         return loginpage(message=last_session_attendance_error or "You are not marked as attending an exam session.")
     
