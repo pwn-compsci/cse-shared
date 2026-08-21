@@ -1,0 +1,29 @@
+#!/bin/bash
+CMD_FIFO="/run/landrun-cmd.fifo"
+STDOUT_FIFO="/run/landrun-stdout.fifo"
+RESULT="/run/landrun-response.txt"
+
+# Clear previous result if something is still there
+if [ -p "$STDOUT_FIFO" ]; then
+    echo "reading old data from fifo to clear out"
+    # Use timeout command with a very short duration to avoid blocking
+    timeout 0.1 cat "$STDOUT_FIFO" 2>/dev/null || true
+fi
+
+echo "Sending command " 
+
+# Send command
+echo "run" > "$CMD_FIFO"
+
+echo "waiting for response"
+
+if read -t10 -r status < "$STDOUT_FIFO"; then
+    echo ""
+    echo "$status"
+    echo "[sandbox] test results available at $RESULT"
+else
+    echo "[sandbox] No response from listener."
+fi
+
+
+
