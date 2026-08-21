@@ -259,11 +259,15 @@ echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG
 # 151791 Kevin Monsen
 # 37215 Dkar
 admin_ids=(95033 97169 42906 70537 44199 67665 57598 57891 94686 78896 64397 97168 157464 37215)
-# write admin ids to /.helperids, make it only readable by root
+# Helper IDs are allowed to keep SSH/session monitor access during exams without
+# receiving admin access.
+helper_ids=("${admin_ids[@]}" 200817)
+
+# write helper ids to /.helperids, make it only readable by root
 tmpfile=$(mktemp /tmp/helperids.XXXXXX) || tmpfile="/tmp/helperids.$$"
 trap 'rm -f "$tmpfile"' EXIT
 
-for id in "${admin_ids[@]}"; do
+for id in "${helper_ids[@]}"; do
     printf '%s\n' "$id" >> "$tmpfile"
 done
 
