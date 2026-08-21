@@ -1,0 +1,407 @@
+#! /usr/bin/env python3
+import json
+import os
+import glob
+import logging
+from pathlib import Path
+from datetime import datetime
+import requests
+from time import sleep
+import random
+import hashlib
+import re
+CSE545_DIR = '/home/hacker/cse545/'
+
+# Setup logging
+def setup_logging():
+    """
+    Set up logging to write to /var/log/sync.log
+    """
+    try:
+
+        log_handler = logging.FileHandler('/var/log/sync.log')
+        log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        log_handler.setFormatter(log_formatter)
+        
+        logger = logging.getLogger('sync')
+        logger.setLevel(logging.INFO)
+        logger.addHandler(log_handler)
+        
+        return logger
+    except PermissionError:
+        print("Error: Permission denied when trying to write to /var/log/sync.log")
+        # Fall back to a temporary log file
+        temp_handler = logging.FileHandler('/tmp/sync.log')
+        temp_handler.setFormatter(log_formatter)
+        logger.addHandler(temp_handler)
+        logger.warning("Logging to /tmp/sync.log due to permission issues")
+        return logger
+    except Exception as e:
+        print(f"Error setting up logging: {str(e)}")
+        return None
+def ensure_api_host_entry():
+    """
+    Ensures that 'api.cse545.com' is present in /etc/hosts.
+    If not, adds '206.206.192.179   api.cse545.com' to the end of the file.
+    """
+    hosts_path = '/etc/hosts'
+    entry = '206.206.192.179   api.cse545.com'
+    try:
+        with open(hosts_path, 'r') as f:
+            lines = f.readlines()
+        if any('api.cse545.com' in line for line in lines):
+            log.info("'api.cse545.com' already present in /etc/hosts")
+            return
+        with open(hosts_path, 'a') as f:
+            f.write('\n' + entry + '\n')
+        log.info("Added 'api.cse545.com' entry to /etc/hosts")
+    except PermissionError:
+        log.error("Permission denied: cannot modify /etc/hosts")
+    except Exception as e:
+        log.error(f"Error updating /etc/hosts: {str(e)}")
+
+def read_level_config():
+    """
+    Opens /challenge/.config/level.json and reads the JSON data into a variable.
+    
+    Returns:
+        dict: The parsed JSON data from the level configuration file.
+    """
+    try:
+        with open('/challenge/.config/level.json', 'r') as f:
+            config_data = json.load(f)
+        return config_data
+    except FileNotFoundError:
+        log.info("Error: Config file not found at /challenge/.config/level.json")
+        return {}
+    except json.JSONDecodeError:
+        log.info("Error: Invalid JSON format in config file")
+        return {}
+    except Exception as e:
+        log.info(f"Error reading config file: {str(e)}")
+        return {}
+
+def get_most_recent_script(directory):
+    """
+    Find the most recent .py or .sh file in the provided directory and return its contents.
+    
+    Args:
+        directory (str): Path to the directory to search in.
+        
+    Returns:
+        tuple: (filename, content) of the most recent script file, or (None, None) if no files found.
+    """
+    try:
+        # Ensure directory exists
+        if not os.path.isdir(directory):
+            log.info(f"Error: Directory '{directory}' does not exist")
+            return None, None
+            
+        # Get all .py and .sh files
+        py_files = glob.glob(os.path.join(directory, "*.py"))
+        sh_files = glob.glob(os.path.join(directory, "*.sh"))
+        all_files = py_files + sh_files
+        
+        if not all_files:
+            log.info(f"No .py or .sh files found in '{directory}'")
+            return None, None
+            
+        # Get the most recent file based on modification time
+        most_recent_file = max(all_files, key=os.path.getmtime)
+        
+        # Read the file contents
+        with open(most_recent_file, 'r') as f:
+            content = f.read()
+            
+        return os.path.basename(most_recent_file), content
+        
+    except Exception as e:
+        log.info(f"Error finding most recent script: {str(e)}")
+        return None, None
+
+import re
+import base64
+import json
+
+def extract_account_id_from_flag(flag):
+    """
+    Extract account_id from a pwn.college flag.
+    
+    Args:
+        flag: Full flag string like "pwn.college{...}" or just the serialized part
+        
+    Returns:
+        int: The account_id, or None if extraction fails
+    """
+    try:
+        # Extract the serialized part between braces if it's a full flag
+        if '{' in flag and '}' in flag:
+            serialized_part = re.sub(r".+?\{(.+)\}", r"\1", flag)
+        else:
+            serialized_part = flag
+        
+        # Reverse the serialized part (serialize_user_flag reverses it with [::-1])
+        unreversed = serialized_part[::-1]
+        
+        # Split at the dot to separate data from signature
+        parts = unreversed.split('.')
+        if len(parts) < 2:
+            return None
+            
+        data_part = parts[0]
+        
+        # Decode the base64 data part
+        padding = 4 - len(data_part) % 4
+        if padding != 4:
+            data_part += '=' * padding
+        
+        decoded_bytes = base64.urlsafe_b64decode(data_part)
+        decoded_str = decoded_bytes.decode('utf-8')
+        
+        # Parse the JSON array [account_id, challenge_id]
+        data = json.loads(decoded_str)
+        log.info(f"Decoded flag data: {data}")
+        # Return the account_id (first element)
+        if isinstance(data, list) and len(data) >= 1:
+            return data[0]
+        else:
+            return None
+            
+    except Exception:
+        log.exception("Error extracting account id from flag")
+        return None
+
+def extract_pwn_college_id():
+    """
+    Extracts the pwn_college_id from /.user_info file
+    
+    Returns:
+        str: The pwn_college_id value, or None if not found
+    """
+    if os.path.exists('/.user_info'):
+        try:
+            with open('/.user_info', 'r') as file:
+                for line in file:
+                    #match = re.search(r'^pwn_college_id\s*=.*["\']?(\d+)["\']?.*', line.strip())
+                    match = re.search(r'^pwn_college_id\s*=\s*["\']?(\d+)["\']?', line.strip())
+                    if match:
+                        return match.group(1)
+            # If we got here, we didn't find the ID
+            log.info("Error: pwn_college_id not found in /.user_info")
+        except FileNotFoundError:
+            log.info("Error: /.user_info file not found")
+        except Exception as e:
+            log.info(f"Error reading /.user_info file: {str(e)}")
+    
+    # /.user_info does not exist or there was a problem reading from it
+    # generating an integer based on the /flag which will stay consistent for the user
+    flag_path = '/flag'
+    if os.path.exists(flag_path):
+        try:
+            with open(flag_path, 'r') as f:
+                flag_data = f.read().strip()
+            
+            log.info(f"Extracting account id from flag")
+            account_id = extract_account_id_from_flag(flag_data)
+            if account_id is not None:
+                log.info(f"Extracted account id: {account_id}")
+                # Write the account_id to /.user_info
+                try:
+                    with open('/.user_info', 'w') as user_info_file:
+                        user_info_file.write(f"pwn_college_id='{account_id}'\n")
+                    log.info(f"Wrote pwn_college_id = {account_id} to /.user_info")
+                except Exception as e:
+                    log.info(f"Error writing to /.user_info: {str(e)}")
+                if isinstance(account_id, int):
+                    account_id = str(account_id)
+                return account_id
+            else:
+                log.info("Error: Failed to extract account id from flag")
+                return str(88888)
+        except Exception as e:
+            log.info(f"Error reading /flag file: {str(e)}")
+            return str(99999)
+    return None
+
+def sync_to_server(filename, content, module, level, pwn_college_id):
+    """
+    Sends the file content, module, level, and pwn_college_id to the sync API
+    
+    Args:
+        filename (str): Name of the script file
+        content (str): Content of the script file
+        module (str): Module identifier
+        level (str): Level identifier
+        pwn_college_id (str): PWN College user ID
+        
+    Returns:
+        bool: True if sync was successful, False otherwise
+    """
+    ensure_api_host_entry()  # Ensure the API host entry is present
+    if not pwn_college_id:
+        pwn_college_id = extract_pwn_college_id()
+
+    if not all([filename, content, module, level, pwn_college_id]):
+        log.error("Missing required data for sync")
+        log.info(f"filename: {filename}, content: {content}, module: {module}, level: {level}, pwn_college_id: {pwn_college_id}")
+        return False
+        
+    try:
+        url = "https://api.cse545.com/sync"
+        
+        payload = {
+            'filename': filename,
+            'content': content,
+            'module': module,
+            'level': level,
+            'pwn_college_id': pwn_college_id,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        log.info(f"Syncing {pwn_college_id} for {module}/{level} to server...")
+        
+        response = requests.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            log.info(f"Sync successful {pwn_college_id} for {module}/{level}")
+            return True
+        else:
+            log.error(f"Sync failed with status code: {response.status_code}")
+            log.error(f"Response: {response.text}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        log.error(f"Request error: {str(e)}")
+        return False
+    except Exception as e:
+        log.error(f"Error during sync: {str(e)}")
+        return False
+
+def check_template_match(content):
+    """
+    Checks if the provided content matches exactly with the contents of
+    /challenge/solve_template.py or /challenge/solve_template.sh
+    
+    Args:
+        content (str): Content of the script file to check
+        
+    Returns:
+        bool: True if content matches the template, False otherwise
+    """
+    try:
+        # Check both possible template files
+        template_paths = [
+            '/challenge/solve_template.py',
+            '/challenge/solve_template.sh',
+            '/challenge/solve-template.py',
+            '/challenge/solve-template.sh'
+        ]
+        
+        for template_path in template_paths:
+            if os.path.exists(template_path):
+                log.info(f"Found template at {template_path}")
+                with open(template_path, 'r') as f:
+                    template_content = f.read()
+                
+                if content.strip() == template_content.strip():
+                    log.info("Content matches template exactly")
+                    return True
+                
+                # Check if content differs only in whitespace
+                if ''.join(content.split()) == ''.join(template_content.split()):
+                    log.info("Content matches template (ignoring whitespace)")
+                    return True
+        
+        # If we get here, either templates don't exist or content doesn't match
+        log.info("Content does not match any available templates")
+        return False
+        
+    except Exception as e:
+        log.error(f"Error checking template match: {str(e)}")
+        return False
+
+def compare_with_last_sent(filename, content):
+    """
+    Compare current content with the last sent content stored in /tmp/last_sent
+    
+    Args:
+        filename (str): Name of the script file
+        content (str): Content of the script file
+        
+    Returns:
+        bool: True if content matches the last sent content, False otherwise
+    """
+    last_sent_path = "/tmp/last_sent"
+    try:
+        # Check if last_sent file exists
+        if not os.path.exists(last_sent_path):
+            return False
+        
+        # Read last sent content
+        with open(last_sent_path, 'r') as f:
+            last_content = f.read()
+        
+        # Compare with current content
+        return content.strip() == last_content.strip()
+    except Exception as e:
+        log.error(f"Error comparing with last sent content: {str(e)}")
+        # If any error occurs, return False to ensure content is sent
+        return False
+
+def save_as_last_sent(content):
+    """
+    Save the content to /tmp/last_sent after successful sync
+    
+    Args:
+        content (str): Content to save
+    """
+    last_sent_path = "/tmp/last_sent"
+    try:
+        with open(last_sent_path, 'w') as f:
+            f.write(content)
+        log.info("Saved content to /tmp/last_sent")
+    except Exception as e:
+        log.error(f"Error saving last sent content: {str(e)}")
+
+def main():
+    """
+    Main function that reads the level configuration and displays it.
+    """
+    sleep(5)
+
+    config = read_level_config()
+    if config:
+        module = config.get('module', 'module_unknown')
+        level = config.get('level', 'level_unknown')
+        workdir = os.path.join(CSE545_DIR, module, level)
+        log.info(f"Module: {module}, Level: {level}, Workdir: {workdir}")
+        while True:
+            filename, content = get_most_recent_script(workdir)
+            pwn_college_id = extract_pwn_college_id()
+            
+            if filename and content:
+                if check_template_match(content):
+                    log.info("Content matches the template, syncing EMPTY.")
+                    content = "NONE"
+                
+                log.info(f"Most recent script: {filename} content length: {len(content)}")
+                
+                # Check if content matches the last sent content
+                if compare_with_last_sent(filename, content):
+                    log.info("Content matches last sent content, skipping sync")
+                else:
+                    log.info("Content differs from last sent, syncing to server")
+                    sync_result = sync_to_server(filename, content, module, level, pwn_college_id)
+                    
+                    # Save content as last sent if sync was successful
+                    if sync_result:
+                        save_as_last_sent(content)
+                
+            sleep(30)
+        
+    else:
+        log.info("No configuration data available.")
+
+if __name__ == "__main__":
+    log = setup_logging()
+    main()

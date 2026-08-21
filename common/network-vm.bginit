@@ -1,0 +1,473 @@
+#!/usr/bin/env bash
+
+# Function to retry SSH commands with logging
+ssh_retry() {
+    local host="$1"
+    local command="$2"
+    local max_attempts="${3:-3}"
+    local sleep_time="${4:-5}"
+    
+    for attempt in $(seq 1 $max_attempts); do
+        echo "[b] Attempt $attempt/$max_attempts: SSH to $host executing command" >> /challenge/startup.log
+        echo "[$(date '+%H:%M:%S')] Attempting connection ($attempt/$max_attempts)..." >> /challenge/run.log
+        if ssh -o ConnectTimeout=120 "$host" "$command" >> /challenge/startup.log 2>&1; then
+            echo "[b] Success: SSH to $host completed successfully" >> /challenge/startup.log
+            return 0
+        else
+            local ssh_exit_code=$?
+            echo "[b] Failed: SSH to $host (attempt $attempt/$max_attempts) with exit code $ssh_exit_code" >> /challenge/startup.log
+            if [ $attempt -lt $max_attempts ]; then
+                echo "[b] Waiting ${sleep_time}s before retry..." >> /challenge/startup.log
+                sleep ${sleep_time}s
+            fi
+        fi
+    done
+    
+    echo "[b] Error: All $max_attempts attempts to SSH to $host failed" >> /challenge/startup.log
+    echo "[$(date '+%H:%M:%S')] Connection failed after $max_attempts attempts" >> /challenge/run.log
+    return 1
+}
+
+# Function to check if QEMU VMs are running
+check_vms_running() {
+    local num_victims=$1
+    local all_running=true
+    
+    [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Checking if QEMU VMs are running..." >> /challenge/startup.log
+    
+    # Check student VM
+    if pgrep -f "qemu.*vm-student" > /dev/null; then
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Student VM QEMU process is running" >> /challenge/startup.log
+    else
+        echo "[b] $(date '+%H:%M:%S') ERROR: Student VM QEMU process is NOT running" >> /challenge/startup.log
+        all_running=false
+    fi
+    
+    # Check victim VMs
+    for i in $(seq 1 $num_victims); do
+        if pgrep -f "qemu.*vm-victim${i}" > /dev/null; then
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim VM ${i} QEMU process is running" >> /challenge/startup.log
+        else
+            echo "[b] $(date '+%H:%M:%S') ERROR: Victim VM ${i} QEMU process is NOT running" >> /challenge/startup.log
+            all_running=false
+        fi
+    done
+    
+    if [ "$all_running" = false ]; then
+        echo "[b] $(date '+%H:%M:%S') FATAL: One or more QEMU VMs failed to start. Exiting." >> /challenge/startup.log
+        echo "***** VM Setup FAILED - VMs not running ******" >> /challenge/run.log
+        return 1
+    fi
+    
+    [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') All QEMU VMs verified running" >> /challenge/startup.log
+    return 0
+}
+
+cp /challenge/start_vm.sh /opt/vmscripts/start_vm.sh
+cp /common/start_victim_vm.sh /opt/vmscripts/start_victim_vm.sh
+
+# Check if user is admin (digital god)
+IS_ADMIN=false
+if [ -f /.admin_access ] && grep -q "digital god" /.admin_access 2>/dev/null; then
+    IS_ADMIN=true
+fi
+
+echo "Starting up VMs, please wait to attack until setup is completed..." > /challenge/run.log 
+chmod 666 /challenge/run.log
+
+# Create setup lock file
+touch /tmp/.vm_setup_in_progress
+chmod 644 /tmp/.vm_setup_in_progress
+
+# Setup hackbox alias early so users can check progress
+# Remove any existing hackbox alias from /etc/bash.bashrc
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Removing old hackbox alias from /etc/bash.bashrc if present" >> /challenge/startup.log
+sed -i '/^alias hackbox=/d' /etc/bash.bashrc 2>/dev/null || true
+
+# Comment out any existing hackbox alias in ~/.bashrc
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Commenting out hackbox alias in /home/hacker/.bashrc if present" >> /challenge/startup.log
+sed -i 's/^\(alias hackbox=.*\)$/# \1  # Commented out - using system-wide alias in \/etc\/bash.bashrc/' /home/hacker/.bashrc 2>/dev/null || true
+
+# Add new hackbox alias with setup lock check to /etc/bash.bashrc
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Adding hackbox alias with lock check to /etc/bash.bashrc" >> /challenge/startup.log
+cat >> /etc/bash.bashrc << 'EOF'
+
+# Hackbox VM serial console access with setup check
+alias hackbox='if [ -f /tmp/.vm_setup_in_progress ]; then echo "⚠️  VM setup is still in progress. Please wait..." && echo "Check /challenge/run.log for status." && echo "Current status from the last 3 lines of /challenge/run.log is:" && tail -3 /challenge/run.log 2>/dev/null; else echo "if blank, hit enter once or twice." ; socat -,raw,echo=0,escape=0x1d UNIX-CONNECT:/tmp/vm-student/serial.sock; fi'
+alias hb='hackbox'
+EOF
+
+export PATH=/run/dojo/bin/:$PATH
+
+# Fix SSH config by removing unsupported GSSAPIAuthentication option
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Fixing SSH config by removing unsupported options" >> /challenge/startup.log
+sed -i 's/^\s*GSSAPIAuthentication.*$/# &/' /etc/ssh/ssh_config 2>&1 >> /challenge/startup.log
+
+# Read number of victim VMs from level.json (default to 2 for this challenge)
+NUM_VICTIM_VMS=$(python3 -c "import json; d=json.load(open('/challenge/.config/level.json')); print(d.get('victim_vms', 1))" 2>/dev/null || echo 1)
+NETWORK_CIDR=$(python3 -c "import json; d=json.load(open('/challenge/.config/level.json')); print(d.get('network_cidr', 24))" 2>/dev/null || echo 24)
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Will start ${NUM_VICTIM_VMS} victim VM(s) on /${NETWORK_CIDR} network" >> /challenge/startup.log
+
+# Generate deterministic network configuration for each victim VM
+FLAG_VALUE=$(cat /flag)
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Generating deterministic network config for ${NUM_VICTIM_VMS} victims" >> /challenge/startup.log
+
+# Initialize JSON array for victim network info (write directly to final location)
+echo '{"victim_vms": '"${NUM_VICTIM_VMS}"', "victims": [' > /challenge/.config/victims.json
+
+# Track used octets to prevent collisions
+declare -A USED_OCTETS
+
+for i in $(seq 1 $NUM_VICTIM_VMS); do
+    # Generate deterministic IP last octet with collision avoidance
+    attempt=0
+    while true; do
+        OCTET=$(echo -n "${FLAG_VALUE}_victim${i}_${attempt}" | md5sum | cut -c1-8 | python3 -c "import sys; print(int(sys.stdin.read().strip(), 16) % 248 + 4)")
+        
+        # Check if this octet is already used
+        if [ -z "${USED_OCTETS[$OCTET]}" ]; then
+            USED_OCTETS[$OCTET]=1
+            break
+        fi
+        
+        # Collision detected, increment attempt counter for deterministic resolution
+        attempt=$((attempt + 1))
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim ${i}: IP octet collision detected (${OCTET}), trying attempt ${attempt}" >> /challenge/startup.log
+    done
+    
+    # Generate deterministic MAC from flag + victim number
+    MAC=$(echo -n "${FLAG_VALUE}_victim${i}" | md5sum | cut -c1-8 | sed 's/../&:/g;s/:$//' | sed 's/^/52:54:/')
+    
+    # Store for later use
+    eval "VICTIM_${i}_OCTET=${OCTET}"
+    eval "VICTIM_${i}_MAC=${MAC}"
+    
+    # Only show network details to admins
+    [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim ${i}: last octet=${OCTET}, MAC=${MAC}" >> /challenge/startup.log
+    
+    # Add to JSON (will populate IP after VMs start)
+    if [ $i -gt 1 ]; then
+        echo ',' >> /challenge/.config/victims.json
+    fi
+    cat >> /challenge/.config/victims.json << VICTIM_JSON
+  {
+    "victim_number": ${i},
+    "ssh_port": $((2222 + i)),
+    "mac": "${MAC}",
+    "ip_octet": ${OCTET}
+  }
+VICTIM_JSON
+done
+echo ']}' >> /challenge/.config/victims.json
+chmod 644 /challenge/.config/victims.json
+
+# Function to start a VM with retry logic
+start_vm_with_retry() {
+    local vm_type="$1"
+    local vm_num="$2"
+    local max_attempts=3
+    local retry_delay=3
+    
+    for attempt in $(seq 1 $max_attempts); do
+        VM_START=$(date +%s)
+        
+        if [ "$vm_type" = "student" ]; then
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Starting Student VM (attempt $attempt/$max_attempts)..." >> /challenge/startup.log
+            USE_SNAPSHOT=yes /opt/vmscripts/start_vm.sh >> /challenge/startup.log 2>&1
+            local exit_code=$?
+        else
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Starting Victim VM $vm_num (attempt $attempt/$max_attempts)..." >> /challenge/startup.log
+            VICTIM_NUM=$vm_num USE_SNAPSHOT=yes /opt/vmscripts/start_victim_vm.sh >> /challenge/startup.log 2>&1
+            local exit_code=$?
+        fi
+        
+        VM_END=$(date +%s)
+        local elapsed=$((VM_END - VM_START))
+        
+        if [ $exit_code -eq 0 ]; then
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') ${vm_type^} VM${vm_num:+ $vm_num} started successfully in ${elapsed}s (attempt $attempt)" >> /challenge/startup.log
+            return 0
+        else
+            echo "[b] $(date '+%H:%M:%S') WARNING: ${vm_type^} VM${vm_num:+ $vm_num} failed to start (attempt $attempt/$max_attempts, exit code $exit_code, time ${elapsed}s)" >> /challenge/startup.log
+            
+            if [ $attempt -lt $max_attempts ]; then
+                echo "[b] $(date '+%H:%M:%S') Waiting ${retry_delay}s before retry to avoid resource contention..." >> /challenge/startup.log
+                sleep ${retry_delay}
+            else
+                echo "[b] $(date '+%H:%M:%S') ERROR: ${vm_type^} VM${vm_num:+ $vm_num} failed after $max_attempts attempts" >> /challenge/startup.log
+                return 1
+            fi
+        fi
+    done
+    
+    return 1
+}
+
+# Start VMs concurrently
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Starting VMs concurrently..." >> /challenge/startup.log
+START_TIME=$(date +%s)
+
+# Start student VM in background
+{
+    start_vm_with_retry "student" ""
+} &
+STUDENT_PID=$!
+
+# Start victim VM(s) in background
+VICTIM_PIDS=()
+for i in $(seq 1 $NUM_VICTIM_VMS); do
+    sleep 5s  # slight delay to stagger startups
+    {
+        start_vm_with_retry "victim" "$i"
+    } &
+    
+    VICTIM_PIDS+=($!)
+done
+
+# Wait for all VMs to start (scripts handle SSH readiness internally)
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Waiting for all VM startup scripts to complete..." >> /challenge/startup.log
+wait $STUDENT_PID
+wait ${VICTIM_PIDS[@]}
+
+END_TIME=$(date +%s)
+TOTAL_ELAPSED=$((END_TIME - START_TIME))
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') All VMs started and ready in ${TOTAL_ELAPSED}s total" >> /challenge/startup.log
+echo "[$(date '+%H:%M:%S')] Virtual machines started successfully..." >> /challenge/run.log
+
+# Setup SSH config and hacker environment (quick local operations)
+mkdir -p /home/hacker/.ssh/
+rm -f /home/hacker/.ssh/config
+
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') remove old /home/hacker/.ssh/config and create new one" >> /challenge/startup.log
+
+# create entry for student VM 
+cat >> /home/hacker/.ssh/config << 'EOF'
+Host student hackbox hack mine
+    HostName localhost
+    Port 2222
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    User student
+    IdentityFile ~/.ssh/vm_key
+EOF
+chown hacker:hacker /home/hacker/.ssh/config
+
+# copy entry for student VM to root ssh config
+cp /home/hacker/.ssh/config /root/.ssh/config 
+
+# add entry for victim VM to root ssh config 
+# TODO: remove victim key from root account for safety
+cat >> /root/.ssh/config << 'EOF'
+
+Host victim victimbox vicbox vic victim1 victimbox1 vicbox1 vic1
+    HostName localhost
+    Port 2223
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    User victim
+    IdentityFile ~/.ssh/victim_user_key
+Host victim2 victimbox2 vicbox2 vic2
+    HostName localhost
+    Port 2224
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    User victim
+    IdentityFile ~/.ssh/victim_user_key
+EOF
+
+if [ -f /home/hacker/.ssh/victim_user_key ]; then
+    [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') add victim config entry " >> /challenge/startup.log
+    cat /root/.ssh/config >> /home/hacker/.ssh/config 
+    chown hacker:hacker /home/hacker/.ssh/config 
+fi 
+
+cp /root/.ssh/vm_key /home/hacker/.ssh/vm_key
+chown hacker:hacker /home/hacker/.ssh/vm_key
+chmod 600 /home/hacker/.ssh/vm_key
+
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Copied vm_key to /home/hacker/.ssh/" >> /challenge/startup.log
+
+chmod o+rwx /tmp/vm-student/serial.sock
+
+cp /flag /challenge/flag 
+chmod 400 /challenge/flag 
+
+# Check that all QEMU VMs are running before attempting SSH configuration
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Verifying QEMU VMs are running before SSH configuration..." >> /challenge/startup.log
+if ! check_vms_running $NUM_VICTIM_VMS; then
+    echo "FATAL: QEMU VMs not running. Cannot proceed with SSH configuration." >> /challenge/startup.log
+    exit 0
+fi
+
+# Configure student VM and all victim VMs concurrently
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Configuring all VMs concurrently..." >> /challenge/startup.log
+echo "[$(date '+%H:%M:%S')] Configuring network and services..." >> /challenge/run.log
+CONFIG_START=$(date +%s)
+
+# Configure student VM in background
+{
+    [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Mounting hostshare to /hackdir in hackbox VM" >> /challenge/startup.log
+    if ssh_retry hackbox "sudo mount -t 9p -o trans=virtio,version=9p2000.L hostshare /hackdir && echo 'cd /hackdir' | sudo tee -a /etc/bash.bashrc > /dev/null"; then
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Successfully mounted hostshare to /hackdir" >> /challenge/startup.log
+    else
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Failed to mount hostshare to /hackdir" >> /challenge/startup.log
+    fi
+} &
+STUDENT_CONFIG_PID=$!
+
+# Configure each victim VM with its network settings (run in background for parallelism)
+VICTIM_CONFIG_PIDS=()
+for i in $(seq 1 $NUM_VICTIM_VMS); do
+    {
+        VICTIM_PORT=$((2222 + i))
+        
+        # Get the octet and MAC for this victim
+        OCTET_VAR="VICTIM_${i}_OCTET"
+        MAC_VAR="VICTIM_${i}_MAC"
+        VICTIM_OCTET="${!OCTET_VAR}"
+        VICTIM_MAC="${!MAC_VAR}"
+        
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Configuring and starting Victim VM ${i} (port ${VICTIM_PORT})" >> /challenge/startup.log
+        
+        # Single SSH command to do all configuration AND start service on this VM
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Connecting to Victim VM victimbox${i} via SSH (timeout 60s)..." >> /challenge/startup.log
+        CURRENT_IP=$(ssh -o ConnectTimeout=240 victimbox${i} "
+            # Send startup message to run.log
+            echo "[$(date '+%H:%M:%S')] Configuring victim VM ${i}..." | sudo tee -a /challenge/run.log > /dev/null
+
+            # Mount challenge and copy flag
+            sudo mount -t 9p -o trans=virtio,version=9p2000.L challenge /challenge && sudo cp /challenge/flag /flag
+
+            # Get current IP
+            CURR_IP=\$(ip -4 addr show ens5 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+            echo \$CURR_IP
+
+            # Change MAC (requires interface down)
+            sudo ip link set ens5 down
+            sudo ip link set ens5 address ${VICTIM_MAC}
+            sudo ip link set ens5 up
+
+            # Calculate new IP
+            SUBNET=\$(echo \$CURR_IP | cut -d. -f1-3)
+            NEW_IP=\"\${SUBNET}.${VICTIM_OCTET}\"
+
+            # Change IP
+            sudo ip addr del \$CURR_IP/${NETWORK_CIDR} dev ens5
+            sudo ip addr add \$NEW_IP/${NETWORK_CIDR} dev ens5
+
+            # Set VICTIM_NUMBER env var
+            echo 'export VICTIM_NUMBER=${i}' | sudo tee -a /etc/environment > /dev/null
+
+            # Start the victim service
+            sudo VICTIM_NUMBER=${i} nohup python3 /challenge/run >> /challenge/run.log 2>&1 &
+            sleep 2s
+
+            # This might cause some strange problems with connections not going away when they should
+            sudo iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP 
+
+            # Verify service is running
+            if ps -ef | grep 'python3 /challenge/run' | grep -v grep > /dev/null; then
+                echo 'SERVICE_STARTED' | sudo tee -a /challenge/run.log > /dev/null
+            else
+                echo 'SERVICE_FAILED' | sudo tee -a /challenge/run.log > /dev/null
+            fi
+
+            # Send completion message to run.log
+            echo "[$(date '+%H:%M:%S')] Victim VM ${i} configured successfully" | sudo tee -a /challenge/run.log > /dev/null
+
+            # Return the new IP for JSON update
+            echo \$NEW_IP
+        " 2>> /challenge/startup.log | tail -1)
+        
+        if [ -n "$CURRENT_IP" ]; then
+            # Extract subnet prefix and new IP from the output
+            SUBNET_PREFIX=$(echo "$CURRENT_IP" | cut -d. -f1-3)
+            NEW_IP="${SUBNET_PREFIX}.${VICTIM_OCTET}"
+            
+            # Only show network details to admins
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim ${i}: configured with IP ${NEW_IP}, MAC ${VICTIM_MAC}, service started" >> /challenge/startup.log
+            
+            # Update the JSON with actual IP
+            python3 << PYTHON_UPDATE
+import json
+with open('/challenge/.config/victims.json', 'r') as f:
+    data = json.load(f)
+data['victims'][${i}-1]['ip'] = '${NEW_IP}'
+with open('/challenge/.config/victims.json', 'w') as f:
+    json.dump(data, f, indent=2)
+PYTHON_UPDATE
+            [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim ${i}: SSH configuration completed successfully" >> /challenge/startup.log
+        else
+            echo "[b] $(date '+%H:%M:%S') ERROR: Victim ${i}: SSH configuration/service startup failed" >> /challenge/startup.log
+        fi
+    } &
+    VICTIM_CONFIG_PIDS+=($!)
+done
+
+# Wait for all configurations (student + victims) to complete
+[ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Waiting for all VM configurations and service startups..." >> /challenge/startup.log
+wait $STUDENT_CONFIG_PID
+STUDENT_EXIT=$?
+wait ${VICTIM_CONFIG_PIDS[@]}
+
+# Verify all configurations succeeded
+echo "[$(date '+%H:%M:%S')] Verifying VM configurations..." >> /challenge/run.log
+if [ $STUDENT_EXIT -ne 0 ]; then
+    echo "[b] $(date '+%H:%M:%S') WARNING: Student VM configuration may have failed" >> /challenge/startup.log
+    echo "[$(date '+%H:%M:%S')] WARNING: Some configurations may have issues" >> /challenge/run.log
+fi
+
+# Verify victim VMs are configured and services running
+for i in $(seq 1 $NUM_VICTIM_VMS); do
+    if pgrep -f "vm-victim${i}" > /dev/null; then
+        [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Victim ${i} VM is running" >> /challenge/startup.log
+    else
+        echo "[b] $(date '+%H:%M:%S') ERROR: Victim ${i} VM not detected" >> /challenge/startup.log
+        echo "[$(date '+%H:%M:%S')] ERROR: VM verification failed" >> /challenge/run.log
+    fi
+done
+
+sleep 2s  # brief pause before final log
+
+echo "[$(date '+%H:%M:%S')] All services ready..." >> /challenge/run.log
+
+CONFIG_END=$(date +%s)
+CONFIG_ELAPSED=$((CONFIG_END - CONFIG_START))
+echo "[$(date '+%H:%M:%S')] Network topology established in ${CONFIG_ELAPSED}s..." >> /challenge/run.log
+if [ "$IS_ADMIN" = true ]; then
+    echo "[b] $(date '+%H:%M:%S') All VMs configured and services started in ${CONFIG_ELAPSED}s" >> /challenge/startup.log
+    echo "[b] $(date '+%H:%M:%S') Victim network info available at /challenge/.config/victims.json" >> /challenge/startup.log
+    chmod 644 /challenge/.config/victims.json
+else
+    echo "[b] $(date '+%H:%M:%S') VMs ready." >> /challenge/startup.log
+    # Hide victim network configuration from students - they must discover it themselves
+    chmod 000 /challenge/.config/victims.json 2>/dev/null
+    # Remove SSH keys from root to force students to discover network themselves
+    rm -f /root/.ssh/victim_user_key /root/.ssh/vm_key 2>/dev/null
+    # Keep only student VM config in root's SSH config
+    cat > /root/.ssh/config << 'EOF'
+Host student hackbox hack mine
+    HostName localhost
+    Port 2222
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    User student
+    IdentityFile ~/.ssh/vm_key
+EOF
+fi
+
+
+# Remove setup lock file
+rm -f /tmp/.vm_setup_in_progress
+
+echo "Server and client have started on the network, but may need a few more seconds to completely startup. Check /challenge/run.log for activity." >> /challenge/run.log
+echo "You can connect to your hackbox VM using the 'hackbox' or 'hb' alias now." >> /challenge/run.log
+echo "***** VM Setup completed ******" >> /challenge/run.log
+
+
+
+
