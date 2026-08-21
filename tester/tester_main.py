@@ -162,7 +162,11 @@ def is_practice_exam():
 
     try:
         with open(LEVEL_CONFIG_FP, "r") as cf:
-            return json.load(cf).get("is_practice_exam") is True
+            level_config = json.load(cf)
+            return (
+                level_config.get("is_practice_exam") is True
+                or level_config.get("practice_exam") is True
+            )
     except (OSError, json.JSONDecodeError):
         return False
 

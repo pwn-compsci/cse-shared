@@ -106,7 +106,10 @@ try:
     if os.path.exists(LEVEL_CONFIG_PATH):
         with open(LEVEL_CONFIG_PATH, 'r') as f:
             level_config = json.load(f)
-            is_practice_exam = level_config.get("is_practice_exam", False)
+            is_practice_exam = (
+                level_config.get("is_practice_exam", False)
+                or level_config.get("practice_exam", False)
+            )
             if is_practice_exam:
                 logger.info("Practice exam detected - password requirement will be bypassed")
 except Exception as e:
