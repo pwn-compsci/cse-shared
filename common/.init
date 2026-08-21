@@ -4,9 +4,14 @@ course_code=$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/
 course_home="/home/hacker/$course_code"
 course_env_file="$course_home/.${course_code}env"
 
-if [ "$course_code" = "cse545" ] && [ -f /challenge/.init.cse545 ]; then
-    source /challenge/.init.cse545 "$@"
-    exit $?
+if [ "$course_code" = "cse545" ]; then
+    if [ -f /challenge/bin/init_cse545 ]; then
+        source /challenge/bin/init_cse545 "$@"
+        exit $?
+    elif [ -f /challenge/.init.cse545 ]; then
+        source /challenge/.init.cse545 "$@"
+        exit $?
+    fi
 fi
 
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
