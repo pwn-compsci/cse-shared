@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
+course_code=$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)
+course_home="/home/hacker/$course_code"
+course_env_file="$course_home/.${course_code}env"
 
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
-mkdir -p /home/hacker/cse240/.vscode/logs
-mkdir -p /home/hacker/.cache 
-chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
+mkdir -p "$course_home/.vscode/logs"
+mkdir -p /home/hacker/.cache
+chown -R hacker:hacker "$course_home/.vscode" 2>/dev/null || true
 
 # Generate log filename based on current date/time
-STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
 echo "$STARTUP_LOG" > /tmp/.startup_log_path
@@ -20,16 +23,16 @@ rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
 
 # Clean up any leftover database backup and journal files to prevent disk space issues
-rm -f /home/hacker/cse240/.vscode/trdb.db.backup_* 2>/dev/null || true
-rm -f /home/hacker/cse240/.vscode/trdb.db-journal 2>/dev/null || true
+rm -f $course_home/.vscode/trdb.db.backup_* 2>/dev/null || true
+rm -f $course_home/.vscode/trdb.db-journal 2>/dev/null || true
 
 start_time=$(date +%s)
-if [[ ! -f $STARTUP_LOG ]]; then 
+if [[ ! -f $STARTUP_LOG ]]; then
     echo "first time" | tee -a $STARTUP_LOG
-else 
+else
     echo "SECOND time" | tee -a $STARTUP_LOG
-    exit 0    
-fi 
+    exit 0
+fi
 
 # Delete large core file if it exists at /home/hacker/core
 if [ -f /home/hacker/core ]; then
@@ -41,14 +44,15 @@ if [ -f /home/hacker/core ]; then
 fi
 
 nohup bash -c '
-  [ -f ~/cse240/.vscode/trdb.db ] &&
-  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((750*1024*1024)) ] &&
-  rm -f ~/cse240/.vscode/trdb.db ~/cse240/.vscode/trdb.db-journal ' | tee -a $STARTUP_LOG 2>&1 
+  [ -f "$1/.vscode/trdb.db" ] &&
+  [ "$(stat -c%s "$1/.vscode/trdb.db")" -gt $((750*1024*1024)) ] &&
+  rm -f "$1/.vscode/trdb.db" "$1/.vscode/trdb.db-journal"
+' _ "$course_home" | tee -a $STARTUP_LOG 2>&1
 
-# Delete all core files in /home/hacker/cse240
-if find /home/hacker/cse240 -name 'core' -type f -print -quit | grep -q .; then
-    echo "[i] Removing core files from /home/hacker/cse240" | tee -a $STARTUP_LOG
-    find /home/hacker/cse240 -name 'core' -type f -exec rm -f {} \;
+# Delete all core files in $course_home
+if find "$course_home" -name 'core' -type f -print -quit | grep -q .; then
+    echo "[i] Removing core files from $course_home" | tee -a $STARTUP_LOG
+    find "$course_home" -name 'core' -type f -exec rm -f {} \;
 fi
 
 ### cleanup vscode-cpptools cache if it grows too large
@@ -76,7 +80,7 @@ else
 fi
 
 
-create_model_bad() { 
+create_model_bad() {
     # File to check for macro definitions
     file_path="/challenge/model/main.c"
 
@@ -84,13 +88,13 @@ create_model_bad() {
     pattern='MODEL_BAD_([0-9]+)_([0-9]+)_([0-9]+)'
 
     # Check if the file exists
-    if [ -f "$file_path" ] && [ -f "$file_path" ]; then  
+    if [ -f "$file_path" ] && [ -f "$file_path" ]; then
         echo "CMD: found file $file_path" | tee -a $STARTUP_LOG
         # Read the file line by line
         while IFS= read -r line; do
             printf "$line" >> /challenge/read_main_c.log
             if [[ $line =~ $pattern ]]; then
-                echo "Found pattern in line: $line" | tee -a $STARTUP_LOG 
+                echo "Found pattern in line: $line" | tee -a $STARTUP_LOG
                 # Extract X and Y from the matched pattern
                 x="${BASH_REMATCH[1]}"
                 y="${BASH_REMATCH[2]}"
@@ -108,7 +112,7 @@ create_model_bad() {
                 if [ -f "$output_file" ]; then
                     echo "Compiled binary created: $output_file" | tee -a $STARTUP_LOG
                     strip $output_file
-                    cp $output_file $clevel_work_dir    
+                    cp $output_file $clevel_work_dir
                     chmod 0755 "$output_file" 2>/dev/null || true
                     # ensure ownership if working dir is present
                     if [ -n "$clevel_work_dir" ] && [ -d "$clevel_work_dir" ]; then
@@ -119,11 +123,11 @@ create_model_bad() {
                     # skip strip/cp for this iteration
                     continue
                 fi
-                
+
             fi
         done < "$file_path"
-        
-    fi 
+
+    fi
 }
 
 
@@ -141,7 +145,7 @@ ensure_workspace_trust_disabled() {
     # If file doesn't exist, create with the setting
     if [ ! -f "$settings_json" ]; then
         echo "[c] Creating $settings_json with workspace trust disabled" | tee -a $STARTUP_LOG
-        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"        
+        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"
         return
     fi
 
@@ -159,7 +163,7 @@ ensure_workspace_trust_disabled() {
     else
         # Fallback: append before last }
         sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
-        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG 
+        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG
     fi
 }
 
@@ -168,20 +172,20 @@ ensure_workspace_trust_disabled() {
 extract_pwn_id_from_flag() {
     local flag_file="${1:-/flag}"
     local extracted_id=""
-    
+
     if [ ! -f "$flag_file" ]; then
         echo "[i] Flag file not found at $flag_file" >> $STARTUP_LOG
         return 1
     fi
-    
+
     # Read the flag file content
     local flag_content=$(cat "$flag_file" 2>/dev/null | tr -d '[:space:]')
-    
+
     if [ -z "$flag_content" ]; then
         echo "[i] Flag file is empty" >> $STARTUP_LOG
         return 1
     fi
-    
+
     # Extract the serialized part between braces if it's a full flag
     local serialized_part=""
     if [[ "$flag_content" == *"pwn.college{"* ]]; then
@@ -189,41 +193,41 @@ extract_pwn_id_from_flag() {
     else
         serialized_part="$flag_content"
     fi
-    
+
     if [ -z "$serialized_part" ]; then
         echo "[i] Could not extract serialized part from flag" >> $STARTUP_LOG
         return 1
     fi
-    
+
     # Reverse the serialized part (pwn.college reverses it with [::-1])
     local unreversed=$(echo "$serialized_part" | rev)
-    
+
     # Split at the first dot to separate data from signature
     local data_part=$(echo "$unreversed" | cut -d'.' -f1)
-    
+
     if [ -z "$data_part" ]; then
         echo "[i] Could not extract data part from flag" >> $STARTUP_LOG
         return 1
     fi
-    
+
     # Add base64 padding if needed
     local padding=$((4 - ${#data_part} % 4))
     if [ "$padding" -ne 4 ]; then
         data_part="${data_part}$(printf '=%.0s' $(seq 1 $padding))"
     fi
-    
+
     # Decode the base64 data part (urlsafe variant: replace - with + and _ with /)
     local decoded=$(echo "$data_part" | tr '_-' '/+' | base64 -d 2>/dev/null)
-    
+
     if [ -z "$decoded" ]; then
         echo "[i] Could not decode base64 data from flag" >> $STARTUP_LOG
         return 1
     fi
-    
+
     # Parse the JSON array [account_id, challenge_id] and extract the first element
     # Using grep to extract the first number from the JSON array
     extracted_id=$(echo "$decoded" | grep -oP '^\s*\[\s*\K\d+' | head -n1)
-    
+
     if [ -n "$extracted_id" ]; then
         echo "[i] Extracted pwn_college_id from flag: $extracted_id" >> $STARTUP_LOG
         echo "$extracted_id"
@@ -235,13 +239,13 @@ extract_pwn_id_from_flag() {
 }
 
 
-echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG 
+echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG
 
-# check for admin access 
+# check for admin access
 # 97169 io1 (red)
 # 78896 Aishani
 # 97168 io0 (blue)
-# 64397 
+# 64397
 # 157464 omy1 (test user)
 # 151791 Kevin Monsen
 # 37215 Dkar
@@ -274,24 +278,24 @@ if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an adm
             echo "active_pwn_college_id='$active_pwn_college_id'" >> /.user_info
             echo "admin access granted" | tee -a $STARTUP_LOG
             break
-        fi    
+        fi
     done
 fi
 
-if [ ! -f /.admin_access ]; then 
+if [ ! -f /.admin_access ]; then
     echo "denied" > /.admin_access
-fi 
+fi
 
 date --iso-8601=seconds > /tmp/.start
 
-if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
+if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
-    echo "No argument supplied for special doctor, exiting for debugging session" | tee -a $STARTUP_LOG    
+    echo "No argument supplied for special doctor, exiting for debugging session" | tee -a $STARTUP_LOG
     exit 0
 fi
 
-echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
-echo "206.206.192.179   git.cse240.com" >> /etc/hosts 
+echo "206.206.192.179   api.cse545.com" >> /etc/hosts
+echo "206.206.192.179   git.cse240.com" >> /etc/hosts
 
 ##### Create /opt/.ring for api access
 printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
@@ -299,19 +303,19 @@ chmod 400 /opt/.ring
 
 
 
-if [ -f /usr/bin/exec-suid ]; then 
+if [ -f /usr/bin/exec-suid ]; then
     chmod 6755 /usr/bin/exec-suid || true
-fi 
+fi
 
 echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
 mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
 
-if [ -f /challenge/bin/redirector.py ]; then 
+if [ -f /challenge/bin/redirector.py ]; then
     #chmod 700 /challenge/bin/redirector.py
     echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " | tee -a $STARTUP_LOG
-    python3 /challenge/bin/redirector.py  -d -p 7681 
+    python3 /challenge/bin/redirector.py  -d -p 7681
     python3 /challenge/bin/redirector.py  -d -p 6080
-else 
+else
     echo "[i] No redirector.py found, not running" | tee -a $STARTUP_LOG
 fi
 
@@ -326,9 +330,9 @@ else
 fi
 
 # setup tldr link
-if [ -d /usr/share/tldr ]; then     
+if [ -d /usr/share/tldr ]; then
     ls -la | tee -a $STARTUP_LOG
-    if [ -f /home/hacker/.local/share/tldr ]; then 
+    if [ -f /home/hacker/.local/share/tldr ]; then
         rm -f /home/hacker/.local/share/tldr
         echo "[i] Removed existing symbolic link for tldr" | tee -a $STARTUP_LOG
     fi
@@ -337,86 +341,87 @@ if [ -d /usr/share/tldr ]; then
     chown -h hacker:hacker /home/hacker/.local/share/tldr
 fi
 
-if [ -f /challenge/checker ]; then 
-    mv /challenge/checker /challenge/bin/checker    
-    chmod 4755 /challenge/bin/checker    
-fi 
+if [ -f /challenge/checker ]; then
+    mv /challenge/checker /challenge/bin/checker
+    chmod 4755 /challenge/bin/checker
+fi
 
 
-if [ -f /challenge/checker.py ]; then 
+if [ -f /challenge/checker.py ]; then
     mv /challenge/checker.py /challenge/bin/checker.py
-    chmod 700 /challenge/bin/checker.py    
-fi 
+    chmod 700 /challenge/bin/checker.py
+fi
 
 if [ -f /challenge/checkstatus.py ]; then
     mv /challenge/checkstatus.py /challenge/bin/checkstatus.py
     chmod 700 /challenge/bin/checkstatus.py
 fi
 
-if [ ! -d /home/hacker/.local/share/ultima/skipped ]; then     
+if [ ! -d /home/hacker/.local/share/ultima/skipped ]; then
     mkdir -p /home/hacker/.local/share/ultima/skipped
-    chown hacker:hacker /home/hacker/.local 
+    chown hacker:hacker /home/hacker/.local
     chown hacker:hacker /home/hacker/.local/share
-fi 
+fi
 # TODO: remove after first few weeks
 chown hacker:hacker /home/hacker/.local
 chown hacker:hacker /home/hacker/.local/share
 chown hacker:hacker -R /home/hacker/.local/share/ultima
 
-if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then 
+if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then
     echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
-fi 
+fi
 
-if [ ! -d /home/hacker/cse240 ]; then 
-    mkdir -p /home/hacker/cse240
-    mkdir -p /home/hacker/cse240/.vscode 
-    mkdir -p /home/hacker/cse240/labw    
-    mkdir -p /home/hacker/cse240/grplab
-    chown hacker:hacker -R /home/hacker/cse240
-fi 
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+if [ ! -d "$course_home" ]; then
+    mkdir -p "$course_home"
+    mkdir -p "$course_home/.vscode"
+    if [ "$course_code" = "cse240" ]; then
+        mkdir -p "$course_home/labw" "$course_home/grplab"
+    fi
+    chown hacker:hacker -R "$course_home"
+fi
+chown hacker:hacker -R "$course_home/.vscode"
 
-if [ ! -f /home/hacker/.bashrc ]; then 
+if [ ! -f /home/hacker/.bashrc ]; then
     cp /etc/skel/.bashrc /home/hacker/.bashrc
-    chmod 644 /home/hacker/.bashrc 
-    chown hacker:hacker /home/hacker/.bashrc 
+    chmod 644 /home/hacker/.bashrc
+    chown hacker:hacker /home/hacker/.bashrc
     echo "Creating .bashrc for account hacker" | tee -a $STARTUP_LOG
-fi 
-if [ ! -f /home/hacker/.profile ]; then 
+fi
+if [ ! -f /home/hacker/.profile ]; then
     cp /etc/skel/.profile /home/hacker/.profile
-    chmod 644 /home/hacker/.profile 
+    chmod 644 /home/hacker/.profile
     chown hacker:hacker /home/hacker/.profile
     echo "Creating .profile for account hacker" | tee -a $STARTUP_LOG
-fi 
-if [ ! -f /home/hacker/.bash_logout ]; then 
+fi
+if [ ! -f /home/hacker/.bash_logout ]; then
     cp /etc/skel/.bash_logout /home/hacker/.bash_logout
-    chmod 644 /home/hacker/.bash_logout 
-    chown hacker:hacker /home/hacker/.bash_logout 
+    chmod 644 /home/hacker/.bash_logout
+    chown hacker:hacker /home/hacker/.bash_logout
     echo "Creating .bash_logout for account hacker" | tee -a $STARTUP_LOG
-fi 
+fi
 
 
-if [ -f /challenge/pex_heartbeat ]; then 
+if [ -f /challenge/pex_heartbeat ]; then
     mv /challenge/pex_heartbeat /challenge/bin/pex_heartbeat
-    chmod 600 /challenge/bin/pex_heartbeat    
-    if [ -f /home/hacker/.local/share/ultima/pexs.dat ]; then 
+    chmod 600 /challenge/bin/pex_heartbeat
+    if [ -f /home/hacker/.local/share/ultima/pexs.dat ]; then
         date >> /home/hacker/.local/share/ultima/old_pxes.dat
         cat /home/hacker/.local/share/ultima/pexs.dat >> /home/hacker/.local/share/ultima/old_pxes.dat
         printf "" > /home/hacker/.local/share/ultima/pexs.dat
-    fi 
+    fi
     touch /home/hacker/.local/share/ultima/pexs.dat
     chown hacker:hacker /home/hacker/.local/share/ultima/pexs.dat
     chmod 666 /home/hacker/.local/share/ultima/pexs.dat
     python3 /challenge/bin/pex_heartbeat &
     echo "Started pex_heartbeat " | tee -a $STARTUP_LOG
-fi 
+fi
 
-ENVFILE=/home/hacker/cse240/.cse240env
+ENVFILE="$course_env_file"
 
-# create a .cse240env file if not existing
-if [ ! -f $ENVFILE ]; then 
+# create a per-course env file if not existing
+if [ ! -f $ENVFILE ]; then
     touch $ENVFILE
-fi 
+fi
 
 touch /home/hacker/.local/share/ultima/c.dat
 chmod 666 /home/hacker/.local/share/ultima/c.dat
@@ -425,12 +430,12 @@ chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 ## incorporate cse240 environment changes
 chmod 666 $STARTUP_LOG
 
-if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then 
+if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/zsh/zshenv
-    printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/zshrc       
+    printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/zshrc
     echo "Changing shell for hacker to $(which zsh)" | tee -a $STARTUP_LOG
-    #chsh -s $(which zsh) hacker     
-    
+    #chsh -s $(which zsh) hacker
+
     target_file="/etc/bash.bashrc"
     if grep -q 'Automatically switch to Zsh for interactive sessions' "$target_file"; then
         echo "Block already exists in $target_file" | tee -a $STARTUP_LOG
@@ -446,11 +451,11 @@ if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then
 else
     echo "############################# " >> /etc/bash.bashrc
     # Extract module and level info once for session tracking
-    inst_id="$(jq -r '"\(.hwdir | split("/") | last) \(.level)"' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
-    
+    inst_id="$(jq -r 'if (.hwdir // "") != "" then "\(.hwdir | split("/") | last) \(.level)" else "\(.module) \(.level)" end' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
+
     # Set as environment variable for cleaner access
     echo "export INST_ID='${inst_id}'" >> /etc/bash.bashrc
-    
+
     # Log command history with context - using function for clarity
     cat >> /etc/bash.bashrc << 'HIST_EOF'
 log_cmd() {
@@ -458,55 +463,67 @@ log_cmd() {
 }
 export PROMPT_COMMAND='log_cmd; history -a'
 HIST_EOF
-    
+
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/bash.bashrc
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/bash.bashrc
-            
+
     printf 'echo "Added commands to BASHRC FILE!!!!" | tee -a $STARTUP_LOG '
 
     export SHELL=$(which bash)
-fi 
+fi
 
 ## limit cpp-tools cache size to 0 for right now
 JSON_FILE="/home/hacker/.local/share/code-server/Machine/settings.json"
 chown hacker:hacker $JSON_FILE
 if [ ! -f $JSON_FILE ] || ! grep -q "C_Cpp.intelliSenseCacheSize" $JSON_FILE; then
     TEMP_FILE=$JSON_FILE".tmp"
-    if [ ! -f $JSON_FILE ]; then 
+    if [ ! -f $JSON_FILE ]; then
         printf '{\n  "C_Cpp.intelliSenseCacheSize": 0\n}\n' > $JSON_FILE
     else
-        echo "Setting CPP Tools cache size" 
+        echo "Setting CPP Tools cache size"
         jq '.["C_Cpp.intelliSenseCacheSize"] = 0' "$JSON_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$JSON_FILE"
-    fi 
-    
+    fi
+
 else
-    echo "Skipping cache setting, already set" 
-fi 
+    echo "Skipping cache setting, already set"
+fi
 
 mkdir -p /challenge/.config
 
-cat /challenge/.config/level.json | tee -a $STARTUP_LOG 
-# use level config to define variables 
-clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
-
-level=$(jq -r '.level' /challenge/.config/level.json)    
-module=$(jq -r '.module' /challenge/.config/level.json)    
+cat /challenge/.config/level.json | tee -a $STARTUP_LOG
+# use level config to define variables
+level=$(jq -r '.level' /challenge/.config/level.json)
+module=$(jq -r '.module' /challenge/.config/level.json)
 challenge=$(jq -r '.challenge // .level' /challenge/.config/level.json)
 
-# we either have a labid or a hw
-if grep "labid" /challenge/.config/level.json; then 
-    lab_id=$(jq -r '.labid' /challenge/.config/level.json)    
+hwdir=$(jq -r '.hwdir // empty' /challenge/.config/level.json)
+if [ -n "$hwdir" ]; then
+    clevel_work_dir="$hwdir/$level"
 else
-    hw_id=$(jq -r '.hw' /challenge/.config/level.json)
-fi 
+    clevel_work_dir="$course_home/$module/$level"
+fi
+
+# we either have a labid or a hw
+if grep "labid" /challenge/.config/level.json; then
+    lab_id=$(jq -r '.labid' /challenge/.config/level.json)
+else
+    hw_id=$(jq -r '.hw // empty' /challenge/.config/level.json)
+fi
 
 echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
+
+if [ "$course_code" = "cse545" ]; then
+    mkdir -p "$clevel_work_dir"
+    chown hacker:hacker "$course_home" "$clevel_work_dir" 2>/dev/null || true
+    printf "\nalias cdhw='cd %q'\n\n" "$clevel_work_dir" >> /etc/bash.bashrc
+    printf "\nalias batlist='for f in \$(ls -tr); do ls -lat \$f; batcat --paging=never \$f; done'\n\n" >> /etc/bash.bashrc
+fi
 
 # user information configuration - determine pwn_college_id
 pwn_college_id=$active_pwn_college_id
 
 # If /home/me exists, try to get ID from overlays mount pattern
-if [ -d /home/me ]; then 
+if [ -d /home/me ]; then
     pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
     echo "[i] Extracted pwn_college_id from overlays mount: $pwn_college_id" | tee -a $STARTUP_LOG
 fi
@@ -526,22 +543,22 @@ fi
 # Now process ed.dat with the determined pwn_college_id
 if [ -f /challenge/ed.dat ]; then
     mv  /challenge/ed.dat /challenge/.config/ed.dat
-fi 
+fi
 rm -f /challenge/ed.dat
 
 if [ -f /challenge/.config/ed.dat ]; then
-    echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log 
+    echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log
     grep -Poh "^${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
     if [ ! -s /challenge/.config/info.dat ]; then
         echo "[i] No entry found for pwn_college_id=$pwn_college_id in ed.dat, trying partial match" >> /challenge/startup.log
         grep -Poh ".{0,6}${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
         if [ ! -s /challenge/.config/info.dat ]; then
-            echo "[i] No entry found for pwn_college_id=$pwn_college_id in ed.dat using partial match" >> /challenge/startup.log            
+            echo "[i] No entry found for pwn_college_id=$pwn_college_id in ed.dat using partial match" >> /challenge/startup.log
         fi
     fi
 
     cat /challenge/.config/info.dat | tee -a $STARTUP_LOG
-    if [ ! -d /home/me ]; then 
+    if [ ! -d /home/me ]; then
         rm -f /challenge/.config/ed.dat
     fi
 fi
@@ -553,7 +570,7 @@ if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
         if jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" 2>/dev/null; then
             mv "$tmpfile" /challenge/.config/level.json
             chmod 644 /challenge/.config/level.json  # Ensure readable after mv from tempfile
-        else 
+        else
             echo "[!] Failed to add pwn_college_id to level.json" | tee -a $STARTUP_LOG
             rm -f "$tmpfile"
         fi
@@ -563,7 +580,7 @@ if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
     fi
 fi
 
-if [ ! -f /home/hacker/.cache ]; then 
+if [ ! -f /home/hacker/.cache ]; then
     mkdir -p /home/hacker/.cache
     chown hacker:hacker /home/hacker/.cache
 fi
@@ -658,25 +675,25 @@ report_pwn_level_attempt
 ##########################################################################################################################
 isExam=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
 echo "isExam=$isExam" | tee -a $STARTUP_LOG
-if [[ -n $isExam ]]; then 
+if [[ -n $isExam ]]; then
     cs_user_data_dir="/home/hacker/.local/share/code-server-exam"
-     if [ ! -d $cs_user_data_dir ]; then 
+     if [ ! -d $cs_user_data_dir ]; then
         mkdir -p $cs_user_data_dir
         chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
-    fi 
-    if [ -f /challenge/bin/.examsetup ]; then        
+    fi
+    if [ -f /challenge/bin/.examsetup ]; then
         source /challenge/bin/.examsetup
         echo "[i] Completed .examsetup" >> "$STARTUP_LOG"
-    fi 
+    fi
 
     # setup EXAM_REFERENCE if it exists
-    if [ -f /challenge/EXAM_REFERENCE.md ]; then     
+    if [ -f /challenge/EXAM_REFERENCE.md ]; then
         cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
         echo "[i] Found EXAM_REFERENCE, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
     # can move .vsocde and .cse240env to ro
-    # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
+    # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &
 else
     echo "Not an exam level" | tee -a $STARTUP_LOG
     checkstatus_bashrc_marker="# CSE240_CHECKSTATUS_NOTICE"
@@ -691,42 +708,42 @@ CHECKSTATUS_NOTICE_EOF
         echo "[i] checkstatus notice already present in /etc/bash.bashrc" | tee -a $STARTUP_LOG
     fi
     cs_user_data_dir="/home/hacker/.local/share/code-server"
-     if [ ! -d $cs_user_data_dir ]; then 
+     if [ ! -d $cs_user_data_dir ]; then
         mkdir -p $cs_user_data_dir
         chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
-    fi 
+    fi
     # if level working directory is not there then create it if creeateHWDir set in level.json
-    if [[ ! -d $clevel_work_dir ]] ; then 
-        grep -iq '"createHWDir".*true' /challenge/.config/level.json 
-        if grep -iq '"createHWDir".*true' /challenge/.config/level.json; then 
-            mkdir -p $clevel_work_dir 
+    if [[ ! -d $clevel_work_dir ]] ; then
+        grep -iq '"createHWDir".*true' /challenge/.config/level.json
+        if grep -iq '"createHWDir".*true' /challenge/.config/level.json; then
+            mkdir -p $clevel_work_dir
             chown hacker:hacker -R $clevel_work_dir
-            # if no main file then copy template files 
-            if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
-                if [ -d /challenge/template ]; then 
+            # if no main file then copy template files
+            if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then
+                if [ -d /challenge/template ]; then
                     echo "[i] No main file found in $clevel_work_dir, copying template files" | tee -a $STARTUP_LOG
                     cp -a /challenge/template/* $clevel_work_dir
                     chown hacker:hacker -R $clevel_work_dir
                 else
                     echo "[i] /challenge/template not found, skipping template copy" | tee -a $STARTUP_LOG
-                fi 
+                fi
             else
-                echo "[i] The main file was found in $clevel_work_dir, skipping template copy" | tee -a $STARTUP_LOG      
-            fi 
+                echo "[i] The main file was found in $clevel_work_dir, skipping template copy" | tee -a $STARTUP_LOG
+            fi
         fi
         #if [ -n "$hw_id" ] && [ "$hw_id" -eq 77 ]; then
         #    ln -s $(dirname "$clevel_work_dir")/01 $clevel_work_dir
         #fi
-    fi 
-    
+    fi
+
     # Copy REFERENCE.md if it exists
-    if [ -f /challenge/REFERENCE.md ]; then     
+    if [ -f /challenge/REFERENCE.md ]; then
         cp /challenge/REFERENCE.md $clevel_work_dir/REFERENCE.md
         echo "[i] Found REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
-    
+
     # Copy EXAM_REFERENCE.md if it exists
-    if [ -f /challenge/EXAM_REFERENCE.md ]; then     
+    if [ -f /challenge/EXAM_REFERENCE.md ]; then
         cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
         echo "[i] Found EXAM_REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
@@ -741,29 +758,29 @@ ensure_workspace_trust_disabled "$cs_user_data_dir"
 
 
 #echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
-if [[ -d $clevel_work_dir ]] && [ "$hw_id" -ne 77 ]; then 
+if [[ -d $clevel_work_dir ]] && { [ -z "$hw_id" ] || [ "$hw_id" -ne 77 ]; }; then
     # cleans up path
     clevel_work_dir=$(realpath $clevel_work_dir)
-fi 
+fi
 
 # copy level's template files if not already copied to working directory
 
 
 # # if template does not contain student test skeletons then log it and re-add
-# if grep -q "requiredUserTests"  '/challenge/.config/level.json'; then 
+# if grep -q "requiredUserTests"  '/challenge/.config/level.json'; then
 #     jq -r '.requiredUserTests[]' /challenge/.config/level.json | while read -r ut_path; do
-#         if [ ! -d $(dirname $ut_path) ]; then 
-#             mkdir -p $(dirname $ut_path)        
-#         fi     
+#         if [ ! -d $(dirname $ut_path) ]; then
+#             mkdir -p $(dirname $ut_path)
+#         fi
 #         ls -la $(dirname $ut_path) | tee -a /challenge/errorlog
-#         if [ ! -f $ut_path ]; then  
+#         if [ ! -f $ut_path ]; then
 #             printf "\033[33mUser test is missing ($ut_path). Adding $ut_path from /challenge/template/user_tests/$(basename $ut_path) \n\033[0m"  | tee -a /challenge/errorlog
 #             cp /challenge/template/user_tests/$(basename $ut_path) $ut_path
-#         fi     
-#     done 
+#         fi
+#     done
 # else
 #     echo "[+] Skipping requiredUserTest copy because not used for this level" | tee -a $STARTUP_LOG
-# fi 
+# fi
 
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
@@ -772,15 +789,15 @@ diff_start_time=$(date +%s)
 
 
 # create symlink for system_tests in working directory
-if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
+if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then
     ls -la $clevel_work_dir | tee -a $STARTUP_LOG
     echo "[i] Creating symlink for system_tests in $clevel_work_dir" | tee -a $STARTUP_LOG
     ln -s /challenge/system_tests $clevel_work_dir/system_tests
-fi 
+fi
 
 if [ -f /challenge/tester ]; then
     chmod u+s /challenge/tester
-fi 
+fi
 
 if [ -f /challenge/checkstatus ]; then
     chmod u+s /challenge/checkstatus
@@ -788,7 +805,7 @@ fi
 
 if [ -f /challenge/bin/tester_main.py ]; then
     chmod 700 /challenge/bin/tester_main.py
-fi 
+fi
 
 if [ -f /challenge/captain ]; then
     # chown root:hacker /challenge/captain  # Change owner to root and group to hacker
@@ -802,7 +819,7 @@ if [ -f /challenge/.levelinit ]; then
     execution_time=$((end_time - start_time))
     echo "Completed .levelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
-fi 
+fi
 
 # Load .javainit if module is pretest (Java-based problems)
 if [ "$module" = "pretest" ] && [ -f /challenge/.javainit ]; then
@@ -821,20 +838,20 @@ if [ "$module" = "pretest" ] && [ -f /challenge/.javainit ]; then
 fi
 
 if [ "$module" != "pretest" ]; then
-    echo "Starting workspace build$(date) in pid=$$" | tee -a $STARTUP_LOG 
+    echo "Starting workspace build$(date) in pid=$$" | tee -a $STARTUP_LOG
     # ###################################################################################################################### #
     # vvvv Build Tasks and Launcher for workspace vvvv                                                                       #
     # Creates 4 tasks for workspace file                                                                                     #
     # Creates one launch for the current level based on whether Makefile, main.cpp, or main.c exist                          #
     # For Java (pretest module), build tasks are configured in .javainit                                                     #
     # ###################################################################################################################### #
-    if [ -f /challenge/model/Makefile ]; then 
+    if [ -f /challenge/model/Makefile ]; then
         builder="build-make"
-    elif [ -f /challenge/model/main.cpp ]; then 
+    elif [ -f /challenge/model/main.cpp ]; then
         builder="build-g++"
     else
         builder="build-gcc"
-    fi 
+    fi
     problem_matcher='$gcc'
 
     generate_task() {
@@ -865,9 +882,9 @@ if [ "$module" != "pretest" ]; then
             "presentation": { "echo": true, "reveal": "always", "focus": true, "panel": "shared" },
             "problemMatcher": [],
             "runOptions": { "runOn": "folderOpen" },
-            "isBackground": true, 
-            "dependsOn": "close editor groups"    
-        }' "$SHELL" "$task_dir" 
+            "isBackground": true,
+            "dependsOn": "close editor groups"
+        }' "$SHELL" "$task_dir"
     }
 
     generate_close_command(){
@@ -895,20 +912,20 @@ if [ "$module" != "pretest" ]; then
 
     if grep -q "$clevel_work_dir" "$ENVFILE"; then   # we find current dir in ENVFILE then do not close everything.
         printf "NOT going to generate the close editor windows b/c \n$clevel_work_dir $(cat $ENVFILE)\n\n" | tee -a $STARTUP_LOG
-        #tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
-        tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )    
+        #tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )
+        tasks=$(printf '[%s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )
     else
         printf "generating close \n$clevel_work_dir" | tee -a $STARTUP_LOG
         #cat "$ENVFILE" | tee -a $STARTUP_LOG
         printf "\n\n" | tee -a $STARTUP_LOG
         task_close=$(generate_close_command )
-        #tasks=$(printf '[ %s, %s, %s, %s, %s ]' "$task_close" "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
-        #tasks=$(printf '[ %s, %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")   
-        tasks=$(printf '[ %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )   
-        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
-        echo "$tasks" | tee -a $STARTUP_LOG 
-        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG 
-    fi 
+        #tasks=$(printf '[ %s, %s, %s, %s, %s ]' "$task_close" "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")
+        #tasks=$(printf '[ %s, %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" "$task_terminal")
+        tasks=$(printf '[ %s, %s, %s ]' "$task_make" "$task_gpp" "$task_gcc" )
+        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG
+        echo "$tasks" | tee -a $STARTUP_LOG
+        echo "------------------------------------------------------------------------" | tee -a $STARTUP_LOG
+    fi
 
     # To pretty-print for debugging
     #echo "$tasks" | jq '.' >  /challenge/pretty_vscode.json
@@ -943,7 +960,7 @@ if [ "$module" != "pretest" ]; then
     #echo "$launch" | jq '.' >> /challenge/pretty_vscode.json
 
     find /home/hacker/.local/share/code-server ! -user hacker -exec chown hacker:hacker {} +
-    find /home/hacker/.config ! -user hacker -exec chown hacker:hacker {} + 
+    find /home/hacker/.config ! -user hacker -exec chown hacker:hacker {} +
 
     # ###################################################################################################################### #
     # ^^^^ END Build Tasks and Launcher for workspace ^^^^                                                                   #
@@ -952,24 +969,24 @@ fi  # End of C/C++ build section (skip for Java/pretest module)
 
 echo "[+] Starting environment config for VSCode"
 # if the user does not want autoload (likely me) then do not automatically change environment
-if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then 
-# && ! grep -q "$clevel_work_dir" $ENVFILE 
+if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
+# && ! grep -q "$clevel_work_dir" $ENVFILE
 
     working_dir=$clevel_work_dir
-    if [ ! -d $clevel_work_dir ]; then 
+    if [ ! -d $clevel_work_dir ]; then
         working_dir="."
-    fi 
-    # if we have hw_id 
-    if [[ -d /home/other ]]; then 
+    fi
+    # if we have hw_id
+    if [[ -d /home/other ]]; then
         wsname="$(realpath $task_work_dir/../admin-access-of-240coder.code-workspace)"
-    else 
-        if [[ -n "$hw_id" ]]; then 
+    else
+        if [[ -n "$hw_id" ]]; then
             wsname="$(realpath $clevel_work_dir/../proj-$hw_id-$level.code-workspace)"
         else # we have lab_id b/c it must be one or the other
             wsname="$(realpath $clevel_work_dir/../lab-$lab_id-$level.code-workspace)"
-        fi 
-    fi 
-    
+        fi
+    fi
+
     tmpfile=$(mktemp /challenge/tmpfile.XXXXXX)
     # Check if the temporary file was created successfully
     if [[ ! -e $tmpfile ]]; then
@@ -977,21 +994,21 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
         exit 1
     fi
 
-    #if [ ! -f "$wsname"  ] || ! grep -q "terminal.integrated" $wsname; then 
-        echo "[+] Creating workspace file $wsname" | tee -a $STARTUP_LOG 
-        
-        if [[ -d /home/other ]]; then 
+    #if [ ! -f "$wsname"  ] || ! grep -q "terminal.integrated" $wsname; then
+        echo "[+] Creating workspace file $wsname" | tee -a $STARTUP_LOG
+
+        if [[ -d /home/other ]]; then
             dirs_to_open=$(printf '{ "path": "%s" }, { "path": "%s" } ' "$task_work_dir" "$coders_work_dir" )
         else
             dirs_to_open=$(printf '{ "path": "%s" } ' "$task_work_dir" )
-        fi 
-        
+        fi
+
         # TODO: remove compounds values below???
-        printf '{            
+        printf '{
             "folders": [ %s ],
-            "settings": { "terminal.integrated.defaultProfile.linux": "bash", "C_Cpp.intelliSenseCacheSize": 0, 
-                            "workbench.localHistory.maxFileEntries": 1600, "workbench.localHistory.mergeWindow": 2, 
-                            "magicRacket.languageServer.command": "xvfb-run", "magicRacket.languageServer.arguments": [ "--auto-servernum", 
+            "settings": { "terminal.integrated.defaultProfile.linux": "bash", "C_Cpp.intelliSenseCacheSize": 0,
+                            "workbench.localHistory.maxFileEntries": 1600, "workbench.localHistory.mergeWindow": 2,
+                            "magicRacket.languageServer.command": "xvfb-run", "magicRacket.languageServer.arguments": [ "--auto-servernum",
                             "racket", "--lib","racket-langserver" ],
                             "files.exclude": { "**/*.gcda": true, "**/*.gcno": true, "**/*.o": true },
                             "prolog.executablePath": "/usr/bin/prolog"},
@@ -1004,44 +1021,44 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
             "tasks": {
                 "version": "2.0.0",
                 "tasks": %s
-            }    
+            }
         }\n' "$dirs_to_open" "$launch" "$tasks" > $tmpfile
         # { "name": "Open Terminal on Start", "preLaunchTask": "Open Default Terminal" }
         # cat $tmpfile > /challenge/workspace.debug
         # echo "workspace json file written to /challenge/workspace.debug" | tee -a $STARTUP_LOG
-        
+
         jq '.' $tmpfile > "$wsname" 2| tee -a $STARTUP_LOG
-        
+
         chown hacker:hacker "$wsname"
 
-        if [[ $? == 0 ]]; then 
+        if [[ $? == 0 ]]; then
             rm -f "$tmpfile"
-        else 
-            echo "error occurred with jq" | tee -a $STARTUP_LOG 
-        fi 
+        else
+            echo "error occurred with jq" | tee -a $STARTUP_LOG
+        fi
 
-    #else 
+    #else
 
-        #jq --arg clevel_work_dir "$clevel_work_dir" '.settings["terminal.integrated.profiles.linux"].bash.cwd = $clevel_work_dir' "$wsname" > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"  
+        #jq --arg clevel_work_dir "$clevel_work_dir" '.settings["terminal.integrated.profiles.linux"].bash.cwd = $clevel_work_dir' "$wsname" > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"
         # echo "[+] Updating workspace file $wsname using $working_dir and $shell"
-        # set -x 
-        # jq '.settings["terminal.integrated.profiles.linux"].bash.args = ["-c", "[ \"$PWD\" = \"/home/hacker/cse240\" ] && cd '$working_dir'; '$shell' -l"]' "$wsname" > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"  
-        # set +x 
+        # set -x
+        # jq '.settings["terminal.integrated.profiles.linux"].bash.args = ["-c", "[ \"$PWD\" = \"$course_home\" ] && cd '$working_dir'; '$shell' -l"]' "$wsname" > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"
+        # set +x
         # echo "[+] jq finished with $?"
-        # if grep -q ".runOptions" $wsname && grep -q "$clevel_work_dir" $ENVFILE ; then 
-        #     jq '.tasks.tasks[] |= del(.runOptions)' $wsname > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"  
-        # fi 
-        
-    #fi 
-    
-    
+        # if grep -q ".runOptions" $wsname && grep -q "$clevel_work_dir" $ENVFILE ; then
+        #     jq '.tasks.tasks[] |= del(.runOptions)' $wsname > "${wsname}.tmp" && mv "${wsname}.tmp" "$wsname"
+        # fi
+
+    #fi
+
+
     coder_file="$cs_user_data_dir/coder.json"
 
     echo "[+] Checking ${coder_file} for ${wsname}" | tee -a $STARTUP_LOG
 
-    
-    if [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; then 
-        
+
+    if [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; then
+
         printf '{
             "query": {
                 "workspace": "'$wsname'"
@@ -1051,53 +1068,53 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
         chown hacker:hacker ${coder_file}
         chmod +r ${coder_file}
         echo "[+] Updated Coder file " | tee -a $STARTUP_LOG
-        cat $coder_file | tee -a $STARTUP_LOG 
+        cat $coder_file | tee -a $STARTUP_LOG
     else
         echo "[+] Skipping coder file update because found $wsname in ${coder_file} $clevel_work_dir" | tee -a $STARTUP_LOG
-    fi 
+    fi
 
     end_time=$(date +%s)
     execution_time=$((end_time - start_time))
     echo "Completed autoload setup in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 else
-    echo "No autoload performed"    
-fi 
-echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
+    echo "No autoload performed"
+fi
+echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a $STARTUP_LOG
 # for MUD levels update items.json and rooms.json on each instance start
-if [ -f /challenge/system_tests/items.json ]; then 
+if [ -f /challenge/system_tests/items.json ]; then
     echo "Updating items.json and rooms.json into $clevel_work_dir" >> "$STARTUP_LOG"
     cp /challenge/system_tests/{items.json,rooms.json} /challenge/
-    cp /challenge/system_tests/{items.json,rooms.json} $clevel_work_dir    
-fi 
+    cp /challenge/system_tests/{items.json,rooms.json} $clevel_work_dir
+fi
 
 if [[ $clevel_work_dir == *"25-proj-mud"* ]]; then
-    echo "@@@@@@@@@@@@@@@@@@@ Inside if" | tee -a $STARTUP_LOG 
-    if [ -f $clevel_work_dir/main.c ] && ! grep -q "//pc eof" $clevel_work_dir/main.c ; then 
-        echo "Inside if2 for main.c" | tee -a $STARTUP_LOG 
+    echo "@@@@@@@@@@@@@@@@@@@ Inside if" | tee -a $STARTUP_LOG
+    if [ -f $clevel_work_dir/main.c ] && ! grep -q "//pc eof" $clevel_work_dir/main.c ; then
+        echo "Inside if2 for main.c" | tee -a $STARTUP_LOG
         printf "\n//pc eof 285 main\n" >> $clevel_work_dir/main.c
-    fi 
-    if [ -f $clevel_work_dir/data.c ] && ! grep -q "//pc eof" $clevel_work_dir/data.c; then 
+    fi
+    if [ -f $clevel_work_dir/data.c ] && ! grep -q "//pc eof" $clevel_work_dir/data.c; then
         echo "Inside if3 for data.c" | tee -a $STARTUP_LOG
         printf "\n//pc eof 285 data\n" >> $clevel_work_dir/data.c
-    fi 
-fi 
+    fi
+fi
 
 ######################################################################
 # Enable CSE240 VScode Extension if it's in challenge
 ######################################################################
 new_extdir="/run/challenge/share/code/extensions"
 if find "$new_extdir" -mindepth 1 -maxdepth 1 -type d -name "ms-vscode.cpptools-*" | read; then
-    chmod +x $new_extdir/ms-vscode.cpptools-*/{bin/cpptools*,bin/libc.so,debugAdapters/bin/OpenDebugAD7,LLVM/bin/clang-*}  
+    chmod +x $new_extdir/ms-vscode.cpptools-*/{bin/cpptools*,bin/libc.so,debugAdapters/bin/OpenDebugAD7,LLVM/bin/clang-*}
 else
   echo "ms vscode cpptools directory not found in $new_exitdir." | tee -a $STARTUP_LOG
 fi
 
 #######################################################################
-if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then 
+if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then
     hw_id=${hw_id:-0}
     lab_id=${lab_id:-0}
-   
+
     # Check if hw_id > 8 or lab_id > 10
     if [[ "$clevel_work_dir" == *"scheme"* ]]; then
         if raco pkg show racket-langserver | grep -q 'racket-langserver'; then
@@ -1108,19 +1125,19 @@ if [ -d $new_extdir/evzen-wybitul.magic-racket-0.6.7-universal ]; then
             echo "racket-langserver started with PID $!" | tee -a $STARTUP_LOG
         else
             echo "racket-langserver is not installed. " | tee -a $STARTUP_LOG
-            
+
         fi
     else
         echo "Not starting racket server b/c $clevel_work_dir does not contain 'scheme'" | tee -a $STARTUP_LOG
-    fi 
-fi 
+    fi
+fi
 
 # Create .bash_history
 if [ ! -f "/home/hacker/.bash_history" ]; then
-    touch "/home/hacker/.bash_history"      
+    touch "/home/hacker/.bash_history"
     echo "[i] Created .bash_history and chowned to hacker:hacker" | tee -a $STARTUP_LOG
 fi
-chown hacker:hacker "/home/hacker/.bash_history"   
+chown hacker:hacker "/home/hacker/.bash_history"
 
 ########################################################################
 
@@ -1143,90 +1160,90 @@ if [ -f "$logfile" ]; then
     fi
 fi
 
-touch /home/hacker/cse240/.vscode/cp.dat
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+touch "$course_home/.vscode/cp.dat"
+chown hacker:hacker -R "$course_home/.vscode"
 
-echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240/.vscode/cp.dat ' >> /etc/bash.bashrc
+printf 'echo "$(printf "bash started at $(date)" | base64)" >> %q/.vscode/cp.dat\n' "$course_home" >> /etc/bash.bashrc
 
-echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> /home/hacker/cse240/.vscode/cp.dat
+echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> "$course_home/.vscode/cp.dat"
 ############################################################################################
 
-echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
+echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG
 
 
 
 if [ "$admin_access" = true ]; then
     #chmod 700 /challenge/model
     true
-else 
-    if [ -d /challenge/model ]; then 
+else
+    if [ -d /challenge/model ]; then
         chown root:root /challenge/model
         chmod 700 /challenge/model
-    fi 
+    fi
     if [ -d /challenge/system_tests ]; then
         chown root:root -R /challenge/system_tests
         find /challenge/system_tests -type f -name '*.json' -exec chmod 744 {} \;
         find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} \;
         find /challenge/system_tests -type f -name 'stest*hidden*' -exec chmod 400 {} \;
-    fi    
+    fi
 fi
 
-if [ -f /challenge/.bginit ]; then 
+if [ -f /challenge/.bginit ]; then
     /challenge/.bginit &
-fi 
+fi
 
 # if [ "$admin_access" != true ]; then
-    if [ -f /challenge/bin/file_sync.py ]; then 
+    if [ -f /challenge/bin/file_sync.py ]; then
         touch /var/log/sync.log
         chmod 0666 /var/log/sync.log
         chown hacker:hacker /var/log/
         python3 /challenge/bin/file_sync.py >> /var/log/sync.log 2>&1 &
     fi
-    if [ -f /challenge/bin/attendance_check.py ]; then 
+    if [ -f /challenge/bin/attendance_check.py ]; then
         touch /var/log/attendance_check.log
         chmod 0644 /var/log/attendance_check.log
         chmod 770 /challenge/bin/attendance_check.py
         python3 /challenge/bin/attendance_check.py >> $STARTUP_LOG 2>&1 &
     fi
     # Start file change monitor to track edits not captured by VSCode
-    if [ -f /challenge/bin/file_change_monitor.py ] && [ -d "$clevel_work_dir" ]; then 
+    if [ -f /challenge/bin/file_change_monitor.py ] && [ -d "$clevel_work_dir" ]; then
         touch /var/log/file_changes.log
         chmod 0666 /var/log/file_changes.log
         chmod 770 /challenge/bin/file_change_monitor.py
         echo "[i] Starting file change monitor for $clevel_work_dir" | tee -a $STARTUP_LOG
         python3 /challenge/bin/file_change_monitor.py "$clevel_work_dir" /var/log/file_changes.log >> /var/log/file_change_monitor.log 2>&1 &
         echo "[i] File change monitor started with PID $!" | tee -a $STARTUP_LOG
-    fi  
+    fi
 # fi
 
 # this script runs as root, make sure any new files or directories are owned by hacker
 
 # ls -la /challenge/system_tests/*.json | tee -a $STARTUP_LOG
 ##########################################################
-# DISABLED for DEBUGGING 
+# DISABLED for DEBUGGING
 ##########################################################
-echo "Starting final setup and cleanup $(date) in pid=$$" | tee -a $STARTUP_LOG 
+echo "Starting final setup and cleanup $(date) in pid=$$" | tee -a $STARTUP_LOG
 
 if [ "$admin_access" = true ]; then
     echo "Admin access granted" | tee -a $STARTUP_LOG
-    printf 'alias switch="env HOME=/home/me bash"\n' >> /etc/bash.bashrc    
+    printf 'alias switch="env HOME=/home/me bash"\n' >> /etc/bash.bashrc
     find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 777 {} \;
     find /challenge/system_tests -type f -name 'stest*hidden.json' -exec chmod 666 {} \;
-    
-    chmod 4777 /challenge/bin/checker    
+
+    chmod 4777 /challenge/bin/checker
     chmod 777 /challenge/bin/checker.py
-    
+
     # Add any additional admin-specific commands here
 else
-   # rm -f $STARTUP_LOG 
+   # rm -f $STARTUP_LOG
     # set chmod on important files that will be deleted by .bginit
     if [ -f "$base_dir/system_tests/main.bin" ]; then
         find "$base_dir" -type f \( -name model -o -name .levelinit -o -name .init -o -name .bginit -o -path "$base_dir/system_tests/main.bin" \) -exec chmod 700 {} +
     fi
 
-    # rm -f /usr/bin/vim.basic /run/dojo/bin/vim /run/dojo/bin/vim    
+    # rm -f /usr/bin/vim.basic /run/dojo/bin/vim /run/dojo/bin/vim
     touch /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs
-    chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
-fi 
+    chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs
+fi
 
-echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
+echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG
