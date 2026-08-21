@@ -1,0 +1,526 @@
+#!/usr/bin/env bash
+
+start_time=$(date +%s)
+display_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+
+module=$(jq -r '. | "\(.module)"' /challenge/.config/level.json)
+level=$(jq -r '. | "\(.level)"' /challenge/.config/level.json)
+course_code=$(jq -r '.course_code // "cse545"' /challenge/.config/level.json 2>/dev/null || echo cse545)
+course_home="/home/hacker/$course_code"
+course_env_file="$course_home/.${course_code}env"
+
+export PATH=/run/dojo/bin:$PATH
+
+# Create common user directories early; landrun-backed startup is picky about
+# code-server and tool caches already existing.
+mkdir -p "$course_home/.vscode/logs" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share/ultima
+chown -R hacker:hacker "$course_home/.vscode" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share 2>/dev/null || true
+
+# Generate log filename based on current date/time
+STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S)-${module}-${level}.log"
+
+# Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
+echo "$STARTUP_LOG" > /tmp/.startup_log_path
+chmod 644 /tmp/.startup_log_path
+
+# Create symlink at /challenge/startup.log pointing to the current log file
+# Remove old symlink if it exists, then create new one
+rm -f /challenge/startup.log 2>/dev/null || true
+ln -s "$STARTUP_LOG" /challenge/startup.log
+
+echo "Starting setup for $module level $level at  $display_start_time ($start_time) " >> /challenge/startup.log
+
+id >> /challenge/startup.log
+
+rm -f "$course_home/.vscode"/trdb.db.backup_* "$course_home/.vscode"/trdb.db-journal 2>> /challenge/startup.log || true
+if [ -f /home/hacker/core ]; then
+    core_size=$(du -m /home/hacker/core 2>/dev/null | cut -f1)
+    if [[ "$core_size" =~ ^[0-9]+$ ]] && [ "$core_size" -gt 10 ]; then
+        rm -f /home/hacker/core
+        echo "[i] Removed oversized /home/hacker/core (${core_size}MB)" >> /challenge/startup.log
+    fi
+fi
+find "$course_home" -name 'core' -type f -size +10M -delete 2>> /challenge/startup.log || true
+
+mkdir -p /challenge/bin 2>> /challenge/startup.log
+# ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make,python3} /challenge/bin 2>> /challenge/startup.log
+
+workdir="$course_home/$module/$level"
+mkdir -p "$workdir"
+
+printf "\n[update]\ninterval=never\n" >> /etc/pwn.conf
+
+### add to /etc/bash.bashrc config before .moduleinit and .levelinit executed
+cat <<'EOF' >> /etc/bash.bashrc
+if [ "$(id -u)" -eq 1000 ]; then
+    if command -v batcat &> /dev/null; then
+        [ -n "\$TERM" -a -r /challenge/README.md ] && batcat -pp /challenge/README.md
+    else
+        [ -n "\$TERM" -a -r /challenge/README.md ] && cat /challenge/README.md
+    fi    
+    echo " "
+fi
+EOF
+
+#formatted_level=$(printf "%02d" "$level")
+#echo "formatted_level=$formatted_level" >> /challenge/startup.log
+printf "\nalias cdhw='cd $course_home/$module/$level'\n\n" >> /etc/bash.bashrc 
+printf "\nalias batlist='for f in \$(ls -tr); do ls -lat \$f; batcat --paging=never \$f; done'\n\n" >> /etc/bash.bashrc
+
+### end commands added to /etc/bash.bashrc
+
+echo "[i] Updating ownership of files in $workdir" >> /challenge/startup.log
+chown hacker:hacker "$course_home"
+chown -R hacker:hacker "$course_home/.vscode"
+chown hacker:hacker "$workdir"
+# echo "[i] Running the bug fixed command" >> /challenge/startup.log
+for file in "$workdir"/*; do
+    [ -e "$file" ] && chown -h hacker:hacker -- "$file"
+done
+
+# Function to extract account_id from pwn.college flag (bash version of .sync function)
+extract_account_id_from_flag() {
+    local flag="$1"
+    
+    # Extract the serialized part between braces if it's a full flag
+    if [[ "$flag" =~ \{(.+)\} ]]; then
+        serialized_part="${BASH_REMATCH[1]}"
+    else
+        serialized_part="$flag"
+    fi
+    
+    # Reverse the serialized part
+    unreversed=$(echo "$serialized_part" | rev)
+    
+    # Split at the dot to separate data from signature
+    data_part="${unreversed%%.*}"
+    
+    # Add base64 padding if needed
+    padding_needed=$((4 - ${#data_part} % 4))
+    if [ $padding_needed -ne 4 ]; then
+        data_part="${data_part}$(printf '%*s' $padding_needed | tr ' ' '=')"
+    fi
+    
+    # Decode the base64 data part and extract account_id
+    decoded=$(echo "$data_part" | base64 -d 2>/dev/null | jq -r '.[0]' 2>/dev/null)
+    
+    if [[ "$decoded" =~ ^[0-9]+$ ]]; then
+        echo "$decoded"
+    else
+        echo ""
+    fi
+}
+
+touch /home/hacker/.bashrc
+chown hacker:hacker /home/hacker/.bashrc
+chmod 766 /home/hacker/.bashrc
+if ! grep -qF "alias ll='ls -alF'" /home/hacker/.bashrc; then
+    echo "alias ll='ls -alF'" >> /home/hacker/.bashrc
+fi
+touch /home/hacker/.profile
+chown hacker:hacker /home/hacker/.profile
+chmod 766 /home/hacker/.profile
+if ! grep -qF "alias ll='ls -alF'" /home/hacker/.profile; then
+    echo "alias ll='ls -alF'" >> /home/hacker/.profile
+fi
+
+# check for admin access 
+# 95033 io2
+# 97168 io0
+# 97169 io1
+# 1 connor
+admin_ids=(97169 97168 42906 70537 44199 67665 57598 1 132329 66248)
+
+# TEST outside of .init ::> grep -q "digital god" /.admin_access
+active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
+
+# If active_pwn_college_id is blank, try to extract it from /flag
+if [ -z "$active_pwn_college_id" ] && [ -f /flag ]; then
+    echo "[i] active_pwn_college_id is blank, attempting to extract from /flag" >> /challenge/startup.log
+    flag_content=$(cat /flag 2>/dev/null)
+    if [ -n "$flag_content" ]; then
+        extracted_id=$(extract_account_id_from_flag "$flag_content")
+        if [ -n "$extracted_id" ]; then
+            active_pwn_college_id="$extracted_id"
+            echo "[i] Extracted active_pwn_college_id from flag: $active_pwn_college_id" >> /challenge/startup.log
+        else
+            echo "[i] Failed to extract active_pwn_college_id from flag" >> /challenge/startup.log
+        fi
+    fi
+fi
+
+if [ -z "$1" ] && [ "$active_pwn_college_id" -eq "132329" ];then 
+    echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
+    echo "No argument supplied" | tee -a /challenge/startup.log    
+    exit 0
+fi
+
+admin_access=false
+touch /.admin_access
+if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an admin id
+    for id in "${admin_ids[@]}"; do
+        if [[ "$active_pwn_college_id" == "$id" ]]; then
+            admin_access=true
+            echo "$active_pwn_college_id you are now a digital god" > /.admin_access
+            echo "active_pwn_college_id='$active_pwn_college_id'" >> /.user_info
+            echo "admin access granted" >> /challenge/startup.log
+            break
+        fi    
+    done
+fi
+##### clevel_work_dir is where the user work area is located
+clevel_work_dir="$course_home/$(jq -r '. | "\(.module)/\(.level)"' /challenge/.config/level.json)"
+
+mkdir -p "$course_home/.vscode"
+
+level=$(jq -r '.level' /challenge/.config/level.json)    
+module=$(jq -r '.module' /challenge/.config/level.json)
+if [[ ! -d $clevel_work_dir ]] ; then 
+    mkdir -p $clevel_work_dir 
+fi 
+echo "clevel_work_dir=$clevel_work_dir" >> /challenge/startup.log
+
+pwn_college_id=$active_pwn_college_id
+if [ -f /challenge/ed.dat ]; then
+    mv  /challenge/ed.dat /challenge/.config/ed.dat
+fi 
+rm -f /challenge/ed.dat
+if [ -f /challenge/.config/ed.dat ]; then
+    if [ -d /home/me ]; then 
+        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
+    fi 
+    echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log 
+    grep -Poh ".*${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
+    cat /challenge/.config/info.dat >> /challenge/startup.log
+    if [ ! -d /home/me ]; then 
+        rm -f /challenge/.config/ed.dat
+    fi
+else
+    if [ -d /home/me ]; then 
+        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
+    fi 
+fi 
+
+# If pwn_college_id is still blank, try to extract it from /flag
+if [ -z "$pwn_college_id" ] && [ -f /flag ]; then
+    echo "[i] pwn_college_id is blank, attempting to extract from /flag" >> /challenge/startup.log
+    flag_content=$(cat /flag 2>/dev/null)
+    if [ -n "$flag_content" ]; then
+        extracted_id=$(extract_account_id_from_flag "$flag_content")
+        if [ -n "$extracted_id" ]; then
+            pwn_college_id="$extracted_id"
+            echo "[i] Extracted pwn_college_id from flag: $pwn_college_id" >> /challenge/startup.log
+        else
+            echo "[i] Failed to extract pwn_college_id from flag" >> /challenge/startup.log
+        fi
+    fi
+fi
+
+echo "pwn_college_id='$pwn_college_id'" >> /.user_info
+
+# if [ ! /home/me ] && [ "$admin_access" = true ]; then
+    api_token="08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
+    curl --max-time 10 "https://api.cse545.com/is_student" \
+        -H "Content-Type: application/json" \
+        -d "{\"pwn_college_id\": \"$pwn_college_id\", \"api_token\": \"$api_token\", \"module\": \"$module\", \"challenge\": \"$level\"}" \
+        > /.student &            
+# fi 
+
+
+if [ -f /challenge/.sync ]; then
+    touch /var/log/sync.log
+    chown root:root /challenge/.sync /var/log/sync.log
+    chmod 700 /challenge/.sync
+    chmod 666 /var/log/sync.log
+    printf  "[i] Starting .sync : " >> "/challenge/startup.log"
+    python3 /challenge/.sync >> "/challenge/startup.log" 2>&1 &
+    printf "\n" >> "/challenge/startup.log"
+    echo "[i] Started .sync" >> "/challenge/startup.log"
+fi
+
+
+##########################################################################################################################
+######                                      Exam Setup                                                              ######
+##########################################################################################################################
+isExam=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
+echo "[i] isExam=$isExam" >> /challenge/startup.log
+
+# Initialize cs_user_data_dir regardless of exam status
+cs_user_data_dir="/home/hacker/.local/share/code-server"
+
+if [ "$isExam" = true ]; then 
+    echo "[i] Starting exam setup" >> /challenge/startup.log
+    cs_user_data_dir="/home/hacker/.local/share/code-server-545exam"
+    mkdir -p $cs_user_data_dir
+    mkdir -p /home/hacker/.local/share/ultima/
+    touch /home/hacker/.gdbinit
+    
+    mkdir -p /home/hacker/.idapro 2>/dev/null || true
+    touch /home/hacker/.idapro/ida.reg 2>/dev/null || true
+
+    if chown hacker:hacker "$cs_user_data_dir" 2>/dev/null; then
+        echo "[i] Successfully changed ownership of $cs_user_data_dir"
+    else
+        echo "[i] Failed to change ownership of $cs_user_data_dir"
+    fi
+    if chown hacker:hacker "/home/hacker/.local/share/" 2>/dev/null; then
+        echo "[i] Successfully changed ownership of /home/hacker/.local/share/"
+    else
+        echo "[i] Failed to change ownership of /home/hacker/.local/share/"
+    fi
+    if chown hacker:hacker "/home/hacker/.local/share/ultima/" 2>/dev/null; then
+        echo "[i] Successfully changed ownership of /home/hacker/.local/share/ultima/"
+    else
+        echo "[i] Failed to change ownership of /home/hacker/.local/share/ultima/"
+    fi
+    
+    if [ -f /challenge/bin/.examsetup ]; then
+        echo "[i] About to source .examsetup" >> "/challenge/startup.log"
+        # Redirect both stdout and stderr from .examsetup to the log
+        if source /challenge/bin/.examsetup >> "/challenge/startup.log" 2>&1; then
+            echo "[i] Completed .examsetup for $cs_user_data_dir exit code $?" >> "/challenge/startup.log"
+        else
+            echo "[i] .examsetup failed with exit code $?" >> "/challenge/startup.log"
+        fi
+    else
+        echo "[i] Cannot find /challenge/bin/.examsetup" >> "/challenge/startup.log"
+    fi 
+    echo "[i] exiting .examsetup if" >> "/challenge/startup.log"   
+else
+    echo "[i] Not an exam level" >> /challenge/startup.log    
+    if [ ! -d $cs_user_data_dir ]; then 
+        mkdir -p $cs_user_data_dir
+        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+    fi 
+fi
+
+# END Exam Setup   
+echo "[i] Starting workdir and coder file setup" >> /challenge/startup.log
+
+coder_file="$cs_user_data_dir/coder.json"
+echo "[i] Checking ${coder_file} for ${workdir}" >> /challenge/startup.log
+
+if [ -f "${coder_file}" ] && grep -q "$workdir" "${coder_file}"; then 
+    echo "[i] ${coder_file} already contains ${workdir}" >> /challenge/startup.log      
+else
+    echo "[i] Updating ${coder_file} with ${workdir}" >> /challenge/startup.log
+    printf '{
+        "query": {
+            "folder": "'$workdir'"
+        }
+    }\n' |  jq . > ${coder_file}
+
+    chown hacker:hacker ${coder_file}
+    chmod +r ${coder_file}
+    echo "[i] Updated Coder file it now looks like" >> /challenge/startup.log
+    cat $coder_file >> /challenge/startup.log 
+    echo "-----" >> /challenge/startup.log
+fi 
+
+echo "[i] checking for /challenge/patched_dash " >> /challenge/startup.log
+if [ -f /challenge/patched_dash ]; then 
+    chmod 00755 /challenge/patched_dash
+    # most the chals that use call directly to /bin/sh
+    echo "[i] moving /challenge/patched_dash " >> /challenge/startup.log
+    mv /challenge/patched_dash /bin/sh
+fi 
+
+echo "[i] checking for .prelevelinit" >> /challenge/startup.log
+if [ -f /challenge/.prelevelinit ]; then
+    level_start_time=$(date +%s)
+    if head -n 1 /challenge/.prelevelinit | grep -q "python"; then
+        python3 /challenge/.prelevelinit
+    else
+        source /challenge/.prelevelinit
+    fi
+    end_time=$(date +%s)
+    execution_time=$((end_time - level_start_time))
+    echo "[i] Completed .prelevelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
+fi 
+
+echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
+
+touch "$course_home/.vscode/hist.log"
+chown hacker:hacker "$course_home/.vscode/hist.log"
+chmod 0666 "$course_home/.vscode/hist.log"
+inst_id="$(basename $(jq -r '. | "\(.module)"' /challenge/.config/level.json)) $(jq -r '. | "\(.level)"' /challenge/.config/level.json)"
+echo "export PROMPT_COMMAND='HISTTIMEFORMAT=\"%F %T ${inst_id} | \" history 1 >> $course_home/.vscode/hist.log && history -a'" >> /etc/bash.bashrc
+
+# Handle solve templates - copy if no solve file exists
+for ext in py sh c; do
+    template_files=(/challenge/solve-template*.$ext)
+    solve_files=($workdir/solve*.$ext)
+    
+    # Check if template exists (not just glob pattern) and no solve file exists
+    if [ -f "${template_files[0]}" ] && [ ! -f "${solve_files[0]}" ]; then
+        # Copy the first template file found
+        cp "${template_files[0]}" "$workdir/solve.$ext"
+        echo "[i] solved template copied: ${template_files[0]} to $workdir/solve.$ext" >> /challenge/startup.log
+    fi
+done
+
+[ -f /challenge/main.c ] && cp /challenge/main.c $workdir
+
+[ -f /challenge/main.rm.c ] && [ -f $workdir/main.c ] && rm -f $workdir/main.c 
+[ -f /challenge/main.rm.c ] && [ -f $workdir/main.rm.c ] && rm -f $workdir/main.rm.c
+
+echo "[i] checking for .moduleinit" >> /challenge/startup.log
+# module level then .levelinit
+if [ -f /challenge/.moduleinit ]; then
+    mod_start_time=$(date +%s)
+    source /challenge/.moduleinit >> /challenge/startup.log 2>&1
+    moduleinit_exit_code=$?
+    # Don't set -e since it wasn't enabled before
+    if [ $moduleinit_exit_code -ne 0 ]; then
+        echo "[i] .moduleinit failed with exit code $moduleinit_exit_code" >> "/challenge/startup.log"
+    fi
+    end_time=$(date +%s)
+    execution_time=$((end_time - mod_start_time))
+    echo "[i] Completed .moduleinit in .init in $execution_time seconds" >> "/challenge/startup.log" 
+    
+fi 
+
+if [ -f /challenge/.levelinit ]; then
+    level_start_time=$(date +%s)
+    source /challenge/.levelinit    
+    end_time=$(date +%s)
+    execution_time=$((end_time - level_start_time))
+    echo "[i] Completed .levelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
+fi 
+
+# run re-chown at the end to catch any created or copied files
+find /home/hacker ! -path "$course_home/*" ! -user hacker ! -type l -exec chown hacker:hacker {} + 2>> /challenge/startup.log
+echo "[i] find/chown ran with $? " >> /challenge/startup.log
+echo "[i] still have these files with issues " >> /challenge/startup.log
+remaining_files=$(find /home/hacker ! -path "$course_home/*" ! -user hacker ! -type l)
+if [ -n "$remaining_files" ]; then
+    echo "[i] vvvvv Files in /home/hacker that are still not owned by hacker: vvvvv" >> /challenge/startup.log
+    echo "$remaining_files" >> /challenge/startup.log
+    echo "^^^^^ file not changed by chown ^^^^^^" >> /challenge/startup.log
+else 
+    echo "[i] All files in /home/hacker are now owned by hacker" >> /challenge/startup.log
+fi
+
+echo "[i] Checking size of ~/.config/ghidra ">> /challenge/startup.log
+dir_size=$(du -sm /home/hacker/.config/ghidra 2>/dev/null | cut -f1)
+echo "[i] ghidra dir_size=${dir_size}MB" >> /challenge/startup.log
+
+# Only proceed if dir_size is a valid number
+if [[ "$dir_size" =~ ^[0-9]+$ ]]; then
+    # If the ghidra directory size is greater than 100 MB, remove the directory
+    if [ "$dir_size" -gt 100 ]; then
+        rm -rf /home/hacker/.config/ghidra
+        echo "[i] Directory ~/.config/ghidra removed because it exceeded 100 MB." >> /challenge/startup.log
+    else
+        echo "[i] Directory ~/.config/ghidra is within the size limit." >> /challenge/startup.log
+    fi
+else
+    echo "[i] Directory ~/.config/ghidra does not exist or is inaccessible." >> /challenge/startup.log
+fi
+
+### cleanup vscode-cpptools cache if it grows too large
+cache_dir="/home/hacker/.cache/vscode-cpptools"
+if [ -d "$cache_dir" ]; then
+    cache_size=$(du -sm "$cache_dir" 2>/dev/null | cut -f1)
+
+    # Only proceed if cache_size is a valid number
+    if [[ "$cache_size" =~ ^[0-9]+$ ]]; then
+        # If the cpptools cache directory size is greater than 200 MB, remove its contents
+        if [ "$cache_size" -gt 200 ]; then
+            echo "[i] vscode-cpptools cache size=${cache_size}MB exceeds 200MB — removing cache contents from $cache_dir" >> /challenge/startup.log
+            # Remove directories (cache subdirs) and files inside the cache directory but keep the parent dir
+            if [ -d "$cache_dir" ]; then
+                find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>>/challenge/startup.log || true
+                find "$cache_dir" -mindepth 1 -maxdepth 1 -type f -exec rm -f {} + 2>>/challenge/startup.log || true
+                echo "[i] vscode-cpptools cache cleaned" >> /challenge/startup.log
+            else
+                echo "[i] vscode-cpptools cache dir not found: $cache_dir" >> /challenge/startup.log
+            fi
+        else
+            echo "[i] vscode-cpptools cache (${cache_size}MB) is within the size limit" >> /challenge/startup.log
+        fi
+    else
+        echo "[i] vscode-cpptools cache dir does not exist or is inaccessible: $cache_dir" >> /challenge/startup.log
+    fi
+else
+    echo "[i] vscode-cpptools cache dir does not exist: $cache_dir" >> /challenge/startup.log
+fi 
+
+echo "[i] Checking for .bginit ">> /challenge/startup.log
+
+if [ -f /challenge/.bginit ]; then 
+    /challenge/.bginit &
+fi 
+
+echo "[i] Cleanup stage ">> /challenge/startup.log
+
+### cleanup
+if [ "$admin_access" = true ]; then
+    # Copy any sln* files from /challenge to workdir for admin access
+    if find /challenge -maxdepth 1 -name 'sln*' -type f | grep -q .; then
+        find /challenge -maxdepth 1 -name "sln*" -type f -exec cp {} $workdir/ \;
+        echo "[i] Copying from /challenge/sln*" >> /challenge/startup.log
+    else 
+        # Fallback to solutions directory with module-specific naming
+        modnum=$(echo $module | sed -n 's/[^0-9]*0*\([0-9]\+\).*/\1/p')
+        solutionfile="/home/hacker/solutions/$module/sln${modnum}-${level}.sh"
+        echo "[i] solution_file=$solutionfile $([ -f $solutionfile ] && printf 'exists' )" >> /challenge/startup.log
+        [ -f $solutionfile ] && ln -s $solutionfile $workdir
+        solutionfile="/home/hacker/solutions/$module/sln${modnum}-${level}.py"
+        echo "[i] solution_file=$solutionfile $([ -f $solutionfile ] && printf 'exists' )" >> /challenge/startup.log
+        [ -f $solutionfile ] && ln -s $solutionfile $workdir    
+        solutionfile="/home/hacker/solutions/$module/sln${modnum}-${level}.c"
+        echo "[i] solution_file=$solutionfile $([ -f $solutionfile ] && printf 'exists' )" >> /challenge/startup.log
+        [ -f $solutionfile ] && ln -s $solutionfile $workdir    
+    fi 
+else
+    rm -f /challenge/bin/.examsetup /challenge/.init /challenge/.init.cse545 /challenge/.prelevelinit /challenge/.levelinit /challenge/.moduleinit *.rm.c *.rm.cpp *.rm.py /challenge/solution.* /challenge/sln*
+fi
+
+if [ -f /usr/share/gef/gef.py ]; then
+    ln -s /usr/share/gef /opt/gef    
+fi
+
+# Disk usage check for /home/hacker — warn on interactive shell if > 750 MB
+{
+    usage_kb=$(du -s /home/hacker 2>/dev/null | awk '{print $1}')
+    usage_kb=${usage_kb:-0}
+    # convert to MB (du -s typically reports KB)
+    usage_mb=$(( (usage_kb + 1023) / 1024 ))
+    quota_threshold=750
+    bashrc="/etc/bash.bashrc"
+    marker_start="# BEGIN ${course_code^^} DISK QUOTA WARNING"
+    marker_end="# END ${course_code^^} DISK QUOTA WARNING"
+
+    if (( usage_mb > quota_threshold )); then
+        echo "[i] /home/hacker usage=${usage_mb}MB exceeds ${quota_threshold}MB — ensuring warning in $bashrc" | tee -a /challenge/startup.log
+        # Add the warning block if not already present
+        if ! grep -Fq "$marker_start" "$bashrc"; then
+            cat >> "$bashrc" <<EOF
+$marker_start
+if [[ -t 1 ]] && [[ -n "\$PS1" ]]; then
+    echo ""
+    echo "WARNING: Your /home/hacker directory is using over 750 MB. You are nearing the disk quota limit."
+    echo "Top 5 files larger than 20 MB (consider deleting):"
+    # list top 5 files over 20M, sorted by size (human-readable)
+    find /home/hacker -type f -size +20M -exec du -h {} + 2>/dev/null | sort -hr | head -n5
+    echo ""
+fi
+$marker_end
+EOF
+            echo "[i] Disk quota warning added to $bashrc" | tee -a /challenge/startup.log
+        else
+            echo "[i] Disk quota warning already present in $bashrc" | tee -a /challenge/startup.log
+        fi
+    else
+        # If usage is below threshold, remove an existing warning block to avoid stale warnings
+        if grep -Fq "$marker_start" "$bashrc"; then
+            echo "[i] /home/hacker usage=${usage_mb}MB is below threshold — removing warning from $bashrc" | tee -a /challenge/startup.log
+            sed -i '/^# BEGIN CSE240 DISK QUOTA WARNING$/,/^# END CSE240 DISK QUOTA WARNING$/d' "$bashrc" || true
+        fi
+    fi
+}
+
+echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') finished with .init" >> /challenge/startup.log
+
+chown hacker:hacker -R "$course_home/"

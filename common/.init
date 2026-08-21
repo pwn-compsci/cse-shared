@@ -4,6 +4,11 @@ course_code=$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/
 course_home="/home/hacker/$course_code"
 course_env_file="$course_home/.${course_code}env"
 
+if [ "$course_code" = "cse545" ] && [ -f /challenge/.init.cse545 ]; then
+    source /challenge/.init.cse545 "$@"
+    exit $?
+fi
+
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
 mkdir -p "$course_home/.vscode/logs" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share/ultima
