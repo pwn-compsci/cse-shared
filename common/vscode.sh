@@ -1,12 +1,16 @@
 #!/bin/bash
 
+course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
+course_home=${course_home:-"/home/hacker/$course_code"}
+course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
+
 # Read the log file path created by .init
 if [ -f /tmp/.startup_log_path ]; then
     STARTUP_LOG=$(cat /tmp/.startup_log_path)
 else
     # Fallback if .init hasn't run yet
-    STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
-    mkdir -p /home/hacker/cse240/.vscode/logs
+    STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p "$course_home/.vscode/logs"
 fi
 
 echo "[c] Attempting to start code-server..." >> $STARTUP_LOG
@@ -19,23 +23,21 @@ else
   EXTENSIONS_DIR="/nix/store/5b5cpsjwl6y8qbpypl5kgfdv8cab5zbw-code-service/share/code/extensions"
 fi
 
-code_server_data_dir=/home/hacker/.local/share/code-server-exam/
-
 prepare_landrun_paths() {
   # landrun refuses missing paths that are listed as writable. Fresh users may
   # not have these directories until code-server has successfully started once.
   mkdir -p \
     /home/hacker/.cache \
     /home/hacker/.local/share/ultima \
-    /home/hacker/cse240/.vscode \
+    "$course_home/.vscode" \
     "$code_server_data_dir" \
     "$cs_user_data_dir"
-  touch /home/hacker/cse240/.cse240env /home/hacker/.profile /home/hacker/.bash_history
+  touch "$course_env_file" /home/hacker/.profile /home/hacker/.bash_history
   chown -R hacker:hacker \
     /home/hacker/.cache \
     /home/hacker/.local \
-    /home/hacker/cse240/.vscode \
-    /home/hacker/cse240/.cse240env \
+    "$course_home/.vscode" \
+    "$course_env_file" \
     /home/hacker/.profile \
     /home/hacker/.bash_history
 }
@@ -51,6 +53,8 @@ if [ -z "$clevel_work_dir" ] || [ -z "$cs_user_data_dir" ] || [ -z "$coder_works
   echo "[c] ERROR: Missing required parameters" >> $STARTUP_LOG
   exit 1
 fi
+
+code_server_data_dir="${cs_user_data_dir%/}/"
 
 prepare_landrun_paths
 
@@ -81,7 +85,7 @@ while [ $attempts -lt $max_attempts ]; do
       --ro  $coder_workspace_file,/.user_info
       --rw /home/hacker/.cache,/home/hacker/.local/
       --rw $cs_user_data_dir,/home/hacker/.local/share/ultima/ 
-      --rw /home/hacker/.bashrc,/home/hacker/cse240/.vscode,/home/hacker/cse240/.cse240env,/home/hacker/.profile,/etc/bash.bashrc,/home/hacker/.bash_history
+      --rw /home/hacker/.bashrc,$course_home/.vscode,$course_env_file,/home/hacker/.profile,/etc/bash.bashrc,/home/hacker/.bash_history
       --rwx $clevel_work_dir
       --rwx /dev/null,/dev/ptmx,/dev/pts,/dev/tty,/dev/urandom,/dev/random 
       --rwx /tmp 
