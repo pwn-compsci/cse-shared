@@ -1269,7 +1269,8 @@ def process_login(exam_password, ip_addr):
             start_exam_reporter()
             return response
         else:
-            return loginpage(message="Login failed, code-server not running, please wait 10 seconds and try again")
+            logger.warning("Login succeeded, but code-server readiness check timed out; redirecting so the browser can continue waiting")
+            return response
     else:
         logger.warning(f"Login failed for {ip_addr}")
         return loginpage(message="Login failed, incorrect password, please try again")
