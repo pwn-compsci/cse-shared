@@ -240,13 +240,15 @@ def check_session_attendance(pwn_college_id):
             
             # Check valid_session field to determine if a proctor session exists
             valid_session = result.get("valid_session", False)
-            if not valid_session:
+            attending = result.get("attending", False)
+            password = result.get("password", None)
+            if not valid_session and not attending:
                 last_session_attendance_error = result.get("message", "No valid proctor session found")
                 logger.warning(f"No valid proctor session found: {result.get('message', 'Unknown reason')}")
                 return None
-            
-            attending = result.get("attending", False)
-            password = result.get("password", None)
+            if not valid_session and attending:
+                logger.info("Attendance API returned attending=True without valid_session; accepting attendance marker")
+
             attendance_status = result.get("attendance_status", {})
             diagnostic = result.get("attendance_diagnostic") or attendance_status.get("attendance_diagnostic") or {}
             if not attending and diagnostic.get("hint"):
