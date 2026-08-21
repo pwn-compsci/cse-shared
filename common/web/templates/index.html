@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Exam Login</title>
+  <style>
+    body { 
+        font-family: monospace; 
+        padding: 20px; 
+        background: #111; 
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+    }
+    h1, h2 { color: #9fd; text-align: center; }
+    .container {
+        background-color: #333333;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        text-align: center;
+        width: 400px;
+        margin: 20px;
+    }
+    input[type="text"], input[type="submit"] {
+        font-size: 1.2em;
+        margin: 10px 0;
+        padding: 10px;
+        width: 90%;
+        border: 1px solid #CCCCCC;
+        border-radius: 5px;
+        background-color: #444444;
+        color: #FFFFFF;
+    }
+    input[type="submit"] {
+        background-color: #555555;
+        cursor: pointer;
+    }
+    input[type="submit"]:hover {
+        background-color: #666666;
+    }
+    input[type="submit"]:disabled {
+      background-color: #333333;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .warning {
+        color: #ff6b35;
+        background-color: #2a1f1f;
+        border: 1px solid #ff6b35;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 15px 0;
+        font-weight: bold;
+    }
+    .pass { color: #4f4; }
+    .fail { color: #f66; }
+    .info { color: #ccc; }
+    .bypass { color: #ff9; }
+    pre { background: #222; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    .popup {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #333333;
+        color: #FFFFFF;
+        padding: 20px;
+        border: 2px solid #CCCCCC;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+    }
+    .popup h3 {
+        margin: 0 0 10px 0;
+    }
+    .overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+    }
+    #rldb-section {
+      display: block;
+    }
+    #warning-message a {
+      color: #ffb347;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Exam Password</h2>
+    {% if pwn_college_id %}
+    <p style="color: #9fd; margin-bottom: 15px;">PWN College ID: {{ pwn_college_id }}</p>
+    {% endif %}
+    <form method="post" action="login" onsubmit="return validateForm()">
+      {% if pwn_college_id %}
+      <input type="hidden" name="pwn_college_id" value="{{ pwn_college_id }}">
+      {% endif %}
+      <div>
+        <label for="token_resp" style="font-size: 1.2em;">{{ studentinfo|default("Student: Unknown") }}</label><br>
+        <input id="token_resp" name="token_resp" type="text" placeholder="Enter Password" autofocus><br>
+      </div>
+      <div id="warning-message" class="warning" style="{% if message %}display: block;{% else %}display: none;{% endif %}">
+        {{ message|default("Error occurred while logging in")|safe }}
+      </div>
+      <input id="submit-btn" type="submit" value="Submit">
+    </form>
+  </div>
+  
+  <div class="overlay" id="overlay"></div>
+  <div class="popup" id="popup">
+      <h3>Processing</h3>
+      <p>Your request is being processed, please wait...</p>
+  </div>
+
+  <script>
+    // const PWN_COLLEGE_ID = '{{ pwn_college_id|default("") }}';
+    let rldbDetected = false;
+    
+    document.querySelector('form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        document.getElementById('overlay').style.display = 'block';
+        document.getElementById('popup').style.display = 'block';
+        setTimeout(() => event.target.submit(), 500); // Delay to show popup
+    });
+
+    function validateForm() {
+        const tokenResp = document.getElementById('token_resp').value.trim();
+       
+        if (!tokenResp) {
+            // Show themed warning instead of alert
+            const warning = document.getElementById('warning-message');
+            warning.textContent = 'Please enter a password.';
+            warning.style.display = 'block';
+            event.preventDefault();
+            return false;
+        }
+        return true;
+    }
+
+    window.onload = function() {
+      // show any warning message if provided
+      // (handled by Jinja2 above in the HTML, do not overwrite with JS)
+      document.getElementById('submit-btn').disabled = false;            
+    };
+  </script>
+</body>
+</html>
