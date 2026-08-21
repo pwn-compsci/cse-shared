@@ -84,6 +84,12 @@ def requires_exam_password(value=None):
 def has_exam_admin_type_lookup_error():
     return bool(exam_admin_type_lookup_error)
 
+def is_admin_bypass_user(pwn_college_id):
+    try:
+        return int(pwn_college_id) in BYPASS_RLDB_IDS if pwn_college_id else False
+    except (ValueError, TypeError):
+        return False
+
 # Hardcoded set of pwn_college_id values that skip RLDB check
 #, 97169 
 # 68880 is Weiyu admin account
@@ -1087,22 +1093,19 @@ def reset():
 def process_login(exam_password, ip_addr):
     
     logger.info(f"=== process_login called === exam_admin_type: '{exam_admin_type}', exam_password: {exam_password is not None}, is_practice_exam: {is_practice_exam}, pwn_college_id: {pwn_college_id}")
-
-    if has_exam_admin_type_lookup_error():
-        logger.error(f"Blocking login because exam admin type lookup failed: {exam_admin_type_lookup_error}")
-        return render_exam_config_error()
     
     # Check if this is an admin/bypass user (convert to int for comparison)
-    try:
-        is_admin = int(pwn_college_id) in BYPASS_RLDB_IDS if pwn_college_id else False
-    except (ValueError, TypeError):
-        is_admin = False
+    is_admin = is_admin_bypass_user(pwn_college_id)
     if is_admin:
         logger.info(f"Admin user detected (PWN ID {pwn_college_id}) - bypassing all authentication requirements")
     
     if is_practice_exam:
         logger.info("Practice exam detected - bypassing all authentication requirements")
     protections_bypassed = is_admin or is_practice_exam
+
+    if has_exam_admin_type_lookup_error() and not protections_bypassed:
+        logger.error(f"Blocking login because exam admin type lookup failed: {exam_admin_type_lookup_error}")
+        return render_exam_config_error()
 
     if not protections_bypassed:
         gate_status = check_exam_gate_status(pwn_college_id, exam_module, exam_challenge)
@@ -1283,7 +1286,7 @@ def login_or_proxy():
         return render_template_string(MISSING_VAR_NOTICE), 500
     if os.path.exists(FLAG_EXEMPTED_PATH):
         return showflag()
-    if has_exam_admin_type_lookup_error():
+    if has_exam_admin_type_lookup_error() and not (is_admin_bypass_user(pwn_college_id) or is_practice_exam):
         logger.error(f"Blocking access before RLDB check because exam admin type lookup failed: {exam_admin_type_lookup_error}")
         return render_exam_config_error()
     exam_password = request.form.get('exam_password')
@@ -1400,7 +1403,11 @@ if __name__ == '__main__':
         logger.error(f"Error reading exam info from {LEVEL_CONFIG_PATH}: {e}")
     
     # Get exam administration type from API
-    if pwn_college_id and exam_module and exam_challenge:
+    if is_admin_bypass_user(pwn_college_id):
+        logger.info(f"Admin user detected (PWN ID {pwn_college_id}) - skipping exam admin type lookup")
+    elif is_practice_exam:
+        logger.info("Practice exam detected - skipping exam admin type lookup")
+    elif pwn_college_id and exam_module and exam_challenge:
         exam_admin_type = get_exam_admin_type(pwn_college_id, exam_module, exam_challenge)
         logger.info(f"Exam administration type set to: {exam_admin_type}")
     else:
