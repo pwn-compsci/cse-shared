@@ -20,10 +20,25 @@ else
 fi
 
 code_server_data_dir=/home/hacker/.local/share/code-server-exam/
-if [ ! -d $code_server_data_dir ]; then
-  mkdir -p $code_server_data_dir
-  chown hacker:hacker $code_server_data_dir
-fi
+
+prepare_landrun_paths() {
+  # landrun refuses missing paths that are listed as writable. Fresh users may
+  # not have these directories until code-server has successfully started once.
+  mkdir -p \
+    /home/hacker/.cache \
+    /home/hacker/.local/share/ultima \
+    /home/hacker/cse240/.vscode \
+    "$code_server_data_dir" \
+    "$cs_user_data_dir"
+  touch /home/hacker/cse240/.cse240env /home/hacker/.profile /home/hacker/.bash_history
+  chown -R hacker:hacker \
+    /home/hacker/.cache \
+    /home/hacker/.local \
+    /home/hacker/cse240/.vscode \
+    /home/hacker/cse240/.cse240env \
+    /home/hacker/.profile \
+    /home/hacker/.bash_history
+}
 
 attempts=0
 max_attempts=5
@@ -36,6 +51,8 @@ if [ -z "$clevel_work_dir" ] || [ -z "$cs_user_data_dir" ] || [ -z "$coder_works
   echo "[c] ERROR: Missing required parameters" >> $STARTUP_LOG
   exit 1
 fi
+
+prepare_landrun_paths
 
 # Ensure code-service directory exists with correct ownership
 mkdir -p /run/dojo/var/code-service
