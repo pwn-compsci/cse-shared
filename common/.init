@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 
+course_code=$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)
+course_home="/home/hacker/$course_code"
+course_env_file="$course_home/.${course_code}env"
 
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
 # Create logs directory if it doesn't exist
-mkdir -p /home/hacker/cse240/.vscode/logs
-mkdir -p /home/hacker/.cache 
-chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
+mkdir -p "$course_home/.vscode/logs" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share/ultima
+chown -R hacker:hacker "$course_home/.vscode" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share 2>/dev/null || true
 
 # Generate log filename based on current date/time
-STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
 echo "$STARTUP_LOG" > /tmp/.startup_log_path
@@ -20,8 +22,7 @@ rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
 
 # Clean up any leftover database backup and journal files to prevent disk space issues
-rm -f /home/hacker/cse240/.vscode/trdb.db.backup_* 2>/dev/null || true
-rm -f /home/hacker/cse240/.vscode/trdb.db-journal 2>/dev/null || true
+rm -f "$course_home/.vscode"/trdb.db.backup_* "$course_home/.vscode"/trdb.db-journal 2>/dev/null || true
 
 start_time=$(date +%s)
 if [[ ! -f $STARTUP_LOG ]]; then 
@@ -41,14 +42,16 @@ if [ -f /home/hacker/core ]; then
 fi
 
 nohup bash -c '
-  [ -f ~/cse240/.vscode/trdb.db ] &&
-  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((750*1024*1024)) ] &&
-  rm -f ~/cse240/.vscode/trdb.db ~/cse240/.vscode/trdb.db-journal ' | tee -a $STARTUP_LOG 2>&1 
+  course_home="$1"
+  [ -f "$course_home/.vscode/trdb.db" ] &&
+  [ "$(stat -c%s "$course_home/.vscode/trdb.db")" -gt $((750*1024*1024)) ] &&
+  rm -f "$course_home/.vscode/trdb.db" "$course_home/.vscode/trdb.db-journal"
+' bash "$course_home" | tee -a $STARTUP_LOG 2>&1 
 
-# Delete all core files in /home/hacker/cse240
-if find /home/hacker/cse240 -name 'core' -type f -print -quit | grep -q .; then
-    echo "[i] Removing core files from /home/hacker/cse240" | tee -a $STARTUP_LOG
-    find /home/hacker/cse240 -name 'core' -type f -exec rm -f {} \;
+# Delete all core files in the course home
+if find "$course_home" -name 'core' -type f -print -quit | grep -q .; then
+    echo "[i] Removing core files from $course_home" | tee -a $STARTUP_LOG
+    find "$course_home" -name 'core' -type f -exec rm -f {} \;
 fi
 
 ### cleanup vscode-cpptools cache if it grows too large
@@ -367,14 +370,14 @@ if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then
     echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
 fi 
 
-if [ ! -d /home/hacker/cse240 ]; then 
-    mkdir -p /home/hacker/cse240
-    mkdir -p /home/hacker/cse240/.vscode 
-    mkdir -p /home/hacker/cse240/labw    
-    mkdir -p /home/hacker/cse240/grplab
-    chown hacker:hacker -R /home/hacker/cse240
+if [ ! -d "$course_home" ]; then 
+    mkdir -p "$course_home"
+    mkdir -p "$course_home/.vscode" 
+    mkdir -p "$course_home/labw"    
+    mkdir -p "$course_home/grplab"
+    chown hacker:hacker -R "$course_home"
 fi 
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+chown hacker:hacker -R "$course_home/.vscode"
 
 if [ ! -f /home/hacker/.bashrc ]; then 
     cp /etc/skel/.bashrc /home/hacker/.bashrc
@@ -411,7 +414,7 @@ if [ -f /challenge/pex_heartbeat ]; then
     echo "Started pex_heartbeat " | tee -a $STARTUP_LOG
 fi 
 
-ENVFILE=/home/hacker/cse240/.cse240env
+ENVFILE="$course_env_file"
 
 # create a .cse240env file if not existing
 if [ ! -f $ENVFILE ]; then 
@@ -1143,12 +1146,12 @@ if [ -f "$logfile" ]; then
     fi
 fi
 
-touch /home/hacker/cse240/.vscode/cp.dat
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+touch "$course_home/.vscode/cp.dat"
+chown hacker:hacker -R "$course_home/.vscode"
 
-echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240/.vscode/cp.dat ' >> /etc/bash.bashrc
+echo "echo \"\$(printf \"bash started at \$(date)\" | base64)\" >> $course_home/.vscode/cp.dat " >> /etc/bash.bashrc
 
-echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> /home/hacker/cse240/.vscode/cp.dat
+echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> "$course_home/.vscode/cp.dat"
 ############################################################################################
 
 echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
