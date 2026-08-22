@@ -6,7 +6,6 @@ import os
 import base64
 import json 
 import logging
-import random
 import re 
 import glob
 import shutil
@@ -15,6 +14,7 @@ import signal
 import sys
 import json
 import os 
+import zipfile
 from pathlib import Path
 import shutil 
 
@@ -90,9 +90,6 @@ def get_last_line():
 
 
 def update_package_json(new_extdir):
-    # Generate a random number between 1 and 32000
-    random_number = random.randint(1, 32000)
-
     # Iterate over matching directories
     for dirname in os.listdir(new_extdir):
         if re.match(r'cse240\.pwn-cpmate.*', dirname):
@@ -103,12 +100,27 @@ def update_package_json(new_extdir):
                 with open(json_file_path, 'r') as file:
                     data = json.load(file)
 
-                data['name'] = f'pwn-cpmate-{random_number}'
-                data['displayName'] = f'pwn-cpmate-{random_number}'
+                activation_events = data.setdefault('activationEvents', [])
+                if '*' not in activation_events:
+                    activation_events.append('*')
 
                 with open(json_file_path, 'w') as file:
                     json.dump(data, file, indent=2)
-                logging.info(f'Updated {json_file_path} to pwn-cpmate-{random_number}')
+                logging.info(f'Updated {json_file_path} activation events')
+
+def extract_extension_vsix(source_file, new_extdir):
+    extension_dir = os.path.join(new_extdir, 'cse240.pwn-cpmate-0.0.2')
+    temp_dir = f'/tmp/pwn-cpmate-extract-{os.getpid()}'
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    with zipfile.ZipFile(source_file) as vsix:
+        vsix.extractall(temp_dir)
+    extracted_dir = os.path.join(temp_dir, 'extension')
+    if not os.path.isdir(extracted_dir):
+        raise RuntimeError(f"VSIX did not contain extension directory: {source_file}")
+    shutil.rmtree(extension_dir, ignore_errors=True)
+    shutil.copytree(extracted_dir, extension_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    logging.info(f"Extracted extension from {source_file} to {extension_dir}")
 
 def attempt_to_reload_extension():
     new_extdir="/run/challenge/share/code/extensions"
@@ -143,14 +155,7 @@ def attempt_to_reload_extension():
                 if os.path.abspath(source_file) != os.path.abspath(destination_path):
                     shutil.copy(source_file, destination_path)
 
-                for dirname in os.listdir(new_extdir):
-                    if re.match(r'cse240\.pwn-cpmate.*', dirname):
-                        shutil.rmtree(os.path.join(new_extdir, dirname))
-
-                subprocess.run(["/run/dojo/bin/code-server","-vvv",
-                            "--auth=none", "--disable-telemetry",
-                            "--extensions-dir", new_extdir,
-                            "--install-extension", destination_path], check=True)
+                extract_extension_vsix(destination_path, new_extdir)
                 logging.info(f"Reinstall completed from {source_file}")
 
             except Exception as ex:
