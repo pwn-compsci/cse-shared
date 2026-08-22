@@ -12,9 +12,9 @@ scripts=(
 cd "$(dirname "$0")" || exit 1
 
 run_as=()
-if [[ "$(id -un)" == "etrickel" ]]; then
+if [[ "$(stat -c %U .)" == "duck" && "$(id -un)" != "duck" ]]; then
   run_as=(sudo -H -u duck --)
-  echo "Logged in as etrickel; running dojo update commands as duck."
+  echo "Current directory is owned by duck; running dojo update commands as duck."
 fi
 
 # Git add, commit, and push
