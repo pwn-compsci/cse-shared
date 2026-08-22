@@ -444,23 +444,58 @@ if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then
     fi
     export SHELL=$(which zsh)
 else
-    echo "############################# " >> /etc/bash.bashrc
-    # Extract module and level info once for session tracking
-    inst_id="$(jq -r '"\(.hwdir | split("/") | last) \(.level)"' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
-    
-    # Set as environment variable for cleaner access
-    echo "export INST_ID='${inst_id}'" >> /etc/bash.bashrc
-    
-    # Log command history with context - using function for clarity
-    cat >> /etc/bash.bashrc << 'HIST_EOF'
-log_cmd() {
-    [ -n "$BASH_COMMAND" ] && history 1 | sed "s/^/$(date '+%F %T') ${INST_ID} | /" >> ~/.local/share/ultima/c.dat 2>/dev/null || true
+    command_history_file="/home/hacker/.local/share/ultima/c.dat"
+    mkdir -p "$(dirname "$command_history_file")"
+    touch "$command_history_file"
+    chmod 666 "$command_history_file"
+    chown hacker:hacker "$command_history_file"
+
+    # Extract module and level info once for session tracking.
+    inst_id="$(jq -r '[
+        ((.module | select(. != null and . != "")) // (.hwdir | split("/") | last) // "unknown"),
+        (.level // "unknown")
+    ] | join(" ")' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
+
+    sed -i '/^# CSE_COMMAND_HISTORY_START$/,/^# CSE_COMMAND_HISTORY_END$/d' /etc/bash.bashrc
+    cat >> /etc/bash.bashrc << HIST_EOF
+
+# CSE_COMMAND_HISTORY_START
+export INST_ID='${inst_id}'
+export CSE_COMMAND_HISTORY_FILE='${command_history_file}'
+__cse_log_cmd() {
+    local current_histcmd="\${HISTCMD:-}"
+    [ -n "\$current_histcmd" ] || return 0
+    [ "\$current_histcmd" != "\${__cse_last_logged_histcmd:-}" ] || return 0
+    __cse_last_logged_histcmd="\$current_histcmd"
+
+    history -a
+    history 1 | sed "s/^/\$(date '+%F %T') \${INST_ID:-unknown unknown} | /" >> "\${CSE_COMMAND_HISTORY_FILE:-/home/hacker/.local/share/ultima/c.dat}" 2>/dev/null || true
 }
-export PROMPT_COMMAND='log_cmd; history -a'
+case ";\${PROMPT_COMMAND:-};" in
+    *";__cse_log_cmd;"*) ;;
+    *) PROMPT_COMMAND="__cse_log_cmd\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}" ;;
+esac
+export PROMPT_COMMAND
+# CSE_COMMAND_HISTORY_END
 HIST_EOF
     
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/bash.bashrc
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/bash.bashrc
+
+    sed -i '/^# CSE_COMMAND_HISTORY_USER_START$/,/^# CSE_COMMAND_HISTORY_USER_END$/d' /home/hacker/.bashrc
+    cat >> /home/hacker/.bashrc << 'USER_HIST_EOF'
+
+# CSE_COMMAND_HISTORY_USER_START
+if declare -F __cse_log_cmd >/dev/null 2>&1; then
+    case ";${PROMPT_COMMAND:-};" in
+        *";__cse_log_cmd;"*) ;;
+        *) PROMPT_COMMAND="__cse_log_cmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+    esac
+    export PROMPT_COMMAND
+fi
+# CSE_COMMAND_HISTORY_USER_END
+USER_HIST_EOF
+    chown hacker:hacker /home/hacker/.bashrc
             
     printf 'echo "Added commands to BASHRC FILE!!!!" | tee -a $STARTUP_LOG '
 
