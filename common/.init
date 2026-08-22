@@ -450,10 +450,14 @@ else
     chmod 666 "$command_history_file"
     chown hacker:hacker "$command_history_file"
 
-    # Extract module and level info once for session tracking.
+    # Extract module and challenge info once for session tracking.
     inst_id="$(jq -r '[
         ((.module | select(. != null and . != "")) // (.hwdir | split("/") | last) // "unknown"),
-        (.level // "unknown")
+        if (.course_code // "" | ascii_downcase) == "cse545" then
+            ((.challenge | select(. != null and . != "")) // (.level | select(. != null and . != "")) // "unknown")
+        else
+            ((.level | select(. != null and . != "")) // (.challenge | select(. != null and . != "")) // "unknown")
+        end
     ] | join(" ")' /challenge/.config/level.json 2>/dev/null || echo "unknown unknown")"
 
     sed -i '/^# CSE_COMMAND_HISTORY_START$/,/^# CSE_COMMAND_HISTORY_END$/d' /etc/bash.bashrc
