@@ -93,9 +93,6 @@ def update_package_json(new_extdir):
     # Generate a random number between 1 and 32000
     random_number = random.randint(1, 32000)
 
-    # Construct the path to the directory
-    directory_path = os.path.join(new_extdir, 'cse240.pwn-cpmate*')
-
     # Iterate over matching directories
     for dirname in os.listdir(new_extdir):
         if re.match(r'cse240\.pwn-cpmate.*', dirname):
@@ -103,16 +100,14 @@ def update_package_json(new_extdir):
 
             # Ensure the file exists
             if os.path.isfile(json_file_path):
-                # Read the existing JSON data
                 with open(json_file_path, 'r') as file:
-                    data = file.read()
+                    data = json.load(file)
 
-                # Replace the target string with the new value containing the random number
-                new_data = re.sub(r'"pwn-cpmate.*?"', f'"pwn-cpmate-{random_number}"', data)
+                data['name'] = f'pwn-cpmate-{random_number}'
+                data['displayName'] = f'pwn-cpmate-{random_number}'
 
-                # Write the changes back to the file
                 with open(json_file_path, 'w') as file:
-                    file.write(new_data)
+                    json.dump(data, file, indent=2)
                 logging.info(f'Updated {json_file_path} to pwn-cpmate-{random_number}')
 
 def attempt_to_reload_extension():
@@ -132,24 +127,35 @@ def attempt_to_reload_extension():
 
         if os.path.exists(workspace):
             try:
-                source_pattern = '/challenge/pwn-cpmate-*.vsix'
+                source_patterns = [
+                    '/challenge/pwn-cpmate-*.vsix',
+                    f'{new_extdir}/pwn-cpmate-*.vsix',
+                ]
                 destination_path = f'{new_extdir}/pwn-cpmate-0.0.2.vsix'
-                files = glob.glob(source_pattern)
-                if files:
-                    # Copy the first matching file to the new location
-                    shutil.copy(files[0], destination_path)
-                    
-                    subprocess.run(["/run/dojo/bin/code-server","-vvv",
-                                "--auth=none", "--disable-telemetry", 
-                                "--extensions-dir", new_extdir,
-                                "--install-extension", destination_path], check=True)
-                    logging.info(f"Reinstall completed")
+                files = []
+                for source_pattern in source_patterns:
+                    files.extend(glob.glob(source_pattern))
+                if not files:
+                   logging.error(f"No vsix file found matching {source_patterns}; aborting extension reload.")
+                   return False
 
-                else:
-                   logging.error("No vsix file found in /challenge matching the pattern.")
+                source_file = max(files, key=os.path.getmtime)
+                if os.path.abspath(source_file) != os.path.abspath(destination_path):
+                    shutil.copy(source_file, destination_path)
+
+                for dirname in os.listdir(new_extdir):
+                    if re.match(r'cse240\.pwn-cpmate.*', dirname):
+                        shutil.rmtree(os.path.join(new_extdir, dirname))
+
+                subprocess.run(["/run/dojo/bin/code-server","-vvv",
+                            "--auth=none", "--disable-telemetry",
+                            "--extensions-dir", new_extdir,
+                            "--install-extension", destination_path], check=True)
+                logging.info(f"Reinstall completed from {source_file}")
 
             except Exception as ex:
                 logging.error(f"Error trying to reinstall extension {ex}")
+                return False
             
             update_package_json(new_extdir)
 
