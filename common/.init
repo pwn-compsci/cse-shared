@@ -754,6 +754,13 @@ CHECKSTATUS_NOTICE_EOF
         #fi
     fi 
     
+    # Copy README.md fallback if it exists. This is separate from the normal
+    # template copy so existing work directories still receive requirements.
+    if [ -f /challenge/template/README.md ] && [ ! -f "$clevel_work_dir/README.md" ]; then
+        cp /challenge/template/README.md "$clevel_work_dir/README.md"
+        echo "[i] Found template README.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
+    fi
+
     # Copy REFERENCE.md if it exists
     if [ -f /challenge/REFERENCE.md ]; then     
         cp /challenge/REFERENCE.md $clevel_work_dir/REFERENCE.md
