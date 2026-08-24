@@ -127,8 +127,8 @@ create_model_bad() {
 }
 
 
-# Function to ensure "security.workspace.trust.enabled": false is set in $1/User/settings.json
-ensure_workspace_trust_disabled() {
+# Function to enforce VS Code user settings in $1/User/settings.json.
+configure_user_vscode_settings() {
     local user_dir="$1"
     local settings_json="$user_dir/User/settings.json"
     local tmpfile
@@ -138,28 +138,37 @@ ensure_workspace_trust_disabled() {
     mkdir -p "$settings_dir"
     chown hacker:hacker -R "$user_dir" "$settings_dir"
 
-    # If file doesn't exist, create with the setting
+    # If file doesn't exist, create with all default settings.
     if [ ! -f "$settings_json" ]; then
-        echo "[c] Creating $settings_json with workspace trust disabled" | tee -a $STARTUP_LOG
-        printf '{\n  "security.workspace.trust.enabled": false\n}\n' > "$settings_json"        
+        echo "[c] Creating $settings_json with VS Code user defaults" | tee -a $STARTUP_LOG
+        printf '{\n  "security.workspace.trust.enabled": false,\n  "chat.commandCenter.enabled": false,\n  "workbench.secondarySideBar.defaultVisibility": "hidden"\n}\n' > "$settings_json"
+        chown hacker:hacker "$settings_json"
         return
     fi
 
-    # If already set, do nothing
-    if grep -q '"security\.workspace\.trust\.enabled"\s*:\s*false' "$settings_json"; then
-        echo "[c] Workspace trust is already disabled in $settings_json" | tee -a $STARTUP_LOG
-        return
-    fi
-
-    # Add the setting using jq if possible, else append manually
+    # Always reset workspace trust to disabled. Only set the UI defaults when absent.
     if command -v jq >/dev/null 2>&1; then
         tmpfile=$(mktemp)
-        jq '. + {"security.workspace.trust.enabled": false}' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
-        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG
+        jq '.["security.workspace.trust.enabled"] = false
+            | if has("chat.commandCenter.enabled") then . else .["chat.commandCenter.enabled"] = false end
+            | if has("workbench.secondarySideBar.defaultVisibility") then . else .["workbench.secondarySideBar.defaultVisibility"] = "hidden" end' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
+        chown hacker:hacker "$settings_json"
+        echo "[c] VS Code user settings enforced in $settings_json" | tee -a $STARTUP_LOG
     else
-        # Fallback: append before last }
-        sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
-        echo "[c] Workspace trust is now disabled in $settings_json" | tee -a $STARTUP_LOG 
+        # Fallback: best-effort edits for simple JSON settings files.
+        if grep -q '"security\.workspace\.trust\.enabled"' "$settings_json"; then
+            sed -i 's/"security\.workspace\.trust\.enabled"[[:space:]]*:[[:space:]]*[^,}]*/"security.workspace.trust.enabled": false/' "$settings_json"
+        else
+            sed -i '$ s/}/,\n  "security.workspace.trust.enabled": false\n}/' "$settings_json"
+        fi
+        if ! grep -q '"chat\.commandCenter\.enabled"' "$settings_json"; then
+            sed -i '$ s/}/,\n  "chat.commandCenter.enabled": false\n}/' "$settings_json"
+        fi
+        if ! grep -q '"workbench\.secondarySideBar\.defaultVisibility"' "$settings_json"; then
+            sed -i '$ s/}/,\n  "workbench.secondarySideBar.defaultVisibility": "hidden"\n}/' "$settings_json"
+        fi
+        chown hacker:hacker "$settings_json"
+        echo "[c] VS Code user settings enforced in $settings_json" | tee -a $STARTUP_LOG
     fi
 }
 
@@ -783,7 +792,7 @@ fi
 
 # END Exam Setup
 
-ensure_workspace_trust_disabled "$cs_user_data_dir"
+configure_user_vscode_settings "$cs_user_data_dir"
 
 
 #echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
