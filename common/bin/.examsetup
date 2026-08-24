@@ -71,7 +71,7 @@ try:
     with open("/challenge/.config/info.dat", newline="", encoding="utf-8") as info_file:
         for row in csv.reader(info_file):
             if len(row) >= 3 and row[0] == pwn_college_id and row[2].strip():
-                print(f"{row[1]} - {row[2]}")
+                print(f"{row[2]} - {row[1]}")
                 break
 except OSError:
     pass
