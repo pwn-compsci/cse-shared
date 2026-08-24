@@ -131,9 +131,23 @@ def check_exam_attendance():
         pwn_college_id = match.group(1)
         logger.info(f"Extracted pwn_college_id: {pwn_college_id}")
         
+        module = None
+        challenge = None
+        try:
+            with open('/challenge/.config/level.json', 'r') as f:
+                level_data = json.load(f)
+                module = level_data.get('module')
+                challenge = level_data.get('challenge') or level_data.get('examLevel') or level_data.get('level')
+        except Exception as e:
+            logger.warning(f"Could not load exam context for attendance check: {e}")
+
         # Make API request to check exam attendance
         api_url = "https://api.cse545.com/session_attendance"
-        payload = {"pwn_college_id": pwn_college_id}
+        payload = {
+            "pwn_college_id": pwn_college_id,
+            "module": module,
+            "challenge": challenge,
+        }
         
         try:
             response = requests.post(api_url, json=payload, timeout=30)

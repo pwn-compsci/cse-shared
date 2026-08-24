@@ -228,7 +228,9 @@ def check_session_attendance(pwn_college_id):
             "Content-Type": "application/json"
         }
         data = {
-            "pwn_college_id": pwn_college_id
+            "pwn_college_id": pwn_college_id,
+            "module": exam_module,
+            "challenge": exam_challenge
         }
         
         logger.info(f"Checking session attendance for PWN College ID: {pwn_college_id}")
