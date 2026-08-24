@@ -797,6 +797,10 @@ def is_time_in_session(current_time, start_time, end_time):
     
     return is_within
 
+def is_attendance_only_session(session_info):
+    """Return True when attendance, not session_times, is the live authority."""
+    return (session_info or {}).get('type') == 'honorlock_attendance'
+
 def get_session_times():
     """
     Get session start and end times from attendance check, or use defaults
@@ -811,6 +815,12 @@ def get_session_times():
     
     if attendance_result and attendance_result.get('session_info'):
         session_info = attendance_result['session_info']
+        if is_attendance_only_session(session_info):
+            logger.info("Honorlock attendance session found; session stays active while attendance remains open")
+            start_time = get_current_utc_time() - timedelta(minutes=5)
+            end_time = get_current_utc_time() + timedelta(seconds=CHECK_INTERVAL * 2)
+            return start_time, end_time
+
         logger.info("Valid session found from attendance check, using provided session times")
         start_time_str = session_info.get('start_time_utc')
         end_time_str = session_info.get('end_time_utc')
@@ -907,6 +917,7 @@ def main():
     missing_attendance = 0
     was_active = False  # Track if we were previously active
     files_restored = False  # Track if we've successfully checked/restored files
+    time_bound_session = True
     # Main monitoring loop
     while True:
         try:
@@ -928,42 +939,54 @@ def main():
             # Update session times if we received session_info
             if check_results and check_results.get('session_info'):
                 session_info = check_results['session_info']
-                start_time_str = session_info.get('start_time_utc')
-                end_time_str = session_info.get('end_time_utc')
-                
-                # Parse and update session times
-                if isinstance(start_time_str, str):
-                    new_start_time = parse_iso_datetime(start_time_str)
-                    if new_start_time:
-                        new_start_time = new_start_time - timedelta(minutes=15)  # 15-minute buffer
-                        if new_start_time != start_time:
-                            logger.info(f"Updated session start time: {new_start_time.isoformat()}")
-                            start_time = new_start_time
-                
-                if isinstance(end_time_str, str):
-                    new_end_time = parse_iso_datetime(end_time_str)
-                    if new_end_time and new_end_time != end_time:
-                        logger.info(f"Updated session end time: {new_end_time.isoformat()}")
-                        new_start_time = new_start_time + timedelta(minutes=10)  # 15-minute buffer
-                        end_time = new_end_time
+                if is_attendance_only_session(session_info):
+                    if time_bound_session:
+                        logger.info("Switching to Honorlock attendance monitoring without fixed session times")
+                    time_bound_session = False
+                    start_time = current_time - timedelta(minutes=5)
+                    end_time = current_time + timedelta(seconds=CHECK_INTERVAL * 2)
+                else:
+                    time_bound_session = True
+                    start_time_str = session_info.get('start_time_utc')
+                    end_time_str = session_info.get('end_time_utc')
+
+                    # Parse and update session times
+                    if isinstance(start_time_str, str):
+                        new_start_time = parse_iso_datetime(start_time_str)
+                        if new_start_time:
+                            new_start_time = new_start_time - timedelta(minutes=15)  # 15-minute buffer
+                            if new_start_time != start_time:
+                                logger.info(f"Updated session start time: {new_start_time.isoformat()}")
+                                start_time = new_start_time
+
+                    if isinstance(end_time_str, str):
+                        new_end_time = parse_iso_datetime(end_time_str)
+                        if new_end_time:
+                            new_end_time = new_end_time + timedelta(minutes=10)  # 10-minute buffer
+                            if new_end_time != end_time:
+                                logger.info(f"Updated session end time: {new_end_time.isoformat()}")
+                                end_time = new_end_time
             
             # Now check if current time is within the (possibly updated) session window
             current_time = get_current_utc_time()  # Refresh current time
             
-            if current_time > end_time:
-                logger.critical("Session has paused, current time is past end time")
-                mark_session_paused()
-                continue
-            
-            if not is_time_in_session(current_time, start_time, end_time):
-                logger.critical("Current time is outside session window - terminating")
-                mark_session_paused()
-                continue
-            
-            # Calculate time remaining
-            time_remaining = end_time - current_time
-            minutes_remaining = int(time_remaining.total_seconds() / 60)
-            logger.info(f"Session is active - {minutes_remaining} minutes remaining")
+            if time_bound_session:
+                if current_time > end_time:
+                    logger.critical("Session has paused, current time is past end time")
+                    mark_session_paused()
+                    continue
+
+                if not is_time_in_session(current_time, start_time, end_time):
+                    logger.critical("Current time is outside session window - terminating")
+                    mark_session_paused()
+                    continue
+
+                # Calculate time remaining
+                time_remaining = end_time - current_time
+                minutes_remaining = int(time_remaining.total_seconds() / 60)
+                logger.info(f"Session is active - {minutes_remaining} minutes remaining")
+            else:
+                logger.info("Honorlock attendance is active; skipping fixed session time cutoff")
 
             # Check for duplicate VSCode extension hosts (run regardless of attendance)
             check_and_kill_duplicate_vscode()
