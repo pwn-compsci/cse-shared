@@ -181,25 +181,68 @@ fi
 echo "clevel_work_dir=$clevel_work_dir" >> /challenge/startup.log
 
 pwn_college_id=$active_pwn_college_id
-if [ -f /challenge/ed.dat ]; then
-    mv  /challenge/ed.dat /challenge/.config/ed.dat
-fi 
-rm -f /challenge/ed.dat
-if [ -f /challenge/.config/ed.dat ]; then
-    if [ -d /home/me ]; then 
-        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
-    fi 
-    echo "pwn college id = '$pwn_college_id'" >> /challenge/startup.log 
-    grep -Poh ".*${pwn_college_id}[,;].*" /challenge/.config/ed.dat > /challenge/.config/info.dat
-    cat /challenge/.config/info.dat >> /challenge/startup.log
-    if [ ! -d /home/me ]; then 
-        rm -f /challenge/.config/ed.dat
-    fi
+if [ -d /home/me ]; then
+    pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
+fi
+
+rm -f /challenge/.config/info.dat
+if [ -n "$pwn_college_id" ]; then
+    PWN_COLLEGE_ID="$pwn_college_id" python3 - <<'PY' >> /challenge/startup.log 2>&1 || true
+import csv
+import json
+import os
+import urllib.error
+import urllib.request
+
+token_path = "/opt/.ring"
+info_path = "/challenge/.config/info.dat"
+pwn_college_id = os.environ.get("PWN_COLLEGE_ID", "")
+
+try:
+    with open(token_path, "r", encoding="utf-8") as token_file:
+        api_token = token_file.read().strip()
+except OSError as exc:
+    print(f"[i] Could not read API token for student info lookup: {exc}")
+    raise SystemExit(0)
+
+payload = json.dumps({"pwn_college_id": pwn_college_id}).encode("utf-8")
+request = urllib.request.Request(
+    "https://api.cse545.com/student_info",
+    data=payload,
+    headers={
+        "Content-Type": "application/json",
+        "X-API-Token": api_token,
+    },
+    method="POST",
+)
+
+try:
+    with urllib.request.urlopen(request, timeout=8) as response:
+        result = json.loads(response.read().decode("utf-8"))
+except urllib.error.HTTPError as exc:
+    body = exc.read().decode("utf-8", errors="replace")
+    print(f"[i] Student info lookup HTTP error {exc.code}: {body[:200]!r}")
+    raise SystemExit(0)
+except Exception as exc:
+    print(f"[i] Student info lookup skipped after error: {exc}")
+    raise SystemExit(0)
+
+if result.get("status") != "success":
+    print(f"[i] Student info lookup did not find a student: {result}")
+    raise SystemExit(0)
+
+row = [
+    str(result.get("pwn_college_id") or pwn_college_id),
+    str(result.get("sis_user_id") or ""),
+    str(result.get("student_name") or result.get("name") or ""),
+]
+with open(info_path, "w", encoding="utf-8", newline="") as info_file:
+    csv.writer(info_file).writerow(row)
+print(f"[i] Wrote student info from API for pwn_college_id={pwn_college_id}: {row[1]} - {row[2]}")
+PY
 else
-    if [ -d /home/me ]; then 
-        pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
-    fi 
-fi 
+    echo "[i] Skipping student info lookup: missing pwn_college_id" >> /challenge/startup.log
+fi
 
 # If pwn_college_id is still blank, try to extract it from /flag
 if [ -z "$pwn_college_id" ] && [ -f /flag ]; then

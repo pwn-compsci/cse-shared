@@ -9,6 +9,7 @@ import subprocess
 import os
 import logging
 import json
+import csv
 
 # Setup logger
 logger = logging.getLogger('gevent.server')
@@ -225,16 +226,14 @@ def nolockdown():
 def get_student_info(pwn_college_id):
     INFO_FILE = "/challenge/.config/info.dat"
     try:
-        with open(INFO_FILE, 'r') as f:
-            first_row = f.readline().strip()
-            if not first_row:
-                return f"Student: Unknown, id: {pwn_college_id}"
-            fields = first_row.split(',')
-            # Return as f-string: "name: <name>, id: <id>"
-            return f"Student: {fields[2]}, id: {fields[1] if len(fields) > 2 else 'Student: Unknown'}"
+        with open(INFO_FILE, 'r', newline='', encoding='utf-8') as f:
+            for fields in csv.reader(f):
+                if len(fields) >= 3 and fields[2].strip():
+                    return f"Student: {fields[2]}, id: {fields[1] or pwn_college_id}"
+            return f"Student: Unknown, id: {pwn_college_id}"
     except Exception as e:
         logger.error(f"Error reading student info file: {e}")
-        return "Student: Unknown"
+        return f"Student: Unknown, id: {pwn_college_id}"
 
 @app.route('/loginpage', defaults={"message": ""}, methods=["GET","POST"])
 def loginpage(message=""):    

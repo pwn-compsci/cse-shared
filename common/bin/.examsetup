@@ -61,8 +61,22 @@ else
     combined=""
 
     if [ -f /challenge/.config/info.dat ]; then
-        echo "[e] found file /challenge/.config/info.dat using pwn_college_id=$pwn_college_id" | tee -a $STARTUP_LOG
-        student_info=$(awk -F',' -v id="$pwn_college_id" '$1 == id && $3 ~ /^[A-Za-z0-9\-_ ]+$/ {print $2 " - " $3; exit}' /challenge/.config/info.dat)
+        echo "[e] found API student info file /challenge/.config/info.dat using pwn_college_id=$pwn_college_id" | tee -a $STARTUP_LOG
+        student_info=$(PWN_COLLEGE_ID="$pwn_college_id" python3 - <<'PY'
+import csv
+import os
+
+pwn_college_id = os.environ.get("PWN_COLLEGE_ID", "")
+try:
+    with open("/challenge/.config/info.dat", newline="", encoding="utf-8") as info_file:
+        for row in csv.reader(info_file):
+            if len(row) >= 3 and row[0] == pwn_college_id and row[2].strip():
+                print(f"{row[1]} - {row[2]}")
+                break
+except OSError:
+    pass
+PY
+)
         echo "[e] found file studentinfo $student_info" | tee -a $STARTUP_LOG
         if [ -z "$student_info" ]; then
             student_info="Student not found"
@@ -72,7 +86,7 @@ else
         combined="$pwn_college_id - $student_info"
         echo "[e] found combined of $combined" | tee -a $STARTUP_LOG
     else
-        echo "[e] /challenge/.config/info.dat not found, using pwn_college_id only" | tee -a $STARTUP_LOG
+        echo "[e] API student info file /challenge/.config/info.dat not found, using pwn_college_id only" | tee -a $STARTUP_LOG
         combined="$pwn_college_id - No student info"
     fi
 
