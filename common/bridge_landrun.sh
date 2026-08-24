@@ -2,6 +2,7 @@
 CMD_FIFO="/run/landrun-cmd.fifo"
 RESP_FIFO="/run/landrun-resp.fifo"
 RESULT="/run/landrun-response.txt"
+export PATH="/run/challenge/bin:/challenge/bin:/challenge:$PATH"
 
 # Setup FIFOs if missing
 [[ -p "$CMD_FIFO" ]] || mkfifo "$CMD_FIFO" && chmod 666 "$CMD_FIFO"
@@ -20,7 +21,7 @@ while true; do
 
         if [[ "$command" == "run" ]]; then
             log "[+] Starting the tester script sending results to $RESULT"
-            /challenge/tester > "$RESULT" 2>&1
+            tester > "$RESULT" 2>&1
             echo "OK" > "$RESP_FIFO"
         else
             echo "ERR" > "$RESP_FIFO"

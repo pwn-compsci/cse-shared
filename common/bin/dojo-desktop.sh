@@ -7,6 +7,8 @@ until [ -f /run/dojo/var/ready ]; do sleep 0.1; done
 > /tmp/found_paths #empty out old
 old_path=$PATH
 export PATH=$PATH:/run/dojo/bin
+course_code=${course_code:-$(jq -r '.course_code // "cse545"' /challenge/.config/level.json 2>/dev/null || echo cse545)}
+course_home=${course_home:-"/home/hacker/$course_code"}
 echo "[d] Machine ID(dojo-desktop): $(cat /etc/machine-id)" 
 
 find /nix/store -maxdepth 4 -type f \( \
@@ -87,18 +89,35 @@ echo "[d] cs_user_data_dir $cs_user_data_dir"
 echo "[d] clevel_work_dir $clevel_work_dir"
 
 prepare_landrun_paths() {
-  # landrun refuses missing paths that are listed as writable.
+  # landrun refuses missing paths listed in any access rule.
   mkdir -p \
     /home/hacker/.cache \
     /home/hacker/.config \
+    /home/hacker/.ssh \
     /home/hacker/.local/share/ultima \
-    /home/hacker/cse545/.vscode \
-    "$cs_user_data_dir"
+    "$course_home/.vscode" \
+    "$cs_user_data_dir" \
+    "$clevel_work_dir" \
+    /run/dojo/var/desktop-service
+  touch \
+    /home/hacker/.profile \
+    /.admin_access \
+    /run/landrun-response.txt
+  [[ -e /flag ]] || touch /flag
+  [[ -p /run/landrun-cmd.fifo ]] || { rm -f /run/landrun-cmd.fifo; mkfifo /run/landrun-cmd.fifo; }
+  [[ -p /run/landrun-stdin.fifo ]] || { rm -f /run/landrun-stdin.fifo; mkfifo /run/landrun-stdin.fifo; }
+  [[ -p /run/landrun-stdout.fifo ]] || { rm -f /run/landrun-stdout.fifo; mkfifo /run/landrun-stdout.fifo; }
+  [[ -p /run/landrun-resp.fifo ]] || { rm -f /run/landrun-resp.fifo; mkfifo /run/landrun-resp.fifo; }
+  chmod 666 /run/landrun-cmd.fifo /run/landrun-stdin.fifo /run/landrun-stdout.fifo /run/landrun-resp.fifo /run/landrun-response.txt
   chown -R hacker:hacker \
     /home/hacker/.cache \
     /home/hacker/.config \
     /home/hacker/.local \
-    /home/hacker/cse545/.vscode
+    "$course_home" \
+    "$course_home/.vscode" \
+    "$cs_user_data_dir" \
+    "$clevel_work_dir" \
+    /home/hacker/.profile
 }
 
 prepare_landrun_paths
@@ -128,7 +147,7 @@ cmd=$(printf "
   --rw /home/hacker/.cache,/home/hacker/.local/,/home/hacker/.config
   --rox /home/hacker/.ssh
   --rw /home/hacker/.local/share/ultima/ 
-  --rw /home/hacker/cse545/.vscode,/home/hacker/.profile 
+  --rw $course_home/.vscode,/home/hacker/.profile
   --rw $cs_user_data_dir 
   --rwx $clevel_work_dir 
   --rwx /tmp,/var,/dev

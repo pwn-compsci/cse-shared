@@ -2,13 +2,19 @@
 
 
 # Initialize STARTUP_LOG at the very top so all functions and code can use it
+course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
+course_home=${course_home:-"/home/hacker/$course_code"}
+course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
+extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
+export course_code course_home course_env_file extension_log_file
+
 # Create logs directory if it doesn't exist
-mkdir -p /home/hacker/cse240/.vscode/logs
+mkdir -p "$course_home/.vscode/logs"
 mkdir -p /home/hacker/.cache 
-chown -R hacker:hacker /home/hacker/cse240/.vscode 2>/dev/null || true
+chown -R hacker:hacker "$course_home/.vscode" 2>/dev/null || true
 
 # Generate log filename based on current date/time
-STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
 echo "$STARTUP_LOG" > /tmp/.startup_log_path
@@ -20,8 +26,8 @@ rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
 
 # Clean up any leftover database backup and journal files to prevent disk space issues
-rm -f /home/hacker/cse240/.vscode/trdb.db.backup_* 2>/dev/null || true
-rm -f /home/hacker/cse240/.vscode/trdb.db-journal 2>/dev/null || true
+rm -f "$course_home"/.vscode/trdb.db.backup_* 2>/dev/null || true
+rm -f "$course_home/.vscode/trdb.db-journal" 2>/dev/null || true
 
 start_time=$(date +%s)
 if [[ ! -f $STARTUP_LOG ]]; then 
@@ -41,14 +47,15 @@ if [ -f /home/hacker/core ]; then
 fi
 
 nohup bash -c '
-  [ -f ~/cse240/.vscode/trdb.db ] &&
-  [ $(stat -c%s ~/cse240/.vscode/trdb.db) -gt $((750*1024*1024)) ] &&
-  rm -f ~/cse240/.vscode/trdb.db ~/cse240/.vscode/trdb.db-journal ' | tee -a $STARTUP_LOG 2>&1 
+  db="${course_home:-/home/hacker/cse240}/.vscode/trdb.db"
+  [ -f "$db" ] &&
+  [ $(stat -c%s "$db") -gt $((750*1024*1024)) ] &&
+  rm -f "$db" "${db}-journal" ' | tee -a $STARTUP_LOG 2>&1
 
-# Delete all core files in /home/hacker/cse240
-if find /home/hacker/cse240 -name 'core' -type f -print -quit | grep -q .; then
-    echo "[i] Removing core files from /home/hacker/cse240" | tee -a $STARTUP_LOG
-    find /home/hacker/cse240 -name 'core' -type f -exec rm -f {} \;
+# Delete all core files in the course home.
+if find "$course_home" -name 'core' -type f -print -quit | grep -q .; then
+    echo "[i] Removing core files from $course_home" | tee -a $STARTUP_LOG
+    find "$course_home" -name 'core' -type f -exec rm -f {} \;
 fi
 
 ### cleanup vscode-cpptools cache if it grows too large
@@ -376,14 +383,15 @@ if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then
     echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
 fi 
 
-if [ ! -d /home/hacker/cse240 ]; then 
-    mkdir -p /home/hacker/cse240
-    mkdir -p /home/hacker/cse240/.vscode 
-    mkdir -p /home/hacker/cse240/labw    
-    mkdir -p /home/hacker/cse240/grplab
-    chown hacker:hacker -R /home/hacker/cse240
+if [ ! -d "$course_home" ]; then
+    mkdir -p "$course_home"
+    mkdir -p "$course_home/.vscode"
+    mkdir -p "$course_home/labw"
+    mkdir -p "$course_home/grplab"
+    chown hacker:hacker -R "$course_home"
 fi 
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+chown hacker:hacker "$course_home" 2>/dev/null || true
+chown hacker:hacker -R "$course_home/.vscode"
 
 if [ ! -f /home/hacker/.bashrc ]; then 
     cp /etc/skel/.bashrc /home/hacker/.bashrc
@@ -420,12 +428,14 @@ if [ -f /challenge/pex_heartbeat ]; then
     echo "Started pex_heartbeat " | tee -a $STARTUP_LOG
 fi 
 
-ENVFILE=/home/hacker/cse240/.cse240env
+ENVFILE="$course_env_file"
 
-# create a .cse240env file if not existing
-if [ ! -f $ENVFILE ]; then 
-    touch $ENVFILE
+# create the course env file if not existing
+if [ ! -f "$ENVFILE" ]; then
+    touch "$ENVFILE"
 fi 
+chown hacker:hacker "$ENVFILE" 2>/dev/null || true
+chmod 664 "$ENVFILE" 2>/dev/null || true
 
 touch /home/hacker/.local/share/ultima/c.dat
 chmod 666 /home/hacker/.local/share/ultima/c.dat
@@ -540,13 +550,12 @@ clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.jso
 level=$(jq -r '.level' /challenge/.config/level.json)    
 module=$(jq -r '.module' /challenge/.config/level.json)    
 challenge=$(jq -r '.challenge // .level' /challenge/.config/level.json)
+lab_id=$(jq -r '.labid // empty' /challenge/.config/level.json)
+hw_id=$(jq -r '.hw // empty' /challenge/.config/level.json)
 
-# we either have a labid or a hw
-if grep "labid" /challenge/.config/level.json; then 
-    lab_id=$(jq -r '.labid' /challenge/.config/level.json)    
-else
-    hw_id=$(jq -r '.hw' /challenge/.config/level.json)
-fi 
+if [ -z "$hw_id" ] && [ -z "$lab_id" ]; then
+    hw_id=$(printf '%s\n' "$module" | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p')
+fi
 
 echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 
@@ -1198,12 +1207,13 @@ if [ -f "$logfile" ]; then
     fi
 fi
 
-touch /home/hacker/cse240/.vscode/cp.dat
-chown hacker:hacker -R /home/hacker/cse240/.vscode
+touch "$extension_log_file"
+chown hacker:hacker -R "$course_home/.vscode"
+chmod 664 "$extension_log_file" 2>/dev/null || true
 
-echo 'echo "$(printf "bash started at $(date)" | base64)" >> /home/hacker/cse240/.vscode/cp.dat ' >> /etc/bash.bashrc
+echo 'course_code=${course_code:-$(jq -r '"'"'.course_code // "cse240"'"'"' /challenge/.config/level.json 2>/dev/null || echo cse240)}; echo "$(printf "bash started at $(date)" | base64)" >> "/home/hacker/${course_code}/.vscode/cp.dat" 2>/dev/null || true' >> /etc/bash.bashrc
 
-echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> /home/hacker/cse240/.vscode/cp.dat
+echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> "$extension_log_file"
 ############################################################################################
 
 echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 

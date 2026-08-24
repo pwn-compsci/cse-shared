@@ -11,6 +11,7 @@ import sys
 import os
 import argparse
 import logging
+import shutil
 from typing import Optional
 
 # Configure logging
@@ -35,6 +36,15 @@ def setup_logging():
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+def find_tester_command() -> Optional[str]:
+    search_path = os.pathsep.join([
+        os.environ.get("PATH", ""),
+        "/run/challenge/bin",
+        "/challenge/bin",
+        "/challenge",
+    ])
+    return shutil.which("tester", path=search_path)
 
 class CommandServer:
     def __init__(self, port: int = 1040, host: str = '0.0.0.0'):
@@ -133,25 +143,23 @@ class CommandServer:
             return f"ERROR: Unknown command '{base_command}'. Available commands: tester, kill, quit, exit\n"
     
     def execute_tester(self) -> str:
-        """Execute /challenge/tester and return all output with ANSI encoding preserved"""
+        """Execute tester and return all output with ANSI encoding preserved"""
         try:
-            logger.info("Executing /challenge/tester")
+            tester_cmd = find_tester_command()
+            logger.info("Executing tester")
             
-            # Check if tester script exists
-            if not os.path.exists("/challenge/tester"):
-                error_msg = "ERROR: /challenge/tester not found. Please ensure the script exists and is executable.\n"
+            if not tester_cmd:
+                error_msg = "ERROR: tester not found on PATH. Please ensure the tester command is available.\n"
                 logger.error(error_msg.strip())
                 return error_msg
             
-            # Check if it's executable
-            if not os.access("/challenge/tester", os.X_OK):
-                error_msg = "ERROR: /challenge/tester exists but is not executable. Please run: chmod +x /challenge/tester\n"
+            if not os.access(tester_cmd, os.X_OK):
+                error_msg = f"ERROR: tester exists at {tester_cmd} but is not executable.\n"
                 logger.error(error_msg.strip())
                 return error_msg
             
-            # Execute the tester script
             process = subprocess.Popen(
-                ["/challenge/tester"],
+                [tester_cmd],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=False,  # Keep as bytes to preserve ANSI encoding

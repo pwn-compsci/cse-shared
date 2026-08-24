@@ -24,22 +24,39 @@ else
 fi
 
 prepare_landrun_paths() {
-  # landrun refuses missing paths that are listed as writable. Fresh users may
-  # not have these directories until code-server has successfully started once.
+  # landrun refuses missing paths listed in any access rule.
   mkdir -p \
     /home/hacker/.cache \
     /home/hacker/.local/share/ultima \
+    "$(dirname "$coder_workspace_file")" \
+    "$(dirname "$course_env_file")" \
     "$course_home/.vscode" \
+    "$clevel_work_dir" \
     "$code_server_data_dir" \
-    "$cs_user_data_dir"
-  touch "$course_env_file" /home/hacker/.profile /home/hacker/.bash_history
+    "$cs_user_data_dir" \
+    /run
+  touch \
+    "$coder_workspace_file" \
+    "$course_env_file" \
+    /home/hacker/.bashrc \
+    /home/hacker/.profile \
+    /home/hacker/.bash_history \
+    /.admin_access \
+    /.user_info
+  [[ -p /run/landrun-cmd.fifo ]] || { rm -f /run/landrun-cmd.fifo; mkfifo /run/landrun-cmd.fifo; }
+  chmod 666 /run/landrun-cmd.fifo
   chown -R hacker:hacker \
     /home/hacker/.cache \
     /home/hacker/.local \
+    "$course_home" \
     "$course_home/.vscode" \
     "$course_env_file" \
+    "$clevel_work_dir" \
+    "$cs_user_data_dir" \
     /home/hacker/.profile \
-    /home/hacker/.bash_history
+    /home/hacker/.bash_history \
+    /home/hacker/.bashrc
+  chmod 664 "$course_env_file" /home/hacker/.bashrc /home/hacker/.profile /home/hacker/.bash_history
 }
 
 attempts=0

@@ -8,6 +8,10 @@ if [ -e /challenge/model ] || [ -e /challenge/.init ]; then
 fi 
 
 export clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
+export course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
+export course_home=${course_home:-"/home/hacker/$course_code"}
+export course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
+export extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 
 # if template does not contain student test skeletons then log it and re-add
 if grep -q "requiredUserTests"  '/challenge/.config/level.json'; then 
@@ -43,7 +47,7 @@ function save_compile(){
     # Store the entire compile.log (which now only contains the current compilation since we truncate on each run)
     local outcome_text=$(cat "$clevel_work_dir/compile.log" 2>/dev/null | sed "s/'/''/g")
 
-    sqlite3 /home/hacker/cse240/.vscode/trdb.db <<EOF
+    sqlite3 "$course_home/.vscode/trdb.db" <<EOF
     CREATE TABLE IF NOT EXISTS compilations (
         id INTEGER PRIMARY KEY,
         timestamp TEXT,
@@ -400,12 +404,17 @@ if [ -d $clevel_work_dir ]; then
     # export GCOV_PREFIX=$clevel_work_dir/.test
     # export GCOV_PREFIX_STRIP=$(echo "${clevel_work_dir%?}" | grep -o '/' | wc -l)
     
-    ENVFILE=~/cse240/.cse240env
+    ENVFILE="$course_env_file"
+    if [ ! -f "$ENVFILE" ]; then
+        mkdir -p "$(dirname "$ENVFILE")"
+        touch "$ENVFILE" 2>/dev/null || true
+    fi
+    chmod 664 "$ENVFILE" 2>/dev/null || true
     # tweaks for modified admin testing environment 
     
     alias cdhw="cd $clevel_work_dir"
     if printenv VSCODE_PROXY_URI > /dev/null; then # && ! grep -q "$clevel_work_dir" $ENVFILE ; then 
-        alias reset_vs="code-server -r /home/hacker/cse240"
+        alias reset_vs="code-server -r $course_home"
         alias ohw="cd $clevel_work_dir && code-server $clevel_work_dir/main.c"
         LOADFILE=""
         if [ -f $clevel_work_dir/main.c ]; then 
@@ -417,18 +426,20 @@ if [ -d $clevel_work_dir ]; then
         elif [ -f $clevel_work_dir/main.pl ]; then 
             LOADFILE=$clevel_work_dir/main.pl
         fi
-        if [[ "$clevel_work_dir" != *cse240/exam* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]] && [[ "$clevel_work_dir" != *cse240/pex* ]]; then
-            if grep -q '^LAST_LOADED_DIR=' "$ENVFILE"; then
-                sed -i 's#^LAST_LOADED_DIR=.*#LAST_LOADED_DIR='$clevel_work_dir'#' "$ENVFILE"
-            else
-                echo 'LAST_LOADED_DIR='$clevel_work_dir >> "$ENVFILE"
+        if [[ "$clevel_work_dir" != *"$course_code/exam"* ]] && [[ "$clevel_work_dir" != *"$course_code/pretest"* ]] && [[ "$clevel_work_dir" != *"$course_code/pex"* ]]; then
+            if [ -w "$ENVFILE" ]; then
+                if [ -r "$ENVFILE" ] && grep -q '^LAST_LOADED_DIR=' "$ENVFILE"; then
+                    sed -i 's#^LAST_LOADED_DIR=.*#LAST_LOADED_DIR='$clevel_work_dir'#' "$ENVFILE"
+                else
+                    echo 'LAST_LOADED_DIR='$clevel_work_dir >> "$ENVFILE"
+                fi
             fi
         fi 
     else # we are sshing
         if [ -d /home/me ]; then 
             echo "ALLOWING ssh access in asuser mode"
             cd $clevel_work_dir
-        elif  grep -q YOUVE_GOT_SHELL "$ENVFILE" || grep -q "digital god" /.admin_access; then
+        elif  { [ -r "$ENVFILE" ] && grep -q YOUVE_GOT_SHELL "$ENVFILE"; } || grep -q "digital god" /.admin_access; then
             echo "ALLOWING ssh access with bypass enabled"
             cd $clevel_work_dir
         else
@@ -452,18 +463,18 @@ fi
 if grep -q "digital god" /.admin_access ; then 
     printf "\n\033[38;5;10mADMIN ACCESS is enabled\033[0m\n"
     alias gr='gcc main.c -o main.bin && ./main.bin'
-    alias mtests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' order by timestamp"'
-    alias ctests='sqlite3 ~/cse240/.vscode/trdb.db "select * from tests where module like '\''$hw_id-%'\'' and level = $level_id order by timestamp"'
-    # alias compilations='sqlite3 ~/cse240/.vscode/trdb.db "select * from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' order by timestamp ASC"'
-    alias compilations='sqlite3 -line ~/cse240/.vscode/trdb.db "select timestamp, level_id, compiler, result, outcome from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' and command not like '\''make clean%'\'' order by timestamp ASC"'
-    alias sqlf='sqlite3 -header -column ~/cse240/.vscode/trdb.db'
-    alias sql='sqlite3 ~/cse240/.vscode/trdb.db'
+    alias mtests='sqlite3 "$course_home/.vscode/trdb.db" "select * from tests where module like '\''$hw_id-%'\'' order by timestamp"'
+    alias ctests='sqlite3 "$course_home/.vscode/trdb.db" "select * from tests where module like '\''$hw_id-%'\'' and level = $level_id order by timestamp"'
+    # alias compilations='sqlite3 "$course_home/.vscode/trdb.db" "select * from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' order by timestamp ASC"'
+    alias compilations='sqlite3 -line "$course_home/.vscode/trdb.db" "select timestamp, level_id, compiler, result, outcome from compilations where hw_id = '\''$hw_id'\'' and level_id = '\''$level_id'\'' and command not like '\''make clean%'\'' order by timestamp ASC"'
+    alias sqlf='sqlite3 -header -column "$course_home/.vscode/trdb.db"'
+    alias sql='sqlite3 "$course_home/.vscode/trdb.db"'
     
 fi 
 
-alias cpdat='tail -100 ~/cse240/.vscode/cp.dat |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
-alias cpdatfull='cat ~/cse240/.vscode/cp.dat |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
-alias cbinfodat='cat ~/cse240/.vscode/cbinfo.dat |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
+alias cpdat='tail -100 "$extension_log_file" |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
+alias cpdatfull='cat "$extension_log_file" |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
+alias cbinfodat='cat "$course_home/.vscode/cbinfo.dat" |xargs -L 1 -I{} bash -c "printf {} | base64 --decode; echo "'
 alias heartlog='cat ~/.local/share/ultima/pexs.log '
 function diff_size() {
     tr -s '[:space:]' '\n' < "$1" > /tmp/diff_size_file1.tmp
@@ -528,7 +539,7 @@ thispwd=$(pwd)
 
 # Function to open recent code files in code-server
 open_recent_exam_code() {
-    local exam_dir="/home/hacker/cse240/exam"
+    local exam_dir="$course_home/exam"
     
     # Check if exam directory exists
     if [ ! -d "$exam_dir" ]; then
@@ -579,6 +590,3 @@ open_recent_exam_code() {
     # Open all files in code-server
     code "${files_to_open[@]}"
 }
-
-
-

@@ -312,6 +312,13 @@ sleep .1
 # # landrun secures the directories
 
 hwdir=$(jq -r '.hwdir // empty' /challenge/.config/level.json)
+hw_id=${hw_id:-$(jq -r '.hw // empty' /challenge/.config/level.json)}
+if [ "$hw_id" = "null" ]; then
+    hw_id=""
+fi
+if [ -z "$hw_id" ] && [ -n "$module" ]; then
+    hw_id=$(printf '%s\n' "$module" | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p')
+fi
 echo "[e] project directory is $hwdir, setting up coder_workspace_file"
 # hw_id and level come from parent call .init, .examsetup is sourced
 if [ -n "$hwdir" ] && [ -n "$hw_id" ]; then

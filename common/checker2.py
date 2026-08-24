@@ -15,6 +15,19 @@ current_euid = os.geteuid()
 new_euid = 1000
 os.seteuid(new_euid)
 
+def get_course_code():
+    if os.getenv("course_code"):
+        return os.getenv("course_code")
+    try:
+        with open("/challenge/.config/level.json") as cf:
+            return json.load(cf).get("course_code") or "cse240"
+    except Exception:
+        return "cse240"
+
+course_code = get_course_code()
+course_home = os.getenv("course_home", f"/home/hacker/{course_code}")
+course_env_file = os.getenv("course_env_file", f"{course_home}/.{course_code}env")
+
 # Directory paths
 coders_work_dir = os.getenv('clevel_work_dir')
 vscode_history_dir = Path("/home/hacker/.local/share/code-server/User/History")
@@ -24,11 +37,13 @@ pid=""
 def get_modified_time(file_path):
         return os.path.getmtime(file_path)
 
-def check_and_append_pid(pid, file_path="/home/hacker/cse240/.cse240env"):
+def check_and_append_pid(pid, file_path=None):
+    file_path = file_path or course_env_file
     pid_str = f"vsnum={pid}"
 
     # Check if file exists, if not create an empty one
     if not os.path.exists(file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w') as f:
             pass
 
@@ -42,7 +57,8 @@ def check_and_append_pid(pid, file_path="/home/hacker/cse240/.cse240env"):
     with open(file_path, 'a') as f:
         f.write(f"{pid_str}\n")
 
-def find_vsnum(file_path="/home/hacker/cse240/.cse240env"):
+def find_vsnum(file_path=None):
+    file_path = file_path or course_env_file
     # Check if the file exists
     if not os.path.exists(file_path):
         return ""
@@ -210,7 +226,7 @@ def analyze_vscode_history(file_path, absolute_file_path, all_diffs=False):
                     print("v"*80)
                     subprocess.run(["icdiff",prev_file_path, version_file])
                     print("^"*80)
-            
+
             previous_size = file_size
             prev_file_path = version_file 
        
@@ -626,11 +642,5 @@ if __name__ == "__main__":
             dn = "/".join(dn[-2:])
             if len(no_analysis) == len(files_analzyed):
                 print(f"\t{dn} no history ")    
-            else:          
-                print(f"\t{dn} Ok")    
-        
-    
-    
-    
-
-            
+            else:
+                print(f"\t{dn} Ok")

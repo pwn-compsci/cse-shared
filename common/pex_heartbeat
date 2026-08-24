@@ -22,6 +22,18 @@ logging.basicConfig(filename='/home/hacker/.local/share/ultima/pexs.log', level=
 
 pexs_file_path = '/home/hacker/.local/share/ultima/pexs.dat'
 
+def get_course_code():
+    if os.getenv("course_code"):
+        return os.getenv("course_code")
+    try:
+        with open("/challenge/.config/level.json") as cf:
+            return json.load(cf).get("course_code") or "cse240"
+    except Exception:
+        return "cse240"
+
+course_code = get_course_code()
+course_home = os.getenv("course_home", f"/home/hacker/{course_code}")
+
 def handle_exit():
     logging.info('Normal exit')
 
@@ -265,7 +277,7 @@ def copy_missing_copies_to_hist_dir():
 # Path to the monitored and output files
 extension_loaded = True
 
-output_file_path = '/home/hacker/cse240/.vscode/cp.dat'
+output_file_path = os.getenv("extension_log_file", f"{course_home}/.vscode/cp.dat")
 start_time = None
 atexit.register(handle_exit)
 setup_signal_handlers()
