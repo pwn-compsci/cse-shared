@@ -545,17 +545,20 @@ mkdir -p /challenge/.config
 
 cat /challenge/.config/level.json | tee -a $STARTUP_LOG 
 # use level config to define variables 
-clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
-
 level=$(jq -r '.level' /challenge/.config/level.json)    
 module=$(jq -r '.module' /challenge/.config/level.json)    
 challenge=$(jq -r '.challenge // .level' /challenge/.config/level.json)
 lab_id=$(jq -r '.labid // empty' /challenge/.config/level.json)
 hw_id=$(jq -r '.hw // empty' /challenge/.config/level.json)
+hwdir=$(jq -r '.hwdir // empty' /challenge/.config/level.json)
 
 if [ -z "$hw_id" ] && [ -z "$lab_id" ]; then
     hw_id=$(printf '%s\n' "$module" | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p')
 fi
+if [ -z "$hwdir" ] && [ -n "$module" ]; then
+    hwdir="$course_home/$module"
+fi
+clevel_work_dir="$hwdir/$level"
 
 echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 

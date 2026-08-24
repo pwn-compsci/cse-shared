@@ -319,6 +319,9 @@ fi
 if [ -z "$hw_id" ] && [ -n "$module" ]; then
     hw_id=$(printf '%s\n' "$module" | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p')
 fi
+if [ -z "$hwdir" ] && [ -n "$module" ]; then
+    hwdir="$course_home/$module"
+fi
 echo "[e] project directory is $hwdir, setting up coder_workspace_file"
 # hw_id and level come from parent call .init, .examsetup is sourced
 if [ -n "$hwdir" ] && [ -n "$hw_id" ]; then
