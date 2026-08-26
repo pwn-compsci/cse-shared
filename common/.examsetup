@@ -14,6 +14,72 @@ else
 fi
 
 echo "[e] Exam level found" | tee -a $STARTUP_LOG
+
+protect_cse545_init_artifacts() {
+    for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
+        if [ -e "$init_file" ]; then
+            chown root:root "$init_file" 2>/dev/null || true
+            chmod 400 "$init_file" 2>/dev/null || true
+        fi
+    done
+
+    if [ -e /challenge/bin/init_cse545 ]; then
+        chown root:root /challenge/bin/init_cse545 2>/dev/null || true
+        chmod 500 /challenge/bin/init_cse545 2>/dev/null || true
+    fi
+}
+
+cleanup_non_admin_solution_artifacts() {
+    if [ "$admin_access" != false ]; then
+        return 0
+    fi
+
+    echo "[e] Non-admin cleanup: removing solution and generator artifacts" | tee -a "$STARTUP_LOG"
+    rm -f /challenge/solution.* /challenge/sln* ./*.rm ./*.rm.* 2>/dev/null || true
+    find /challenge -type f \( \
+        -name 'sln*' -o \
+        -name 'solution*' -o \
+        -name '*.rm' -o \
+        -name '*.rm.*' \
+    \) -exec rm -f {} \; 2>/dev/null || true
+}
+
+cleanup_non_admin_challenge_artifacts() {
+    if [ "$admin_access" != false ]; then
+        return 0
+    fi
+
+    cleanup_non_admin_solution_artifacts
+    echo "[e] Non-admin cleanup: removing init artifacts" | tee -a "$STARTUP_LOG"
+    rm -f \
+        /challenge/bin/.examsetup \
+        /challenge/bin/init_cse545 \
+        /challenge/.init \
+        /challenge/.init_cse545 \
+        /challenge/.init.cse545 \
+        /challenge/.prelevelinit \
+        /challenge/.levelinit \
+        /challenge/.testprobleminit \
+        /challenge/.moduleinit \
+        /challenge/.moduleinit.tmp \
+        /challenge/.bginit \
+        /challenge/.examsetup 2>/dev/null || true
+    find /challenge -type f \( \
+        -name '.init' -o \
+        -name '.init_cse545' -o \
+        -name '.init.cse545' -o \
+        -name '.bginit' -o \
+        -name '.examsetup' -o \
+        -name '.prelevelinit' -o \
+        -name '.levelinit' -o \
+        -name '.testprobleminit' -o \
+        -name '.moduleinit' -o \
+        -name '.moduleinit.*' \
+    \) -exec rm -f {} \; 2>/dev/null || true
+}
+
+protect_cse545_init_artifacts
+
 if [ "$admin_access" = false ]; then
     # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
     # if grep "practice" /flag; then
@@ -203,11 +269,7 @@ else
     if [ "$admin_access" = false ]; then
         rm -rf /challenge/problems
         rm -rf /challenge/model
-        if [ "$course_code" = "cse545" ]; then
-            find /challenge -name 'sln.py' -exec rm -f {} \; 2>/dev/null
-            find /challenge -name 'sln.sh' -exec rm -f {} \; 2>/dev/null
-            find /challenge -name 'sln-server.py' -exec rm -f {} \; 2>/dev/null
-        fi
+        cleanup_non_admin_solution_artifacts
         # move history file location
         echo 'export HISTFILE="/tmp/.bash_history"' >> /etc/bash.bashrc
     fi
@@ -241,6 +303,7 @@ else
     else
         echo -e "\033[31m[e] ERROR: problem_generator.py failed\033[0m" | tee -a $STARTUP_LOG
     fi
+    cleanup_non_admin_solution_artifacts
 
     # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
@@ -264,10 +327,14 @@ if [ -f /challenge/.testprobleminit ]; then
     # rm /challenge/.testprobleminit
 fi
 
+cleanup_non_admin_challenge_artifacts
+
 # c_level_work_dir comes from parent call .init, .examsetup is sourced
 echo "[e] creating clevel_work_dir = $clevel_work_dir in .examsetup" | tee -a $STARTUP_LOG
 
 mkdir -p $clevel_work_dir
+mkdir -p "$clevel_work_dir/Desktop" "$clevel_work_dir/Desktop/Startup" "$clevel_work_dir/.config/autostart" "$clevel_work_dir/.local/share/applications"
+chown hacker:hacker -R "$clevel_work_dir/Desktop" "$clevel_work_dir/.config" "$clevel_work_dir/.local" 2>/dev/null || true
 if [ -d /challenge/template ]; then
     if [ "$course_code" != "cse545" ] || { [ ! -f "$clevel_work_dir/main.c" ] && [ ! -f "$clevel_work_dir/solve.py" ] && [ ! -f "$clevel_work_dir/main.cpp" ]; }; then
         echo "[e] Copying template files to $clevel_work_dir from /challenge/template " | tee -a $STARTUP_LOG
@@ -372,7 +439,7 @@ else
 fi
 
 if [ "$course_code" = "cse545" ]; then
-    mkdir -p /home/hacker/.ssh "$clevel_work_dir/Desktop"
+    mkdir -p /home/hacker/.ssh
     ln -s /home/hacker/.ssh "$clevel_work_dir/.ssh" 2>/dev/null || true
 
     for rcfile in .gdbinit .vimrc .bashrc .profile; do

@@ -302,6 +302,79 @@ if [ ! -f /.admin_access ]; then
     echo "denied" > /.admin_access
 fi 
 
+protect_cse545_init_artifacts() {
+    for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
+        if [ -e "$init_file" ]; then
+            chown root:root "$init_file" 2>/dev/null || true
+            chmod 400 "$init_file" 2>/dev/null || true
+        fi
+    done
+
+    if [ -e /challenge/bin/init_cse545 ]; then
+        chown root:root /challenge/bin/init_cse545 2>/dev/null || true
+        chmod 500 /challenge/bin/init_cse545 2>/dev/null || true
+    fi
+}
+
+cleanup_non_admin_challenge_artifacts() {
+    if [ "$admin_access" != false ]; then
+        return 0
+    fi
+
+    echo "[i] Non-admin cleanup: removing init, solution, and generator artifacts" | tee -a "$STARTUP_LOG"
+    rm -f \
+        /challenge/bin/.examsetup \
+        /challenge/bin/init_cse545 \
+        /challenge/.init \
+        /challenge/.init_cse545 \
+        /challenge/.init.cse545 \
+        /challenge/.prelevelinit \
+        /challenge/.levelinit \
+        /challenge/.testprobleminit \
+        /challenge/.moduleinit \
+        /challenge/.moduleinit.tmp \
+        /challenge/.bginit \
+        /challenge/.examsetup \
+        /challenge/solution.* \
+        /challenge/sln* \
+        ./*.rm ./*.rm.* 2>/dev/null || true
+    find /challenge -type f \( \
+        -name '.init' -o \
+        -name '.init_cse545' -o \
+        -name '.init.cse545' -o \
+        -name '.bginit' -o \
+        -name '.examsetup' -o \
+        -name '.prelevelinit' -o \
+        -name '.levelinit' -o \
+        -name '.testprobleminit' -o \
+        -name '.moduleinit' -o \
+        -name '.moduleinit.*' -o \
+        -name 'sln*' -o \
+        -name 'solution*' -o \
+        -name '*.rm' -o \
+        -name '*.rm.*' \
+    \) -exec rm -f {} \; 2>/dev/null || true
+}
+
+copy_solve_templates_to_workdir() {
+    if [ ! -d "$clevel_work_dir" ]; then
+        return 0
+    fi
+
+    for ext in py sh c; do
+        template_files=(/challenge/solve-template*."$ext")
+        solve_files=("$clevel_work_dir"/solve*."$ext")
+
+        if [ -f "${template_files[0]}" ] && [ ! -f "${solve_files[0]}" ]; then
+            cp "${template_files[0]}" "$clevel_work_dir/solve.$ext"
+            chown hacker:hacker "$clevel_work_dir/solve.$ext" 2>/dev/null || true
+            echo "[i] solve template copied: ${template_files[0]} to $clevel_work_dir/solve.$ext" | tee -a "$STARTUP_LOG"
+        fi
+    done
+}
+
+protect_cse545_init_artifacts
+
 date --iso-8601=seconds > /tmp/.start
 
 if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
@@ -781,16 +854,20 @@ if [[ -n $isExam ]]; then
     # nohup bash /challenge/bin/vscode.sh >> /var/log/vscode.log 2>&1  &    
 else
     echo "Not an exam level" | tee -a $STARTUP_LOG
-    checkstatus_bashrc_marker="# CSE240_CHECKSTATUS_NOTICE"
-    if ! grep -q "$checkstatus_bashrc_marker" /etc/bash.bashrc 2>/dev/null; then
-        cat >> /etc/bash.bashrc <<'CHECKSTATUS_NOTICE_EOF'
+    if [ "$course_code" = "cse240" ]; then
+        checkstatus_bashrc_marker="# CSE240_CHECKSTATUS_NOTICE"
+        if ! grep -q "$checkstatus_bashrc_marker" /etc/bash.bashrc 2>/dev/null; then
+            cat >> /etc/bash.bashrc <<'CHECKSTATUS_NOTICE_EOF'
 
 # CSE240_CHECKSTATUS_NOTICE
 printf '\033[1;36m[exam help]\033[0m Run \033[1mcheckstatus\033[0m to see what items you still need to complete before another exam problem attempt.\n'
 CHECKSTATUS_NOTICE_EOF
-        echo "[i] Added checkstatus notice to /etc/bash.bashrc" | tee -a $STARTUP_LOG
+            echo "[i] Added checkstatus notice to /etc/bash.bashrc" | tee -a $STARTUP_LOG
+        else
+            echo "[i] checkstatus notice already present in /etc/bash.bashrc" | tee -a $STARTUP_LOG
+        fi
     else
-        echo "[i] checkstatus notice already present in /etc/bash.bashrc" | tee -a $STARTUP_LOG
+        echo "[i] Skipping checkstatus notice for course_code=$course_code" | tee -a $STARTUP_LOG
     fi
     cs_user_data_dir="/home/hacker/.local/share/code-server"
      if [ ! -d $cs_user_data_dir ]; then 
@@ -799,8 +876,7 @@ CHECKSTATUS_NOTICE_EOF
     fi 
     # if level working directory is not there then create it if creeateHWDir set in level.json
     if [[ ! -d $clevel_work_dir ]] ; then 
-        grep -iq '"createHWDir".*true' /challenge/.config/level.json 
-        if grep -iq '"createHWDir".*true' /challenge/.config/level.json; then 
+        if grep -iq '"createHWDir".*true' /challenge/.config/level.json || [ "$course_code" = "cse545" ]; then
             mkdir -p $clevel_work_dir 
             chown hacker:hacker -R $clevel_work_dir
             # if no main file then copy template files 
@@ -820,6 +896,8 @@ CHECKSTATUS_NOTICE_EOF
         #    ln -s $(dirname "$clevel_work_dir")/01 $clevel_work_dir
         #fi
     fi 
+
+    copy_solve_templates_to_workdir
     
     # Copy README.md fallback if it exists. This is separate from the normal
     # template copy so existing work directories still receive requirements.
@@ -1333,6 +1411,7 @@ else
     if [ -f "$base_dir/system_tests/main.bin" ]; then
         find "$base_dir" -type f \( -name model -o -name .levelinit -o -name .init -o -name .bginit -o -path "$base_dir/system_tests/main.bin" \) -exec chmod 700 {} +
     fi
+    cleanup_non_admin_challenge_artifacts
 
     # rm -f /usr/bin/vim.basic /run/dojo/bin/vim /run/dojo/bin/vim    
     touch /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs

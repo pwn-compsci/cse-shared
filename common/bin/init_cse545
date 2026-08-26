@@ -168,6 +168,62 @@ if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an adm
         fi    
     done
 fi
+
+protect_cse545_init_artifacts() {
+    for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
+        if [ -e "$init_file" ]; then
+            chown root:root "$init_file" 2>/dev/null || true
+            chmod 400 "$init_file" 2>/dev/null || true
+        fi
+    done
+
+    if [ -e /challenge/bin/init_cse545 ]; then
+        chown root:root /challenge/bin/init_cse545 2>/dev/null || true
+        chmod 500 /challenge/bin/init_cse545 2>/dev/null || true
+    fi
+}
+
+cleanup_non_admin_challenge_artifacts() {
+    if [ "$admin_access" != false ]; then
+        return 0
+    fi
+
+    rm -f \
+        /challenge/bin/.examsetup \
+        /challenge/bin/init_cse545 \
+        /challenge/.init \
+        /challenge/.init_cse545 \
+        /challenge/.init.cse545 \
+        /challenge/.prelevelinit \
+        /challenge/.levelinit \
+        /challenge/.testprobleminit \
+        /challenge/.moduleinit \
+        /challenge/.moduleinit.tmp \
+        /challenge/.bginit \
+        /challenge/.examsetup \
+        /challenge/solution.* \
+        /challenge/sln* \
+        ./*.rm ./*.rm.* 2>/dev/null || true
+    find /challenge -type f \( \
+        -name '.init' -o \
+        -name '.init_cse545' -o \
+        -name '.init.cse545' -o \
+        -name '.bginit' -o \
+        -name '.examsetup' -o \
+        -name '.prelevelinit' -o \
+        -name '.levelinit' -o \
+        -name '.testprobleminit' -o \
+        -name '.moduleinit' -o \
+        -name '.moduleinit.*' -o \
+        -name 'sln*' -o \
+        -name 'solution*' -o \
+        -name '*.rm' -o \
+        -name '*.rm.*' \
+    \) -exec rm -f {} \; 2>/dev/null || true
+}
+
+protect_cse545_init_artifacts
+
 ##### clevel_work_dir is where the user work area is located
 clevel_work_dir="$course_home/$(jq -r '. | "\(.module)/\(.level)"' /challenge/.config/level.json)"
 
@@ -517,7 +573,7 @@ if [ "$admin_access" = true ]; then
         [ -f $solutionfile ] && ln -s $solutionfile $workdir    
     fi 
 else
-    rm -f /challenge/bin/.examsetup /challenge/bin/init_cse545 /challenge/.init /challenge/.init.cse545 /challenge/.prelevelinit /challenge/.levelinit /challenge/.moduleinit *.rm.c *.rm.cpp *.rm.py /challenge/solution.* /challenge/sln*
+    cleanup_non_admin_challenge_artifacts
 fi
 
 if [ -f /usr/share/gef/gef.py ]; then

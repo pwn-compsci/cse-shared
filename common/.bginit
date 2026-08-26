@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
+course_home=${course_home:-"/home/hacker/$course_code"}
+STARTUP_LOG=${STARTUP_LOG:-"$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"}
+mkdir -p "$course_home/.vscode/logs"
+
 mkdir -p /.cache/vscode/pi/
 if [ -f /challenge/.config/.prinfo ]; then
     echo "Creating extension file for pr " | tee -a "$STARTUP_LOG"
@@ -14,13 +19,25 @@ if [ -f /tmp/.startup_log_path ]; then
     STARTUP_LOG=$(cat /tmp/.startup_log_path)
 else
     # Fallback if .init hasn't run yet
-    STARTUP_LOG="/home/hacker/cse240/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
-    mkdir -p /home/hacker/cse240/.vscode/logs
+    STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p "$course_home/.vscode/logs"
+fi
+
+for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
+    if [ -e "$init_file" ]; then
+        chown root:root "$init_file" 2>/dev/null || true
+        chmod 400 "$init_file" 2>/dev/null || true
+    fi
+done
+
+if [ -e /challenge/bin/init_cse545 ]; then
+    chown root:root /challenge/bin/init_cse545 2>/dev/null || true
+    chmod 500 /challenge/bin/init_cse545 2>/dev/null || true
 fi
 
 # Clean up logs directory if it exceeds 50MB (but skip if /home/me exists)
 if [ ! -d /home/me ]; then
-    LOGS_DIR="/home/hacker/cse240/.vscode/logs"
+    LOGS_DIR="$course_home/.vscode/logs"
     if [ -d "$LOGS_DIR" ]; then
         # Calculate directory size in KB
         DIR_SIZE=$(du -sk "$LOGS_DIR" 2>/dev/null | cut -f1)
@@ -43,7 +60,7 @@ if [ ! -d /home/me ]; then
     fi
     
     # Clean up trdb.db if it exceeds 50MB
-    TRDB_PATH="/home/hacker/cse240/.vscode/trdb.db"
+    TRDB_PATH="$course_home/.vscode/trdb.db"
     if [ -f "$TRDB_PATH" ]; then
         # Calculate database size in KB
         DB_SIZE=$(du -sk "$TRDB_PATH" 2>/dev/null | cut -f1)
@@ -131,8 +148,8 @@ if [ -f /challenge/.config/noexec.c ] && [ ! -f /challenge/.config/noexec.so ]; 
 fi 
 
  # make core dumps go to away each time to save space for users 
-find /home/hacker/cse240 -name 'core.*' -type f -exec rm -f {} \; 
-find /home/hacker/cse240 -type f -name 'vgcore.*' -mmin +360 -exec rm -f {} +
+find "$course_home" -name 'core.*' -type f -exec rm -f {} \;
+find "$course_home" -type f -name 'vgcore.*' -mmin +360 -exec rm -f {} +
 find /home/hacker/ -type f -name '.zcompdump*' -mmin +360 -exec rm -f {} +
 
 end_time=$(date +%s)
@@ -159,7 +176,39 @@ if grep -q "digital god" /.admin_access; then
     fi 
 else
     echo "[b] Regular user detected removing challenge files" >> $STARTUP_LOG
-    rm -rf /challenge/{model,.levelinit,.init,.bginit} #,startup.log}
+    rm -rf /challenge/model #,startup.log}
+    rm -f \
+        /challenge/bin/.examsetup \
+        /challenge/bin/init_cse545 \
+        /challenge/.init \
+        /challenge/.init_cse545 \
+        /challenge/.init.cse545 \
+        /challenge/.prelevelinit \
+        /challenge/.levelinit \
+        /challenge/.testprobleminit \
+        /challenge/.moduleinit \
+        /challenge/.moduleinit.tmp \
+        /challenge/.bginit \
+        /challenge/.examsetup \
+        /challenge/solution.* \
+        /challenge/sln* \
+        ./*.rm ./*.rm.* 2>/dev/null || true
+    find /challenge -type f \( \
+        -name '.init' -o \
+        -name '.init_cse545' -o \
+        -name '.init.cse545' -o \
+        -name '.bginit' -o \
+        -name '.examsetup' -o \
+        -name '.prelevelinit' -o \
+        -name '.levelinit' -o \
+        -name '.testprobleminit' -o \
+        -name '.moduleinit' -o \
+        -name '.moduleinit.*' -o \
+        -name 'sln*' -o \
+        -name 'solution*' -o \
+        -name '*.rm' -o \
+        -name '*.rm.*' \
+    \) -exec rm -f {} \; 2>/dev/null || true
     rm -f  /challenge/system_tests/main.bin
 fi 
 
@@ -200,7 +249,7 @@ diff_start_time=$(date +%s)
 
 # clean up ownership under cse240 if needed
 
-find /home/hacker/cse240 ! -user hacker ! -type l -not -path "/home/hacker/cse240/exam/*" -not -path "/home/hacker/cse240/.vscode/*" -exec chown hacker:hacker {} +
+find "$course_home" ! -user hacker ! -type l -not -path "$course_home/exam/*" -not -path "$course_home/.vscode/*" -exec chown hacker:hacker {} +
 # find /home/hacker/cse240 ! -user hacker and ! -type l -exec chown hacker:hacker {} +
 # find /home/hacker/cse240 -type l -exec sh -c '[ "$(readlink -f {})" != "/flag" ]' \; -print -or -not -type l -print
 
@@ -229,4 +278,3 @@ if [ ! -d /home/me ] ; then
 fi
 
 echo "Finished .bginit at $(date) in pid=$$" | tee -a $STARTUP_LOG
-
