@@ -826,6 +826,17 @@ PY
 
 report_pwn_level_attempt
 
+if [ -f /challenge/.sync ] && [ ! -f /challenge/bin/file_sync.py ]; then
+    touch /var/log/sync.log
+    chown root:root /challenge/.sync /var/log/sync.log
+    chmod 700 /challenge/.sync
+    chmod 666 /var/log/sync.log
+    printf "[i] Starting .sync : " >> "$STARTUP_LOG"
+    python3 /challenge/.sync >> "$STARTUP_LOG" 2>&1 &
+    printf "\n" >> "$STARTUP_LOG"
+    echo "[i] Started .sync" >> "$STARTUP_LOG"
+fi
+
 
 #if [ "$admin_access" = true ]; then
 ##########################################################################################################################
@@ -898,6 +909,15 @@ CHECKSTATUS_NOTICE_EOF
     fi 
 
     copy_solve_templates_to_workdir
+
+    if [ -d "$clevel_work_dir" ] && [ -f /challenge/main.c ]; then
+        cp /challenge/main.c "$clevel_work_dir"
+        chown hacker:hacker "$clevel_work_dir/main.c" 2>/dev/null || true
+    fi
+    if [ -d "$clevel_work_dir" ] && [ -f /challenge/main.rm.c ]; then
+        [ -f "$clevel_work_dir/main.c" ] && rm -f "$clevel_work_dir/main.c"
+        [ -f "$clevel_work_dir/main.rm.c" ] && rm -f "$clevel_work_dir/main.rm.c"
+    fi
     
     # Copy README.md fallback if it exists. This is separate from the normal
     # template copy so existing work directories still receive requirements.
@@ -981,6 +1001,13 @@ if [ -f /challenge/captain ]; then
     # chown root:hacker /challenge/captain  # Change owner to root and group to hacker
     # chmod 510 /challenge/captain  # Only root can read and write, hacker group can execute
     chmod u+s /challenge/captain
+fi
+
+echo "[i] checking for /challenge/patched_dash " >> "$STARTUP_LOG"
+if [ -f /challenge/patched_dash ]; then
+    chmod 00755 /challenge/patched_dash
+    echo "[i] moving /challenge/patched_dash " >> "$STARTUP_LOG"
+    mv /challenge/patched_dash /bin/sh
 fi
 
 echo "[i] checking for .prelevelinit" >> "$STARTUP_LOG"

@@ -2,6 +2,7 @@
 
 course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
 course_home=${course_home:-"/home/hacker/$course_code"}
+course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
 STARTUP_LOG=${STARTUP_LOG:-"$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"}
 mkdir -p "$course_home/.vscode/logs"
 
@@ -92,7 +93,13 @@ echo "Starting .bginit $(date) pid=$$" | tee -a "$STARTUP_LOG"
 start_time=$(date +%s)
 diff_start_time=$(date +%s)
 
-clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
+level=$(jq -r '.level // empty' /challenge/.config/level.json)
+module=$(jq -r '.module // empty' /challenge/.config/level.json)
+hwdir=$(jq -r '.hwdir // empty' /challenge/.config/level.json)
+if [ -z "$hwdir" ] && [ -n "$module" ]; then
+    hwdir="$course_home/$module"
+fi
+clevel_work_dir="$hwdir/$level"
 
 # Create modelGood, always updates incase of changes
 if [ -f /challenge/model/main.c ] || [ -f /challenge/model/main.cpp ]; then 
@@ -218,7 +225,7 @@ diff_execution_time=$((end_time - diff_start_time))
 echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after rm -f's " >> "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
-ENVFILE=/home/hacker/cse240/.cse240env
+ENVFILE="$course_env_file"
 # if there's a model and system tests then run system tests on model program, report an error if it fails the tests
 if [ -d /challenge/model ] && [ -d /challenge/system_tests ] && [ -f /challenge/tester ] && [ $(stat -c%s /challenge/tester) -gt 500 ] && grep -q "RUN_TESTS" $ENVFILE;  then 
     resize > /dev/null
