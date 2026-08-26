@@ -322,6 +322,7 @@ cleanup_non_admin_challenge_artifacts() {
     fi
 
     echo "[i] Non-admin cleanup: removing init, solution, and generator artifacts" | tee -a "$STARTUP_LOG"
+    rm -rf /challenge/model 2>/dev/null || true
     rm -f \
         /challenge/bin/.examsetup \
         /challenge/bin/init_cse545 \
