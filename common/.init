@@ -983,6 +983,32 @@ if [ -f /challenge/captain ]; then
     chmod u+s /challenge/captain
 fi
 
+echo "[i] checking for .prelevelinit" >> "$STARTUP_LOG"
+if [ -f /challenge/.prelevelinit ]; then
+    level_start_time=$(date +%s)
+    if head -n 1 /challenge/.prelevelinit | grep -q "python"; then
+        python3 /challenge/.prelevelinit
+    else
+        source /challenge/.prelevelinit
+    fi
+    end_time=$(date +%s)
+    execution_time=$((end_time - level_start_time))
+    echo "[i] Completed .prelevelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
+fi
+
+echo "[i] checking for .moduleinit" >> "$STARTUP_LOG"
+if [ -f /challenge/.moduleinit ]; then
+    mod_start_time=$(date +%s)
+    source /challenge/.moduleinit >> "$STARTUP_LOG" 2>&1
+    moduleinit_exit_code=$?
+    if [ "$moduleinit_exit_code" -ne 0 ]; then
+        echo "[i] .moduleinit failed with exit code $moduleinit_exit_code" >> "$STARTUP_LOG"
+    fi
+    end_time=$(date +%s)
+    execution_time=$((end_time - mod_start_time))
+    echo "[i] Completed .moduleinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
+fi
+
 if [ -f /challenge/.levelinit ]; then
     source /challenge/.levelinit
     end_time=$(date +%s)
