@@ -25,8 +25,8 @@ chmod 644 /tmp/.startup_log_path
 rm -f /challenge/startup.log 2>/dev/null || true
 ln -s "$STARTUP_LOG" /challenge/startup.log
 
+mkdir -p /challenge/.config
 if [ -f /challenge/readme.html ] && [ ! -e /challenge/.config/readme.html ]; then
-    mkdir -p /challenge/.config
     ln -s /challenge/readme.html /challenge/.config/readme.html
 fi
 
