@@ -297,6 +297,10 @@ if [ -d /challenge/template ]; then
         echo "******************************************************" | tee -a $STARTUP_LOG
         cp -a /challenge/template/* $clevel_work_dir
         echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
+        if [ "$course_code" = "cse240" ] && [ -f /challenge/template/README.md ]; then
+            install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+            echo "[e] Refreshed README.md in $clevel_work_dir from selected problem template" | tee -a $STARTUP_LOG
+        fi
         chown hacker:hacker -R $clevel_work_dir
     else
         echo "[e] Existing CSE545 work found in $clevel_work_dir, skipping template overwrite." | tee -a $STARTUP_LOG

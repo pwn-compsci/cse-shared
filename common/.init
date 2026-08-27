@@ -1053,6 +1053,10 @@ if [ -f /challenge/.levelinit ]; then
     echo "Completed .levelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 fi 
+if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
+    install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+    echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
+fi
 unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 
 # Load .javainit if module is pretest (Java-based problems)

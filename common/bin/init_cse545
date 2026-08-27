@@ -492,6 +492,10 @@ if [ -f /challenge/.levelinit ]; then
     execution_time=$((end_time - level_start_time))
     echo "[i] Completed .levelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
 fi 
+if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
+    install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+    echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "/challenge/startup.log"
+fi
 
 unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 
