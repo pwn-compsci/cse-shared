@@ -195,7 +195,6 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.init_cse545 \
         /challenge/.init.cse545 \
         /challenge/.prelevelinit \
-        /challenge/.levelinit \
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
@@ -211,7 +210,6 @@ cleanup_non_admin_challenge_artifacts() {
         -name '.bginit' -o \
         -name '.examsetup' -o \
         -name '.prelevelinit' -o \
-        -name '.levelinit' -o \
         -name '.testprobleminit' -o \
         -name '.moduleinit' -o \
         -name '.moduleinit.*' -o \
@@ -220,6 +218,11 @@ cleanup_non_admin_challenge_artifacts() {
         -name '*.rm' -o \
         -name '*.rm.*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" != "true" ]; then
+        rm -f /challenge/.levelinit 2>/dev/null || true
+        find /challenge -type f -name '.levelinit' -exec rm -f {} \; 2>/dev/null || true
+    fi
 }
 
 protect_cse545_init_artifacts
@@ -372,6 +375,9 @@ if [ "$isExam" = true ]; then
     else
         echo "[i] Failed to change ownership of /home/hacker/.local/share/ultima/"
     fi
+
+    PRESERVE_LEVELINIT_UNTIL_SOURCED=true
+    export PRESERVE_LEVELINIT_UNTIL_SOURCED
     
     if [ -f /challenge/bin/.examsetup ]; then
         echo "[i] About to source .examsetup" >> "/challenge/startup.log"
@@ -486,6 +492,8 @@ if [ -f /challenge/.levelinit ]; then
     execution_time=$((end_time - level_start_time))
     echo "[i] Completed .levelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
 fi 
+
+unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 
 # run re-chown at the end to catch any created or copied files
 find /home/hacker ! -path "$course_home/*" ! -user hacker ! -type l -exec chown hacker:hacker {} + 2>> /challenge/startup.log
