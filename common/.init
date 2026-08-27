@@ -334,7 +334,6 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.init_cse545 \
         /challenge/.init.cse545 \
         /challenge/.prelevelinit \
-        /challenge/.levelinit \
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
@@ -350,7 +349,6 @@ cleanup_non_admin_challenge_artifacts() {
         -name '.bginit' -o \
         -name '.examsetup' -o \
         -name '.prelevelinit' -o \
-        -name '.levelinit' -o \
         -name '.testprobleminit' -o \
         -name '.moduleinit' -o \
         -name '.moduleinit.*' -o \
@@ -359,6 +357,11 @@ cleanup_non_admin_challenge_artifacts() {
         -name '*.rm' -o \
         -name '*.rm.*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" != "true" ]; then
+        rm -f /challenge/.levelinit 2>/dev/null || true
+        find /challenge -type f -name '.levelinit' -exec rm -f {} \; 2>/dev/null || true
+    fi
 }
 
 copy_solve_templates_to_workdir() {
@@ -855,6 +858,8 @@ if [[ -n $isExam ]]; then
         mkdir -p $cs_user_data_dir
         chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
     fi 
+    PRESERVE_LEVELINIT_UNTIL_SOURCED=true
+    export PRESERVE_LEVELINIT_UNTIL_SOURCED
     if [ -f /challenge/bin/.examsetup ]; then        
         source /challenge/bin/.examsetup
         echo "[i] Completed .examsetup" >> "$STARTUP_LOG"
@@ -1048,6 +1053,7 @@ if [ -f /challenge/.levelinit ]; then
     echo "Completed .levelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 fi 
+unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 
 # Load .javainit if module is pretest (Java-based problems)
 if [ "$module" = "pretest" ] && [ -f /challenge/.javainit ]; then
