@@ -58,7 +58,6 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.init_cse545 \
         /challenge/.init.cse545 \
         /challenge/.prelevelinit \
-        /challenge/.levelinit \
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
@@ -71,11 +70,15 @@ cleanup_non_admin_challenge_artifacts() {
         -name '.bginit' -o \
         -name '.examsetup' -o \
         -name '.prelevelinit' -o \
-        -name '.levelinit' -o \
         -name '.testprobleminit' -o \
         -name '.moduleinit' -o \
         -name '.moduleinit.*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" != "true" ]; then
+        rm -f /challenge/.levelinit 2>/dev/null || true
+        find /challenge -type f -name '.levelinit' -exec rm -f {} \; 2>/dev/null || true
+    fi
 }
 
 protect_cse545_init_artifacts
@@ -245,15 +248,36 @@ else
     echo "[e] Setting up problem $chosen_problem in $clevel_work_dir" | tee -a $STARTUP_LOG
     echo "chosen_problem=$chosen_problem" >> /challenge/.config/chosen_problem.dat
 
+    base_levelinit_backup=""
+    if [ -f /challenge/.levelinit ]; then
+        base_levelinit_backup="/tmp/.examsetup-base-levelinit.$$"
+        cp -a /challenge/.levelinit "$base_levelinit_backup" 2>/dev/null || base_levelinit_backup=""
+        rm -f /challenge/.levelinit 2>/dev/null || true
+        echo "[e] Removed base .levelinit before staging selected problem" | tee -a $STARTUP_LOG
+    fi
+
     cp -a /challenge/problems/$chosen_problem/. /challenge/
     if [ $? -eq 0 ]; then
         echo "[e] Successfully copied problem files from /challenge/problems/$chosen_problem to /challenge" | tee -a $STARTUP_LOG
+        if [ -f "/challenge/problems/$chosen_problem/.levelinit" ]; then
+            echo "[e] Using .levelinit from selected problem $chosen_problem" | tee -a $STARTUP_LOG
+        elif [ -n "$base_levelinit_backup" ] && [ -f "$base_levelinit_backup" ]; then
+            cp -a "$base_levelinit_backup" /challenge/.levelinit 2>/dev/null || true
+            echo "[e] Selected problem has no .levelinit; restored base .levelinit fallback" | tee -a $STARTUP_LOG
+        else
+            echo "[e] Selected problem has no .levelinit and no base fallback was present" | tee -a $STARTUP_LOG
+        fi
     else
         echo "[e] ERROR: Failed to copy problem files from /challenge/problems/$chosen_problem to /challenge" | tee -a $STARTUP_LOG
+        if [ -n "$base_levelinit_backup" ] && [ -f "$base_levelinit_backup" ]; then
+            cp -a "$base_levelinit_backup" /challenge/.levelinit 2>/dev/null || true
+            echo "[e] Restored base .levelinit after failed problem copy" | tee -a $STARTUP_LOG
+        fi
         echo "[e] ERROR: Dumping /challenge directory contents:" | tee -a $STARTUP_LOG
         ls -laR /challenge | tee -a $STARTUP_LOG
         echo "[e] ERROR: End of /challenge directory dump" | tee -a $STARTUP_LOG
     fi
+    [ -n "$base_levelinit_backup" ] && rm -f "$base_levelinit_backup" 2>/dev/null || true
 
     if [ "$course_code" = "cse545" ] && [ ! -f /challenge/README.md ] && [ -f /challenge/template/README.md ]; then
         cp /challenge/template/README.md /challenge/README.md
