@@ -506,10 +506,11 @@ fi
 if [[ "$clevel_work_dir" == *cse240/exam* ]] || [[ "$clevel_work_dir" == *cse240/pretest* ]] || [[ "$clevel_work_dir" == *cse240/pex* ]]; then
     alias tester="/challenge/bin/exam_tester.sh"    
 else 
-    if tail -n 10 /home/hacker/.bashrc | grep -qE 'CSE240_PS1' && \
-            grep -q -v '# AUTO ADDED BY CSE240' /home/hacker/.bashrc; then
+    if [ -f /home/hacker/.bashrc ] && \
+            ! grep -qF '# AUTO ADDED BY CSE240' /home/hacker/.bashrc && \
+            grep -qE '^[[:space:]]*(export[[:space:]]+)?PS1[[:space:]]*=[[:space:]]*"?\$CSE240_PS1"?' /home/hacker/.bashrc; then
         if [[ "$clevel_work_dir" != *cse240/exam* ]] && [[ "$clevel_work_dir" != *cse240/pretest* ]] && [[ "$clevel_work_dir" != *cse240/pex* ]]; then
-            sed  -i '/export[[:space:]]\+PS1[[:space:]]*.[[:space:]]*\$CSE240_PS1/{
+            sed -i -E '/^[[:space:]]*(export[[:space:]]+)?PS1[[:space:]]*=[[:space:]]*"?\$CSE240_PS1"?/{
     c\
     if [ -n "$CSE240_PS1" ]; then \
         export PS1="$CSE240_PS1"\

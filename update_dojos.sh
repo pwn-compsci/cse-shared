@@ -5,6 +5,8 @@ scripts=(
   "/cse/intro-to-programming-languages/update_dojo.sh"
   "/cse/cse240-fa26/update_dojo.sh"
   "/cse/cse240-fc26/update_dojo.sh"
+  "/cse/cse545-fc26/update_dojo.sh"
+  "/cse/cse545-chals/update_dojo.sh"
   # Add more paths here as needed
 )
 
