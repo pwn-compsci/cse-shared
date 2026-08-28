@@ -8,17 +8,135 @@ course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
 extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 export course_code course_home course_env_file extension_log_file
 
+root_mutation_log() {
+    local message="$1"
+    if [ -n "${STARTUP_LOG:-}" ]; then
+        echo "[guard] $message" >> "$STARTUP_LOG" 2>/dev/null || true
+    else
+        echo "[guard] $message" >&2
+    fi
+}
+
+path_has_symlink_component() {
+    local path="${1%/}"
+    local probe=""
+    local part=""
+
+    [ -n "$path" ] || return 1
+    case "$path" in
+        /home/hacker|/home/hacker/*) ;;
+        *) [ -L "$path" ] && return 0; return 1 ;;
+    esac
+
+    path="/${path#/}"
+    IFS='/' read -r -a parts <<< "${path#/}"
+    for part in "${parts[@]}"; do
+        [ -n "$part" ] || continue
+        probe="${probe}/${part}"
+        if [ -L "$probe" ]; then
+            root_mutation_log "blocked root mutation through symlink: $probe -> $(readlink "$probe" 2>/dev/null || echo unknown) while handling $1"
+            return 0
+        fi
+        [ -e "$probe" ] || break
+    done
+    return 1
+}
+
+safe_root_mutation_path() {
+    local path="$1"
+    if path_has_symlink_component "$path"; then
+        return 1
+    fi
+    return 0
+}
+
+safe_root_mutation_tree() {
+    local path="$1"
+    local link=""
+    safe_root_mutation_path "$path" || return 1
+    if [ -d "$path" ]; then
+        link=$(find "$path" -type l -print -quit 2>/dev/null)
+        if [ -n "$link" ]; then
+            root_mutation_log "blocked root mutation in tree containing symlink: $link -> $(readlink "$link" 2>/dev/null || echo unknown)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+safe_chown() {
+    local seen_owner=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [ "$seen_owner" = false ]; then
+            [[ "$arg" == -* ]] && continue
+            seen_owner=true
+            continue
+        fi
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chown "$@"
+}
+
+safe_chmod() {
+    local seen_mode=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        if [ "$seen_mode" = false ]; then
+            seen_mode=true
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chmod "$@"
+}
+
+safe_touch() {
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command touch "$@"
+}
+
+safe_mkdir_p() {
+    local args=()
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [[ "$arg" == -* ]]; then
+            args+=("$arg")
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+        args+=("$arg")
+    done
+    command mkdir -p "${args[@]}"
+}
+
+safe_install_file() {
+    local dest="${@: -1}"
+    safe_root_mutation_path "$dest" || return 1
+    command install "$@"
+}
+
 # Create logs directory if it doesn't exist
-mkdir -p "$course_home/.vscode/logs"
-mkdir -p /home/hacker/.cache 
-chown -R hacker:hacker "$course_home/.vscode" 2>/dev/null || true
+safe_mkdir_p "$course_home/.vscode/logs"
+safe_mkdir_p /home/hacker/.cache
+safe_chown -R hacker:hacker "$course_home/.vscode" 2>/dev/null || true
 
 # Generate log filename based on current date/time
 STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
-echo "$STARTUP_LOG" > /tmp/.startup_log_path
-chmod 644 /tmp/.startup_log_path
+safe_root_mutation_path /tmp/.startup_log_path && echo "$STARTUP_LOG" > /tmp/.startup_log_path
+safe_chmod 644 /tmp/.startup_log_path
 
 # Create symlink at /challenge/startup.log pointing to the current log file
 # Remove old symlink if it exists, then create new one
@@ -120,11 +238,11 @@ create_model_bad() {
                 if [ -f "$output_file" ]; then
                     echo "Compiled binary created: $output_file" | tee -a $STARTUP_LOG
                     strip $output_file
-                    cp $output_file $clevel_work_dir    
-                    chmod 0755 "$output_file" 2>/dev/null || true
+                    safe_root_mutation_path "$clevel_work_dir/$(basename "$output_file")" && cp "$output_file" "$clevel_work_dir"
+                    safe_chmod 0755 "$output_file" 2>/dev/null || true
                     # ensure ownership if working dir is present
                     if [ -n "$clevel_work_dir" ] && [ -d "$clevel_work_dir" ]; then
-                        chown hacker:hacker "$output_file" 2>/dev/null || true
+                        safe_chown hacker:hacker "$output_file" 2>/dev/null || true
                     fi
                 else
                     echo "No binary produced for MODEL_BAD_${x}_${y}_${z}" | tee -a /challenge/errorlog
@@ -147,14 +265,15 @@ configure_user_vscode_settings() {
 
     # Create directory if it doesn't exist
     local settings_dir="$(dirname "$settings_json")"
-    mkdir -p "$settings_dir"
-    chown hacker:hacker -R "$user_dir" "$settings_dir"
+    safe_root_mutation_path "$settings_json" || return 1
+    safe_mkdir_p "$settings_dir"
+    safe_chown -R hacker:hacker "$user_dir" "$settings_dir"
 
     # If file doesn't exist, create with all default settings.
     if [ ! -f "$settings_json" ]; then
         echo "[c] Creating $settings_json with VS Code user defaults" | tee -a $STARTUP_LOG
         printf '{\n  "security.workspace.trust.enabled": false,\n  "chat.commandCenter.enabled": false,\n  "workbench.secondarySideBar.defaultVisibility": "hidden",\n  "chat.disableAIFeatures": false\n}\n' > "$settings_json"
-        chown hacker:hacker "$settings_json"
+        safe_chown hacker:hacker "$settings_json"
         return
     fi
 
@@ -165,7 +284,7 @@ configure_user_vscode_settings() {
             | if has("chat.commandCenter.enabled") then . else .["chat.commandCenter.enabled"] = false end
             | if has("workbench.secondarySideBar.defaultVisibility") then . else .["workbench.secondarySideBar.defaultVisibility"] = "hidden" end
             | if has("chat.disableAIFeatures") then . else .["chat.disableAIFeatures"] = false end' "$settings_json" > "$tmpfile" && mv "$tmpfile" "$settings_json"
-        chown hacker:hacker "$settings_json"
+        safe_chown hacker:hacker "$settings_json"
         echo "[c] VS Code user settings enforced in $settings_json" | tee -a $STARTUP_LOG
     else
         # Fallback: best-effort edits for simple JSON settings files.
@@ -183,7 +302,7 @@ configure_user_vscode_settings() {
         if ! grep -q '"chat\.disableAIFeatures"' "$settings_json"; then
             sed -i '$ s/}/,\n  "chat.disableAIFeatures": false\n}/' "$settings_json"
         fi
-        chown hacker:hacker "$settings_json"
+        safe_chown hacker:hacker "$settings_json"
         echo "[c] VS Code user settings enforced in $settings_json" | tee -a $STARTUP_LOG
     fi
 }
@@ -374,8 +493,9 @@ copy_solve_templates_to_workdir() {
         solve_files=("$clevel_work_dir"/solve*."$ext")
 
         if [ -f "${template_files[0]}" ] && [ ! -f "${solve_files[0]}" ]; then
+            safe_root_mutation_path "$clevel_work_dir/solve.$ext" || continue
             cp "${template_files[0]}" "$clevel_work_dir/solve.$ext"
-            chown hacker:hacker "$clevel_work_dir/solve.$ext" 2>/dev/null || true
+            safe_chown hacker:hacker "$clevel_work_dir/solve.$ext" 2>/dev/null || true
             echo "[i] solve template copied: ${template_files[0]} to $clevel_work_dir/solve.$ext" | tee -a "$STARTUP_LOG"
         fi
     done
@@ -383,7 +503,7 @@ copy_solve_templates_to_workdir() {
 
 protect_cse545_init_artifacts
 
-date --iso-8601=seconds > /tmp/.start
+safe_root_mutation_path /tmp/.start && date --iso-8601=seconds > /tmp/.start
 
 if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
@@ -455,45 +575,45 @@ if [ -f /challenge/checkstatus.py ]; then
 fi
 
 if [ ! -d /home/hacker/.local/share/ultima/skipped ]; then     
-    mkdir -p /home/hacker/.local/share/ultima/skipped
-    chown hacker:hacker /home/hacker/.local 
-    chown hacker:hacker /home/hacker/.local/share
+    safe_mkdir_p /home/hacker/.local/share/ultima/skipped
+    safe_chown hacker:hacker /home/hacker/.local
+    safe_chown hacker:hacker /home/hacker/.local/share
 fi 
 # TODO: remove after first few weeks
-chown hacker:hacker /home/hacker/.local
-chown hacker:hacker /home/hacker/.local/share
-chown hacker:hacker -R /home/hacker/.local/share/ultima
+safe_chown hacker:hacker /home/hacker/.local
+safe_chown hacker:hacker /home/hacker/.local/share
+safe_chown -R hacker:hacker /home/hacker/.local/share/ultima
 
-if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then 
-    echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
+if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then
+    safe_root_mutation_path /home/hacker/.local/share/ultima/skipped/log.json && echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
 fi 
 
 if [ ! -d "$course_home" ]; then
-    mkdir -p "$course_home"
-    mkdir -p "$course_home/.vscode"
-    mkdir -p "$course_home/labw"
-    mkdir -p "$course_home/grplab"
-    chown hacker:hacker -R "$course_home"
+    safe_mkdir_p "$course_home"
+    safe_mkdir_p "$course_home/.vscode"
+    safe_mkdir_p "$course_home/labw"
+    safe_mkdir_p "$course_home/grplab"
+    safe_chown -R hacker:hacker "$course_home"
 fi 
-chown hacker:hacker "$course_home" 2>/dev/null || true
-chown hacker:hacker -R "$course_home/.vscode"
+safe_chown hacker:hacker "$course_home" 2>/dev/null || true
+safe_chown -R hacker:hacker "$course_home/.vscode"
 
 if [ ! -f /home/hacker/.bashrc ]; then 
-    cp /etc/skel/.bashrc /home/hacker/.bashrc
-    chmod 644 /home/hacker/.bashrc 
-    chown hacker:hacker /home/hacker/.bashrc 
+    safe_root_mutation_path /home/hacker/.bashrc && cp /etc/skel/.bashrc /home/hacker/.bashrc
+    safe_chmod 644 /home/hacker/.bashrc
+    safe_chown hacker:hacker /home/hacker/.bashrc
     echo "Creating .bashrc for account hacker" | tee -a $STARTUP_LOG
 fi 
 if [ ! -f /home/hacker/.profile ]; then 
-    cp /etc/skel/.profile /home/hacker/.profile
-    chmod 644 /home/hacker/.profile 
-    chown hacker:hacker /home/hacker/.profile
+    safe_root_mutation_path /home/hacker/.profile && cp /etc/skel/.profile /home/hacker/.profile
+    safe_chmod 644 /home/hacker/.profile
+    safe_chown hacker:hacker /home/hacker/.profile
     echo "Creating .profile for account hacker" | tee -a $STARTUP_LOG
 fi 
 if [ ! -f /home/hacker/.bash_logout ]; then 
-    cp /etc/skel/.bash_logout /home/hacker/.bash_logout
-    chmod 644 /home/hacker/.bash_logout 
-    chown hacker:hacker /home/hacker/.bash_logout 
+    safe_root_mutation_path /home/hacker/.bash_logout && cp /etc/skel/.bash_logout /home/hacker/.bash_logout
+    safe_chmod 644 /home/hacker/.bash_logout
+    safe_chown hacker:hacker /home/hacker/.bash_logout
     echo "Creating .bash_logout for account hacker" | tee -a $STARTUP_LOG
 fi 
 
@@ -502,13 +622,13 @@ if [ -f /challenge/pex_heartbeat ]; then
     mv /challenge/pex_heartbeat /challenge/bin/pex_heartbeat
     chmod 600 /challenge/bin/pex_heartbeat    
     if [ -f /home/hacker/.local/share/ultima/pexs.dat ]; then 
-        date >> /home/hacker/.local/share/ultima/old_pxes.dat
-        cat /home/hacker/.local/share/ultima/pexs.dat >> /home/hacker/.local/share/ultima/old_pxes.dat
-        printf "" > /home/hacker/.local/share/ultima/pexs.dat
+        safe_root_mutation_path /home/hacker/.local/share/ultima/old_pxes.dat && date >> /home/hacker/.local/share/ultima/old_pxes.dat
+        safe_root_mutation_path /home/hacker/.local/share/ultima/old_pxes.dat && cat /home/hacker/.local/share/ultima/pexs.dat >> /home/hacker/.local/share/ultima/old_pxes.dat
+        safe_root_mutation_path /home/hacker/.local/share/ultima/pexs.dat && printf "" > /home/hacker/.local/share/ultima/pexs.dat
     fi 
-    touch /home/hacker/.local/share/ultima/pexs.dat
-    chown hacker:hacker /home/hacker/.local/share/ultima/pexs.dat
-    chmod 666 /home/hacker/.local/share/ultima/pexs.dat
+    safe_touch /home/hacker/.local/share/ultima/pexs.dat
+    safe_chown hacker:hacker /home/hacker/.local/share/ultima/pexs.dat
+    safe_chmod 666 /home/hacker/.local/share/ultima/pexs.dat
     python3 /challenge/bin/pex_heartbeat &
     echo "Started pex_heartbeat " | tee -a $STARTUP_LOG
 fi 
@@ -517,14 +637,14 @@ ENVFILE="$course_env_file"
 
 # create the course env file if not existing
 if [ ! -f "$ENVFILE" ]; then
-    touch "$ENVFILE"
+    safe_touch "$ENVFILE"
 fi 
-chown hacker:hacker "$ENVFILE" 2>/dev/null || true
-chmod 664 "$ENVFILE" 2>/dev/null || true
+safe_chown hacker:hacker "$ENVFILE" 2>/dev/null || true
+safe_chmod 664 "$ENVFILE" 2>/dev/null || true
 
-touch /home/hacker/.local/share/ultima/c.dat
-chmod 666 /home/hacker/.local/share/ultima/c.dat
-chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
+safe_touch /home/hacker/.local/share/ultima/c.dat
+safe_chmod 666 /home/hacker/.local/share/ultima/c.dat
+safe_chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 
 ## incorporate cse240 environment changes
 chmod 666 $STARTUP_LOG
@@ -549,10 +669,10 @@ if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then
     export SHELL=$(which zsh)
 else
     command_history_file="/home/hacker/.local/share/ultima/c.dat"
-    mkdir -p "$(dirname "$command_history_file")"
-    touch "$command_history_file"
-    chmod 666 "$command_history_file"
-    chown hacker:hacker "$command_history_file"
+    safe_mkdir_p "$(dirname "$command_history_file")"
+    safe_touch "$command_history_file"
+    safe_chmod 666 "$command_history_file"
+    safe_chown hacker:hacker "$command_history_file"
 
     # Extract module and challenge info once for session tracking.
     inst_id="$(jq -r '[
@@ -590,8 +710,9 @@ HIST_EOF
     printf 'export PATH=$PATH:/challenge/\n' >> /etc/bash.bashrc
     printf 'source /challenge/.config/.bashrc.config.sh\n' >> /etc/bash.bashrc
 
-    sed -i '/^# CSE_COMMAND_HISTORY_USER_START$/,/^# CSE_COMMAND_HISTORY_USER_END$/d' /home/hacker/.bashrc
-    cat >> /home/hacker/.bashrc << 'USER_HIST_EOF'
+    if safe_root_mutation_path /home/hacker/.bashrc; then
+        sed -i '/^# CSE_COMMAND_HISTORY_USER_START$/,/^# CSE_COMMAND_HISTORY_USER_END$/d' /home/hacker/.bashrc
+        cat >> /home/hacker/.bashrc << 'USER_HIST_EOF'
 
 # CSE_COMMAND_HISTORY_USER_START
 if declare -F __cse_log_cmd >/dev/null 2>&1; then
@@ -603,7 +724,8 @@ if declare -F __cse_log_cmd >/dev/null 2>&1; then
 fi
 # CSE_COMMAND_HISTORY_USER_END
 USER_HIST_EOF
-    chown hacker:hacker /home/hacker/.bashrc
+    fi
+    safe_chown hacker:hacker /home/hacker/.bashrc
             
     printf 'echo "Added commands to BASHRC FILE!!!!" | tee -a $STARTUP_LOG '
 
@@ -612,8 +734,8 @@ fi
 
 ## limit cpp-tools cache size to 0 for right now
 JSON_FILE="/home/hacker/.local/share/code-server/Machine/settings.json"
-chown hacker:hacker $JSON_FILE
-if [ ! -f $JSON_FILE ] || ! grep -q "C_Cpp.intelliSenseCacheSize" $JSON_FILE; then
+safe_chown hacker:hacker $JSON_FILE
+if safe_root_mutation_path "$JSON_FILE" && { [ ! -f $JSON_FILE ] || ! grep -q "C_Cpp.intelliSenseCacheSize" $JSON_FILE; }; then
     TEMP_FILE=$JSON_FILE".tmp"
     if [ ! -f $JSON_FILE ]; then 
         printf '{\n  "C_Cpp.intelliSenseCacheSize": 0\n}\n' > $JSON_FILE
@@ -747,8 +869,8 @@ if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
 fi
 
 if [ ! -f /home/hacker/.cache ]; then 
-    mkdir -p /home/hacker/.cache
-    chown hacker:hacker /home/hacker/.cache
+    safe_mkdir_p /home/hacker/.cache
+    safe_chown hacker:hacker /home/hacker/.cache
 fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
@@ -855,8 +977,8 @@ echo "isExam=$isExam" | tee -a $STARTUP_LOG
 if [[ -n $isExam ]]; then 
     cs_user_data_dir="/home/hacker/.local/share/code-server-exam"
      if [ ! -d $cs_user_data_dir ]; then 
-        mkdir -p $cs_user_data_dir
-        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+        safe_mkdir_p $cs_user_data_dir
+        safe_chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
     fi 
     PRESERVE_LEVELINIT_UNTIL_SOURCED=true
     export PRESERVE_LEVELINIT_UNTIL_SOURCED
@@ -867,7 +989,7 @@ if [[ -n $isExam ]]; then
 
     # setup EXAM_REFERENCE if it exists
     if [ -f /challenge/EXAM_REFERENCE.md ]; then     
-        cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
+        safe_root_mutation_path "$clevel_work_dir/EXAM_REFERENCE.md" && cp /challenge/EXAM_REFERENCE.md "$clevel_work_dir/EXAM_REFERENCE.md"
         echo "[i] Found EXAM_REFERENCE, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
@@ -892,20 +1014,20 @@ CHECKSTATUS_NOTICE_EOF
     fi
     cs_user_data_dir="/home/hacker/.local/share/code-server"
      if [ ! -d $cs_user_data_dir ]; then 
-        mkdir -p $cs_user_data_dir
-        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+        safe_mkdir_p $cs_user_data_dir
+        safe_chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
     fi 
     # if level working directory is not there then create it if creeateHWDir set in level.json
     if [[ ! -d $clevel_work_dir ]] ; then 
         if grep -iq '"createHWDir".*true' /challenge/.config/level.json || [ "$course_code" = "cse545" ]; then
-            mkdir -p $clevel_work_dir 
-            chown hacker:hacker -R $clevel_work_dir
+            safe_mkdir_p $clevel_work_dir
+            safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker $clevel_work_dir
             # if no main file then copy template files 
             if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
                 if [ -d /challenge/template ]; then 
                     echo "[i] No main file found in $clevel_work_dir, copying template files" | tee -a $STARTUP_LOG
-                    cp -a /challenge/template/* $clevel_work_dir
-                    chown hacker:hacker -R $clevel_work_dir
+                    safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/* "$clevel_work_dir"
+                    safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
                 else
                     echo "[i] /challenge/template not found, skipping template copy" | tee -a $STARTUP_LOG
                 fi 
@@ -921,8 +1043,8 @@ CHECKSTATUS_NOTICE_EOF
     copy_solve_templates_to_workdir
 
     if [ -d "$clevel_work_dir" ] && [ -f /challenge/main.c ]; then
-        cp /challenge/main.c "$clevel_work_dir"
-        chown hacker:hacker "$clevel_work_dir/main.c" 2>/dev/null || true
+        safe_root_mutation_path "$clevel_work_dir/main.c" && cp /challenge/main.c "$clevel_work_dir"
+        safe_chown hacker:hacker "$clevel_work_dir/main.c" 2>/dev/null || true
     fi
     if [ -d "$clevel_work_dir" ] && [ -f /challenge/main.rm.c ]; then
         [ -f "$clevel_work_dir/main.c" ] && rm -f "$clevel_work_dir/main.c"
@@ -932,23 +1054,23 @@ CHECKSTATUS_NOTICE_EOF
     # Copy README.md fallback if it exists. This is separate from the normal
     # template copy so existing work directories still receive requirements.
     if [ -f /challenge/template/README.md ] && [ ! -f "$clevel_work_dir/README.md" ]; then
-        cp /challenge/template/README.md "$clevel_work_dir/README.md"
+        safe_root_mutation_path "$clevel_work_dir/README.md" && cp /challenge/template/README.md "$clevel_work_dir/README.md"
         echo "[i] Found template README.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
     # Copy REFERENCE.md if it exists
     if [ -f /challenge/REFERENCE.md ]; then     
-        cp /challenge/REFERENCE.md $clevel_work_dir/REFERENCE.md
+        safe_root_mutation_path "$clevel_work_dir/REFERENCE.md" && cp /challenge/REFERENCE.md "$clevel_work_dir/REFERENCE.md"
         echo "[i] Found REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
     
     # Copy EXAM_REFERENCE.md if it exists
     if [ -f /challenge/EXAM_REFERENCE.md ]; then     
-        cp /challenge/EXAM_REFERENCE.md $clevel_work_dir/EXAM_REFERENCE.md
+        safe_root_mutation_path "$clevel_work_dir/EXAM_REFERENCE.md" && cp /challenge/EXAM_REFERENCE.md "$clevel_work_dir/EXAM_REFERENCE.md"
         echo "[i] Found EXAM_REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
-    chown hacker:hacker -R $clevel_work_dir
+    safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
 
 fi
 
@@ -1054,7 +1176,7 @@ if [ -f /challenge/.levelinit ]; then
     start_time=$(date +%s)
 fi 
 if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
-    install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+    safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
 fi
 unset PRESERVE_LEVELINIT_UNTIL_SOURCED
@@ -1197,8 +1319,8 @@ if [ "$module" != "pretest" ]; then
     # To pretty-print for debugging
     #echo "$launch" | jq '.' >> /challenge/pretty_vscode.json
 
-    find /home/hacker/.local/share/code-server ! -user hacker -exec chown hacker:hacker {} +
-    find /home/hacker/.config ! -user hacker -exec chown hacker:hacker {} + 
+    find /home/hacker/.local/share/code-server ! -type l ! -user hacker -exec chown hacker:hacker {} +
+    find /home/hacker/.config ! -type l ! -user hacker -exec chown hacker:hacker {} +
 
     # ###################################################################################################################### #
     # ^^^^ END Build Tasks and Launcher for workspace ^^^^                                                                   #
@@ -1267,7 +1389,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
         
         jq '.' $tmpfile > "$wsname" 2| tee -a $STARTUP_LOG
         
-        chown hacker:hacker "$wsname"
+        safe_chown hacker:hacker "$wsname"
 
         if [[ $? == 0 ]]; then 
             rm -f "$tmpfile"
@@ -1295,7 +1417,7 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
     echo "[+] Checking ${coder_file} for ${wsname}" | tee -a $STARTUP_LOG
 
     
-    if [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; then 
+    if safe_root_mutation_path "$coder_file" && { [ ! -f "${coder_file}" ] || ! grep -q "$wsname" "${coder_file}"; }; then 
         
         printf '{
             "query": {
@@ -1303,8 +1425,8 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
             }
         }\n' |  jq . > ${coder_file}
 
-        chown hacker:hacker ${coder_file}
-        chmod +r ${coder_file}
+        safe_chown hacker:hacker ${coder_file}
+        safe_chmod +r ${coder_file}
         echo "[+] Updated Coder file " | tee -a $STARTUP_LOG
         cat $coder_file | tee -a $STARTUP_LOG 
     else
@@ -1323,7 +1445,7 @@ echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a $STARTUP_LOG
 if [ -f /challenge/system_tests/items.json ]; then 
     echo "Updating items.json and rooms.json into $clevel_work_dir" >> "$STARTUP_LOG"
     cp /challenge/system_tests/{items.json,rooms.json} /challenge/
-    cp /challenge/system_tests/{items.json,rooms.json} $clevel_work_dir    
+    safe_root_mutation_path "$clevel_work_dir/items.json" && safe_root_mutation_path "$clevel_work_dir/rooms.json" && cp /challenge/system_tests/{items.json,rooms.json} "$clevel_work_dir"
 fi 
 
 if [[ $clevel_work_dir == *"25-proj-mud"* ]]; then
@@ -1372,10 +1494,10 @@ fi
 
 # Create .bash_history
 if [ ! -f "/home/hacker/.bash_history" ]; then
-    touch "/home/hacker/.bash_history"      
+    safe_touch "/home/hacker/.bash_history"
     echo "[i] Created .bash_history and chowned to hacker:hacker" | tee -a $STARTUP_LOG
 fi
-chown hacker:hacker "/home/hacker/.bash_history"   
+safe_chown hacker:hacker "/home/hacker/.bash_history"
 
 ########################################################################
 
@@ -1394,17 +1516,21 @@ if [ -f "$logfile" ]; then
         skip_bytes=$((file_size - keep_size))
 
         # Trim the file, keeping only the last 1MB
-        tail -c +$((skip_bytes + 1)) "$file" > /tmp/tempfile && mv /tmp/tempfile "$file"
+        tempfile=$(mktemp /tmp/pexs-log-trim.XXXXXX)
+        tail -c +$((skip_bytes + 1)) "$logfile" > "$tempfile" && safe_root_mutation_path "$logfile" && mv "$tempfile" "$logfile"
+        [ -e "$tempfile" ] && rm -f "$tempfile"
     fi
 fi
 
-touch "$extension_log_file"
-chown hacker:hacker -R "$course_home/.vscode"
-chmod 664 "$extension_log_file" 2>/dev/null || true
+safe_touch "$extension_log_file"
+safe_chown -R hacker:hacker "$course_home/.vscode"
+safe_chmod 664 "$extension_log_file" 2>/dev/null || true
 
 echo 'course_code=${course_code:-$(jq -r '"'"'.course_code // "cse240"'"'"' /challenge/.config/level.json 2>/dev/null || echo cse240)}; echo "$(printf "bash started at $(date)" | base64)" >> "/home/hacker/${course_code}/.vscode/cp.dat" 2>/dev/null || true' >> /etc/bash.bashrc
 
-echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> "$extension_log_file"
+if safe_root_mutation_path "$extension_log_file"; then
+    echo "$(printf '%s' "===========<[ Session Starting @ $(date --iso-8601=seconds) | module=${module} | level=${level} ]>===========" | base64 -w 0)" >> "$extension_log_file"
+fi
 ############################################################################################
 
 echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 

@@ -11,17 +11,128 @@ course_env_file="$course_home/.${course_code}env"
 
 export PATH=/run/dojo/bin:$PATH
 
+root_mutation_log() {
+    local message="$1"
+    echo "[guard] $message" >> /challenge/startup.log 2>/dev/null || echo "[guard] $message" >&2
+}
+
+path_has_symlink_component() {
+    local path="${1%/}"
+    local probe=""
+    local part=""
+
+    [ -n "$path" ] || return 1
+    case "$path" in
+        /home/hacker|/home/hacker/*) ;;
+        *) [ -L "$path" ] && return 0; return 1 ;;
+    esac
+
+    path="/${path#/}"
+    IFS='/' read -r -a parts <<< "${path#/}"
+    for part in "${parts[@]}"; do
+        [ -n "$part" ] || continue
+        probe="${probe}/${part}"
+        if [ -L "$probe" ]; then
+            root_mutation_log "blocked root mutation through symlink: $probe -> $(readlink "$probe" 2>/dev/null || echo unknown) while handling $1"
+            return 0
+        fi
+        [ -e "$probe" ] || break
+    done
+    return 1
+}
+
+safe_root_mutation_path() {
+    path_has_symlink_component "$1" && return 1
+    return 0
+}
+
+safe_root_mutation_tree() {
+    local path="$1"
+    local link=""
+    safe_root_mutation_path "$path" || return 1
+    if [ -d "$path" ]; then
+        link=$(find "$path" -type l -print -quit 2>/dev/null)
+        if [ -n "$link" ]; then
+            root_mutation_log "blocked root mutation in tree containing symlink: $link -> $(readlink "$link" 2>/dev/null || echo unknown)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+safe_chown() {
+    local seen_owner=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [ "$seen_owner" = false ]; then
+            [[ "$arg" == -* ]] && continue
+            seen_owner=true
+            continue
+        fi
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chown "$@"
+}
+
+safe_chmod() {
+    local seen_mode=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        if [ "$seen_mode" = false ]; then
+            seen_mode=true
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chmod "$@"
+}
+
+safe_touch() {
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command touch "$@"
+}
+
+safe_mkdir_p() {
+    local args=()
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [[ "$arg" == -* ]]; then
+            args+=("$arg")
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+        args+=("$arg")
+    done
+    command mkdir -p "${args[@]}"
+}
+
+safe_install_file() {
+    local dest="${@: -1}"
+    safe_root_mutation_path "$dest" || return 1
+    command install "$@"
+}
+
 # Create common user directories early; landrun-backed startup is picky about
 # code-server and tool caches already existing.
-mkdir -p "$course_home/.vscode/logs" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share/ultima
-chown -R hacker:hacker "$course_home/.vscode" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share 2>/dev/null || true
+safe_mkdir_p "$course_home/.vscode/logs" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share/ultima
+safe_root_mutation_tree "$course_home/.vscode" && safe_root_mutation_tree /home/hacker/.cache && safe_root_mutation_tree /home/hacker/.config && safe_root_mutation_tree /home/hacker/.local/share && safe_chown -R hacker:hacker "$course_home/.vscode" /home/hacker/.cache /home/hacker/.config /home/hacker/.local/share 2>/dev/null || true
 
 # Generate log filename based on current date/time
 STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S)-${module}-${level}.log"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
-echo "$STARTUP_LOG" > /tmp/.startup_log_path
-chmod 644 /tmp/.startup_log_path
+safe_root_mutation_path /tmp/.startup_log_path && echo "$STARTUP_LOG" > /tmp/.startup_log_path
+safe_chmod 644 /tmp/.startup_log_path
 
 # Create symlink at /challenge/startup.log pointing to the current log file
 # Remove old symlink if it exists, then create new one
@@ -46,7 +157,7 @@ mkdir -p /challenge/bin 2>> /challenge/startup.log
 # ln -s /usr/bin/{cpp,cc,c++,ld,gcc,as,gdb,g++,make,python3} /challenge/bin 2>> /challenge/startup.log
 
 workdir="$course_home/$module/$level"
-mkdir -p "$workdir"
+safe_mkdir_p "$workdir"
 
 printf "\n[update]\ninterval=never\n" >> /etc/pwn.conf
 
@@ -70,9 +181,9 @@ printf "\nalias batlist='for f in \$(ls -tr); do ls -lat \$f; batcat --paging=ne
 ### end commands added to /etc/bash.bashrc
 
 echo "[i] Updating ownership of files in $workdir" >> /challenge/startup.log
-chown hacker:hacker "$course_home"
-chown -R hacker:hacker "$course_home/.vscode"
-chown hacker:hacker "$workdir"
+safe_chown hacker:hacker "$course_home"
+safe_root_mutation_tree "$course_home/.vscode" && safe_chown -R hacker:hacker "$course_home/.vscode"
+safe_chown hacker:hacker "$workdir"
 # echo "[i] Running the bug fixed command" >> /challenge/startup.log
 for file in "$workdir"/*; do
     [ -e "$file" ] && chown -h hacker:hacker -- "$file"
@@ -111,16 +222,16 @@ extract_account_id_from_flag() {
     fi
 }
 
-touch /home/hacker/.bashrc
-chown hacker:hacker /home/hacker/.bashrc
-chmod 766 /home/hacker/.bashrc
-if ! grep -qF "alias ll='ls -alF'" /home/hacker/.bashrc; then
+safe_touch /home/hacker/.bashrc
+safe_chown hacker:hacker /home/hacker/.bashrc
+safe_chmod 766 /home/hacker/.bashrc
+if safe_root_mutation_path /home/hacker/.bashrc && ! grep -qF "alias ll='ls -alF'" /home/hacker/.bashrc; then
     echo "alias ll='ls -alF'" >> /home/hacker/.bashrc
 fi
-touch /home/hacker/.profile
-chown hacker:hacker /home/hacker/.profile
-chmod 766 /home/hacker/.profile
-if ! grep -qF "alias ll='ls -alF'" /home/hacker/.profile; then
+safe_touch /home/hacker/.profile
+safe_chown hacker:hacker /home/hacker/.profile
+safe_chmod 766 /home/hacker/.profile
+if safe_root_mutation_path /home/hacker/.profile && ! grep -qF "alias ll='ls -alF'" /home/hacker/.profile; then
     echo "alias ll='ls -alF'" >> /home/hacker/.profile
 fi
 
@@ -230,12 +341,12 @@ protect_cse545_init_artifacts
 ##### clevel_work_dir is where the user work area is located
 clevel_work_dir="$course_home/$(jq -r '. | "\(.module)/\(.level)"' /challenge/.config/level.json)"
 
-mkdir -p "$course_home/.vscode"
+safe_mkdir_p "$course_home/.vscode"
 
 level=$(jq -r '.level' /challenge/.config/level.json)    
 module=$(jq -r '.module' /challenge/.config/level.json)
 if [[ ! -d $clevel_work_dir ]] ; then 
-    mkdir -p $clevel_work_dir 
+    safe_mkdir_p $clevel_work_dir
 fi 
 echo "clevel_work_dir=$clevel_work_dir" >> /challenge/startup.log
 
@@ -353,24 +464,24 @@ cs_user_data_dir="/home/hacker/.local/share/code-server"
 if [ "$isExam" = true ]; then 
     echo "[i] Starting exam setup" >> /challenge/startup.log
     cs_user_data_dir="/home/hacker/.local/share/code-server-545exam"
-    mkdir -p $cs_user_data_dir
-    mkdir -p /home/hacker/.local/share/ultima/
-    touch /home/hacker/.gdbinit
+    safe_mkdir_p $cs_user_data_dir
+    safe_mkdir_p /home/hacker/.local/share/ultima/
+    safe_touch /home/hacker/.gdbinit
     
-    mkdir -p /home/hacker/.idapro 2>/dev/null || true
-    touch /home/hacker/.idapro/ida.reg 2>/dev/null || true
+    safe_mkdir_p /home/hacker/.idapro 2>/dev/null || true
+    safe_touch /home/hacker/.idapro/ida.reg 2>/dev/null || true
 
-    if chown hacker:hacker "$cs_user_data_dir" 2>/dev/null; then
+    if safe_chown hacker:hacker "$cs_user_data_dir" 2>/dev/null; then
         echo "[i] Successfully changed ownership of $cs_user_data_dir"
     else
         echo "[i] Failed to change ownership of $cs_user_data_dir"
     fi
-    if chown hacker:hacker "/home/hacker/.local/share/" 2>/dev/null; then
+    if safe_chown hacker:hacker "/home/hacker/.local/share/" 2>/dev/null; then
         echo "[i] Successfully changed ownership of /home/hacker/.local/share/"
     else
         echo "[i] Failed to change ownership of /home/hacker/.local/share/"
     fi
-    if chown hacker:hacker "/home/hacker/.local/share/ultima/" 2>/dev/null; then
+    if safe_chown hacker:hacker "/home/hacker/.local/share/ultima/" 2>/dev/null; then
         echo "[i] Successfully changed ownership of /home/hacker/.local/share/ultima/"
     else
         echo "[i] Failed to change ownership of /home/hacker/.local/share/ultima/"
@@ -394,8 +505,8 @@ if [ "$isExam" = true ]; then
 else
     echo "[i] Not an exam level" >> /challenge/startup.log    
     if [ ! -d $cs_user_data_dir ]; then 
-        mkdir -p $cs_user_data_dir
-        chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
+        safe_mkdir_p $cs_user_data_dir
+        safe_chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
     fi 
 fi
 
@@ -409,14 +520,14 @@ if [ -f "${coder_file}" ] && grep -q "$workdir" "${coder_file}"; then
     echo "[i] ${coder_file} already contains ${workdir}" >> /challenge/startup.log      
 else
     echo "[i] Updating ${coder_file} with ${workdir}" >> /challenge/startup.log
-    printf '{
+    safe_root_mutation_path "${coder_file}" && printf '{
         "query": {
             "folder": "'$workdir'"
         }
     }\n' |  jq . > ${coder_file}
 
-    chown hacker:hacker ${coder_file}
-    chmod +r ${coder_file}
+    safe_chown hacker:hacker ${coder_file}
+    safe_chmod +r ${coder_file}
     echo "[i] Updated Coder file it now looks like" >> /challenge/startup.log
     cat $coder_file >> /challenge/startup.log 
     echo "-----" >> /challenge/startup.log
@@ -445,9 +556,9 @@ fi
 
 echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
 
-touch "$course_home/.vscode/hist.log"
-chown hacker:hacker "$course_home/.vscode/hist.log"
-chmod 0666 "$course_home/.vscode/hist.log"
+safe_touch "$course_home/.vscode/hist.log"
+safe_chown hacker:hacker "$course_home/.vscode/hist.log"
+safe_chmod 0666 "$course_home/.vscode/hist.log"
 inst_id="$(basename $(jq -r '. | "\(.module)"' /challenge/.config/level.json)) $(jq -r '. | "\(.level)"' /challenge/.config/level.json)"
 echo "export PROMPT_COMMAND='HISTTIMEFORMAT=\"%F %T ${inst_id} | \" history 1 >> $course_home/.vscode/hist.log && history -a'" >> /etc/bash.bashrc
 
@@ -459,12 +570,12 @@ for ext in py sh c; do
     # Check if template exists (not just glob pattern) and no solve file exists
     if [ -f "${template_files[0]}" ] && [ ! -f "${solve_files[0]}" ]; then
         # Copy the first template file found
-        cp "${template_files[0]}" "$workdir/solve.$ext"
+        safe_root_mutation_path "$workdir/solve.$ext" && cp "${template_files[0]}" "$workdir/solve.$ext"
         echo "[i] solved template copied: ${template_files[0]} to $workdir/solve.$ext" >> /challenge/startup.log
     fi
 done
 
-[ -f /challenge/main.c ] && cp /challenge/main.c $workdir
+[ -f /challenge/main.c ] && safe_root_mutation_path "$workdir/main.c" && cp /challenge/main.c "$workdir"
 
 [ -f /challenge/main.rm.c ] && [ -f $workdir/main.c ] && rm -f $workdir/main.c 
 [ -f /challenge/main.rm.c ] && [ -f $workdir/main.rm.c ] && rm -f $workdir/main.rm.c
@@ -493,14 +604,14 @@ if [ -f /challenge/.levelinit ]; then
     echo "[i] Completed .levelinit in .init in $execution_time seconds" >> "/challenge/startup.log"
 fi 
 if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
-    install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+    safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "/challenge/startup.log"
 fi
 
 unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 
 # run re-chown at the end to catch any created or copied files
-find /home/hacker ! -path "$course_home/*" ! -user hacker ! -type l -exec chown hacker:hacker {} + 2>> /challenge/startup.log
+find /home/hacker ! -path "$course_home/*" ! -type l ! -user hacker -exec chown hacker:hacker {} + 2>> /challenge/startup.log
 echo "[i] find/chown ran with $? " >> /challenge/startup.log
 echo "[i] still have these files with issues " >> /challenge/startup.log
 remaining_files=$(find /home/hacker ! -path "$course_home/*" ! -user hacker ! -type l)
@@ -569,7 +680,7 @@ echo "[i] Cleanup stage ">> /challenge/startup.log
 if [ "$admin_access" = true ]; then
     # Copy any sln* files from /challenge to workdir for admin access
     if find /challenge -maxdepth 1 -name 'sln*' -type f | grep -q .; then
-        find /challenge -maxdepth 1 -name "sln*" -type f -exec cp {} $workdir/ \;
+        safe_root_mutation_tree "$workdir" && find /challenge -maxdepth 1 -name "sln*" -type f -exec cp {} "$workdir/" \;
         echo "[i] Copying from /challenge/sln*" >> /challenge/startup.log
     else 
         # Fallback to solutions directory with module-specific naming
@@ -634,4 +745,4 @@ EOF
 
 echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') finished with .init" >> /challenge/startup.log
 
-chown hacker:hacker -R "$course_home/"
+safe_root_mutation_tree "$course_home" && safe_chown -R hacker:hacker "$course_home/"

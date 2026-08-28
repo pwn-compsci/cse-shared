@@ -14,6 +14,122 @@ else
 fi
 
 echo "[e] Exam level found" | tee -a $STARTUP_LOG
+
+root_mutation_log() {
+    local message="$1"
+    if [ -n "${STARTUP_LOG:-}" ]; then
+        echo "[guard] $message" >> "$STARTUP_LOG" 2>/dev/null || true
+    else
+        echo "[guard] $message" >&2
+    fi
+}
+
+path_has_symlink_component() {
+    local path="${1%/}"
+    local probe=""
+    local part=""
+
+    [ -n "$path" ] || return 1
+    case "$path" in
+        /home/hacker|/home/hacker/*) ;;
+        *) [ -L "$path" ] && return 0; return 1 ;;
+    esac
+
+    path="/${path#/}"
+    IFS='/' read -r -a parts <<< "${path#/}"
+    for part in "${parts[@]}"; do
+        [ -n "$part" ] || continue
+        probe="${probe}/${part}"
+        if [ -L "$probe" ]; then
+            root_mutation_log "blocked root mutation through symlink: $probe -> $(readlink "$probe" 2>/dev/null || echo unknown) while handling $1"
+            return 0
+        fi
+        [ -e "$probe" ] || break
+    done
+    return 1
+}
+
+safe_root_mutation_path() {
+    path_has_symlink_component "$1" && return 1
+    return 0
+}
+
+safe_root_mutation_tree() {
+    local path="$1"
+    local link=""
+    safe_root_mutation_path "$path" || return 1
+    if [ -d "$path" ]; then
+        link=$(find "$path" -type l -print -quit 2>/dev/null)
+        if [ -n "$link" ]; then
+            root_mutation_log "blocked root mutation in tree containing symlink: $link -> $(readlink "$link" 2>/dev/null || echo unknown)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+safe_chown() {
+    local seen_owner=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [ "$seen_owner" = false ]; then
+            [[ "$arg" == -* ]] && continue
+            seen_owner=true
+            continue
+        fi
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chown "$@"
+}
+
+safe_chmod() {
+    local seen_mode=false
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        if [ "$seen_mode" = false ]; then
+            seen_mode=true
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command chmod "$@"
+}
+
+safe_touch() {
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        [[ "$arg" == -* ]] && continue
+        safe_root_mutation_path "$arg" || return 1
+    done
+    command touch "$@"
+}
+
+safe_mkdir_p() {
+    local args=()
+    local arg
+    for arg in "$@"; do
+        [ -n "$arg" ] || continue
+        if [[ "$arg" == -* ]]; then
+            args+=("$arg")
+            continue
+        fi
+        safe_root_mutation_path "$arg" || return 1
+        args+=("$arg")
+    done
+    command mkdir -p "${args[@]}"
+}
+
+safe_install_file() {
+    local dest="${@: -1}"
+    safe_root_mutation_path "$dest" || return 1
+    command install "$@"
+}
+
 if [ "$admin_access" = false ]; then
     # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
     # if grep "practice" /flag; then
@@ -216,7 +332,7 @@ else
 
     # Record module, level, and starttime to starts.log for .examsetup
     starttime=$(date '+%Y-%m-%d %H:%M:%S')
-    mkdir -p "$course_home/.vscode"
+    safe_mkdir_p "$course_home/.vscode"
     echo "module=$module|level=$level|chosen_problem=$chosen_problem|starttime=$starttime" >> "$course_home/.vscode/starts.log"
 
 
@@ -267,14 +383,14 @@ else
     if [ ! -e "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a $STARTUP_LOG
         ls -la /challenge | tee -a /challenge/challenge.log
-        mkdir -p "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
+        safe_mkdir_p "$clevel_work_dir/system_tests"
+        safe_root_mutation_tree "$clevel_work_dir/system_tests" && cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
         ls -la "$clevel_work_dir" | tee -a $STARTUP_LOG
     elif [ -L "$clevel_work_dir/system_tests" ]; then
         echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a $STARTUP_LOG
         rm "$clevel_work_dir/system_tests"
-        mkdir -p "$clevel_work_dir/system_tests"
-        cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
+        safe_mkdir_p "$clevel_work_dir/system_tests"
+        safe_root_mutation_tree "$clevel_work_dir/system_tests" && cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
     fi
     find $clevel_work_dir -type f -name 'stest*hidden*' -exec rm -f {} \;
 fi
@@ -288,30 +404,30 @@ fi
 # c_level_work_dir comes from parent call .init, .examsetup is sourced
 echo "[e] creating clevel_work_dir = $clevel_work_dir in .examsetup" | tee -a $STARTUP_LOG
 
-mkdir -p $clevel_work_dir
+safe_mkdir_p $clevel_work_dir
 if [ -d /challenge/template ]; then
     if [ "$course_code" != "cse545" ] || { [ ! -f "$clevel_work_dir/main.c" ] && [ ! -f "$clevel_work_dir/solve.py" ] && [ ! -f "$clevel_work_dir/main.cpp" ]; }; then
         echo "[e] Copying template files to $clevel_work_dir from /challenge/template " | tee -a $STARTUP_LOG
         echo "[e] Listing /challenge/template contents:" | tee -a $STARTUP_LOG
         ls -la /challenge/template | tee -a $STARTUP_LOG
         echo "******************************************************" | tee -a $STARTUP_LOG
-        cp -a /challenge/template/* $clevel_work_dir
+        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/* "$clevel_work_dir"
         echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
         if [ "$course_code" = "cse240" ] && [ -f /challenge/template/README.md ]; then
-            install -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
+            safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
             echo "[e] Refreshed README.md in $clevel_work_dir from selected problem template" | tee -a $STARTUP_LOG
         fi
-        chown hacker:hacker -R $clevel_work_dir
+        safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
     else
         echo "[e] Existing CSE545 work found in $clevel_work_dir, skipping template overwrite." | tee -a $STARTUP_LOG
     fi
 fi
 if [ "$admin_access" = true ]; then
     if [ -d /challenge/model ]; then
-        mkdir -p $clevel_work_dir/template
-        cp -a /challenge/template/. $clevel_work_dir/template/ || true
-        cp -a /challenge/model/* $clevel_work_dir
-        chown hacker:hacker -R $clevel_work_dir
+        safe_mkdir_p $clevel_work_dir/template
+        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/. "$clevel_work_dir/template/" || true
+        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/model/* "$clevel_work_dir"
+        safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
     fi
 fi
 
@@ -322,11 +438,11 @@ RESULT="/run/landrun-response.txt"
 STDIN_FIFO="/run/landrun-stdin.fifo"
 STDOUT_FIFO="/run/landrun-stdout.fifo"
 
-[[ -p "$CMD_FIFO" ]] || mkfifo "$CMD_FIFO" && chmod 666 "$CMD_FIFO"
-[[ -p "$RESP_FIFO" ]] || mkfifo "$RESP_FIFO" && chmod 666 "$RESP_FIFO"
-[[ -p "$STDIN_FIFO" ]] || mkfifo "$STDIN_FIFO" && chmod 666 "$STDIN_FIFO"
-[[ -p "$STDOUT_FIFO" ]] || mkfifo "$STDOUT_FIFO" && chmod 666 "$STDOUT_FIFO"
-touch "$RESULT" && chmod 666 "$RESULT"
+[[ -p "$CMD_FIFO" ]] || mkfifo "$CMD_FIFO" && safe_chmod 666 "$CMD_FIFO"
+[[ -p "$RESP_FIFO" ]] || mkfifo "$RESP_FIFO" && safe_chmod 666 "$RESP_FIFO"
+[[ -p "$STDIN_FIFO" ]] || mkfifo "$STDIN_FIFO" && safe_chmod 666 "$STDIN_FIFO"
+[[ -p "$STDOUT_FIFO" ]] || mkfifo "$STDOUT_FIFO" && safe_chmod 666 "$STDOUT_FIFO"
+safe_touch "$RESULT" && safe_chmod 666 "$RESULT"
 
 # bridges to tester because tester must run using setuid
 if [ -f /challenge/bin/bridge_landrun.sh ]; then
@@ -368,26 +484,26 @@ if [ -n "$hwdir" ] && [ -n "$hw_id" ]; then
 else
     coder_workspace_file="$course_home/$module/exam.code-workspace"
 fi
-mkdir -p "$(dirname "$coder_workspace_file")"
+safe_mkdir_p "$(dirname "$coder_workspace_file")"
 
 if [ ! -f "$coder_workspace_file" ]; then
-    touch $coder_workspace_file
+    safe_touch $coder_workspace_file
     # coder_workspace_file="$course_home/pretest/$hw_id/proj-$hw_id-$level.code-workspace"
 fi
-chown hacker:hacker $coder_workspace_file
+safe_chown hacker:hacker $coder_workspace_file
 
 # cs_user_data_dir comes from parent call .init, .examsetup is sourced
-mkdir -p $cs_user_data_dir
+safe_mkdir_p $cs_user_data_dir
 # eventually make && with chown
-chown hacker:hacker $cs_user_data_dir
+safe_chown hacker:hacker $cs_user_data_dir
 # mkdir -p $(dirname $coder_workspace_file)
 
 echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
 
 if [ -f /challenge/bin/cserver.py ]; then
     echo "[e] starting command server" | tee -a $STARTUP_LOG
-    touch /var/log/cserver.log
-    chmod 644 /var/log/cserver.log
+    safe_touch /var/log/cserver.log
+    safe_chmod 644 /var/log/cserver.log
     chmod 700 /challenge/bin/cserver.py
     python3 /challenge/bin/cserver.py --port 1040 >> /var/log/cserver.log 2>&1 &
     echo "alias etester='printf \"tester\n\" | nc 0.0.0.0 1040'" >> /etc/bash.bashrc
@@ -397,12 +513,12 @@ else
 fi
 
 if [ "$course_code" = "cse545" ]; then
-    mkdir -p /home/hacker/.ssh "$clevel_work_dir/Desktop"
+    safe_mkdir_p /home/hacker/.ssh "$clevel_work_dir/Desktop"
     ln -s /home/hacker/.ssh "$clevel_work_dir/.ssh" 2>/dev/null || true
 
     for rcfile in .gdbinit .vimrc .bashrc .profile; do
         if [ -f "/home/hacker/$rcfile" ]; then
-            cp "/home/hacker/$rcfile" "$clevel_work_dir/$rcfile"
+            safe_root_mutation_path "$clevel_work_dir/$rcfile" && cp "/home/hacker/$rcfile" "$clevel_work_dir/$rcfile"
         fi
     done
 
@@ -534,10 +650,10 @@ if [ -d "$clevel_work_dir" ]; then
     chmod 400 /.helper
     chown root:root /.helper
 
-    cd "$(dirname "$clevel_work_dir")" && tar -czf - "$(basename "$clevel_work_dir")" | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$tarball_password" -out "$tarball_path"
+    safe_root_mutation_path "$tarball_path" && cd "$(dirname "$clevel_work_dir")" && tar -czf - "$(basename "$clevel_work_dir")" | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$tarball_password" -out "$tarball_path"
     if [ $? -eq 0 ]; then
         echo "[e] Created encrypted tarball at $tarball_path" | tee -a $STARTUP_LOG
-        chown hacker:hacker "$tarball_path" 2>/dev/null || true
+        safe_chown hacker:hacker "$tarball_path" 2>/dev/null || true
     else
         echo "[e] WARNING: Failed to create encrypted tarball" | tee -a $STARTUP_LOG
     fi
@@ -554,8 +670,8 @@ if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
     fi
 
     echo "[e] Found session_monitor.py, moving to /opt/session_monitor.py" | tee -a $STARTUP_LOG
-    touch /var/log/session_monitor.log
-    chmod 644 /var/log/session_monitor.log
+    safe_touch /var/log/session_monitor.log
+    safe_chmod 644 /var/log/session_monitor.log
     mv /challenge/bin/session_monitor.py /opt/session_monitor.py
     chmod 700 /opt/session_monitor.py
     python3 /opt/session_monitor.py &

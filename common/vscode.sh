@@ -15,6 +15,115 @@ fi
 
 echo "[c] Attempting to start code-server..." >> $STARTUP_LOG
 
+root_mutation_log() {
+  local message="$1"
+  if [ -n "${STARTUP_LOG:-}" ]; then
+    echo "[guard] $message" >> "$STARTUP_LOG" 2>/dev/null || true
+  else
+    echo "[guard] $message" >&2
+  fi
+}
+
+path_has_symlink_component() {
+  local path="${1%/}"
+  local probe=""
+  local part=""
+
+  [ -n "$path" ] || return 1
+  case "$path" in
+    /home/hacker|/home/hacker/*) ;;
+    *) [ -L "$path" ] && return 0; return 1 ;;
+  esac
+
+  path="/${path#/}"
+  IFS='/' read -r -a parts <<< "${path#/}"
+  for part in "${parts[@]}"; do
+    [ -n "$part" ] || continue
+    probe="${probe}/${part}"
+    if [ -L "$probe" ]; then
+      root_mutation_log "blocked root mutation through symlink: $probe -> $(readlink "$probe" 2>/dev/null || echo unknown) while handling $1"
+      return 0
+    fi
+    [ -e "$probe" ] || break
+  done
+  return 1
+}
+
+safe_root_mutation_path() {
+  path_has_symlink_component "$1" && return 1
+  return 0
+}
+
+safe_root_mutation_tree() {
+  local path="$1"
+  local link=""
+  safe_root_mutation_path "$path" || return 1
+  if [ -d "$path" ]; then
+    link=$(find "$path" -type l -print -quit 2>/dev/null)
+    if [ -n "$link" ]; then
+      root_mutation_log "blocked root mutation in tree containing symlink: $link -> $(readlink "$link" 2>/dev/null || echo unknown)"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+safe_chown() {
+  local seen_owner=false
+  local arg
+  for arg in "$@"; do
+    [ -n "$arg" ] || continue
+    if [ "$seen_owner" = false ]; then
+      [[ "$arg" == -* ]] && continue
+      seen_owner=true
+      continue
+    fi
+    [[ "$arg" == -* ]] && continue
+    safe_root_mutation_path "$arg" || return 1
+  done
+  command chown "$@"
+}
+
+safe_chmod() {
+  local seen_mode=false
+  local arg
+  for arg in "$@"; do
+    [ -n "$arg" ] || continue
+    [[ "$arg" == -* ]] && continue
+    if [ "$seen_mode" = false ]; then
+      seen_mode=true
+      continue
+    fi
+    safe_root_mutation_path "$arg" || return 1
+  done
+  command chmod "$@"
+}
+
+safe_touch() {
+  local arg
+  for arg in "$@"; do
+    [ -n "$arg" ] || continue
+    [[ "$arg" == -* ]] && continue
+    safe_root_mutation_path "$arg" || return 1
+  done
+  command touch "$@"
+}
+
+safe_mkdir_p() {
+  local args=()
+  local arg
+  for arg in "$@"; do
+    [ -n "$arg" ] || continue
+    if [[ "$arg" == -* ]]; then
+      args+=("$arg")
+      continue
+    fi
+    safe_root_mutation_path "$arg" || return 1
+    args+=("$arg")
+  done
+  command mkdir -p "${args[@]}"
+}
+
 until [ -f /run/dojo/var/ready ]; do sleep 0.1; done
 
 if [ -d /run/challenge/share/code/extensions ]; then
@@ -25,7 +134,7 @@ fi
 
 prepare_landrun_paths() {
   # landrun refuses missing paths listed in any access rule.
-  mkdir -p \
+  safe_mkdir_p \
     /home/hacker/.cache \
     /home/hacker/.local/share/ultima \
     "$(dirname "$coder_workspace_file")" \
@@ -35,7 +144,7 @@ prepare_landrun_paths() {
     "$code_server_data_dir" \
     "$cs_user_data_dir" \
     /run
-  touch \
+  safe_touch \
     "$coder_workspace_file" \
     "$course_env_file" \
     /home/hacker/.bashrc \
@@ -44,8 +153,8 @@ prepare_landrun_paths() {
     /.admin_access \
     /.user_info
   [[ -p /run/landrun-cmd.fifo ]] || { rm -f /run/landrun-cmd.fifo; mkfifo /run/landrun-cmd.fifo; }
-  chmod 666 /run/landrun-cmd.fifo
-  chown -R hacker:hacker \
+  safe_chmod 666 /run/landrun-cmd.fifo
+  safe_chown -R hacker:hacker \
     /home/hacker/.cache \
     /home/hacker/.local \
     "$course_home" \
@@ -56,7 +165,7 @@ prepare_landrun_paths() {
     /home/hacker/.profile \
     /home/hacker/.bash_history \
     /home/hacker/.bashrc
-  chmod 664 "$course_env_file" /home/hacker/.bashrc /home/hacker/.profile /home/hacker/.bash_history
+  safe_chmod 664 "$course_env_file" /home/hacker/.bashrc /home/hacker/.profile /home/hacker/.bash_history
 }
 
 attempts=0
@@ -77,8 +186,8 @@ prepare_landrun_paths
 
 # Ensure code-service directory exists with correct ownership
 mkdir -p /run/dojo/var/code-service
-chown hacker:hacker /run/dojo/var/code-service
-chmod 755 /run/dojo/var/code-service
+safe_chown hacker:hacker /run/dojo/var/code-service
+safe_chmod 755 /run/dojo/var/code-service
 echo "[c] Created /run/dojo/var/code-service with hacker ownership" >> $STARTUP_LOG
 
 # Clean up any existing code-server processes
@@ -125,8 +234,8 @@ while [ $attempts -lt $max_attempts ]; do
   export PATH="/run/challenge/bin:/run/dojo/bin:$PATH:/challenge/"
   
   # Write command to temp file to avoid quoting issues
-  echo "$cmd" > /tmp/vscode-cmd.sh
-  chmod +x /tmp/vscode-cmd.sh
+  safe_root_mutation_path /tmp/vscode-cmd.sh && echo "$cmd" > /tmp/vscode-cmd.sh
+  safe_chmod +x /tmp/vscode-cmd.sh
   
   # Execute as hacker user
   output=$(runuser -u hacker -- /tmp/vscode-cmd.sh 2>&1 | tee -a /challenge/vscode.log) 
