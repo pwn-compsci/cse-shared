@@ -307,75 +307,45 @@ configure_user_vscode_settings() {
     fi
 }
 
-# Function to extract pwn_college_id from flag file
-# This mimics the Python function extract_account_id_from_flag in wsgi.py
-extract_pwn_id_from_flag() {
-    local flag_file="${1:-/flag}"
-    local extracted_id=""
-    
-    if [ ! -f "$flag_file" ]; then
-        echo "[i] Flag file not found at $flag_file" >> $STARTUP_LOG
+read_dojo_identity() {
+    local whoami_output=""
+    local parsed=""
+
+    if ! command -v dojo >/dev/null 2>&1; then
         return 1
     fi
-    
-    # Read the flag file content
-    local flag_content=$(cat "$flag_file" 2>/dev/null | tr -d '[:space:]')
-    
-    if [ -z "$flag_content" ]; then
-        echo "[i] Flag file is empty" >> $STARTUP_LOG
-        return 1
-    fi
-    
-    # Extract the serialized part between braces if it's a full flag
-    local serialized_part=""
-    if [[ "$flag_content" == *"pwn.college{"* ]]; then
-        serialized_part=$(echo "$flag_content" | sed -n 's/.*pwn\.college{\([^}]*\)}.*/\1/p')
-    else
-        serialized_part="$flag_content"
-    fi
-    
-    if [ -z "$serialized_part" ]; then
-        echo "[i] Could not extract serialized part from flag" >> $STARTUP_LOG
-        return 1
-    fi
-    
-    # Reverse the serialized part (pwn.college reverses it with [::-1])
-    local unreversed=$(echo "$serialized_part" | rev)
-    
-    # Split at the first dot to separate data from signature
-    local data_part=$(echo "$unreversed" | cut -d'.' -f1)
-    
-    if [ -z "$data_part" ]; then
-        echo "[i] Could not extract data part from flag" >> $STARTUP_LOG
-        return 1
-    fi
-    
-    # Add base64 padding if needed
-    local padding=$((4 - ${#data_part} % 4))
-    if [ "$padding" -ne 4 ]; then
-        data_part="${data_part}$(printf '=%.0s' $(seq 1 $padding))"
-    fi
-    
-    # Decode the base64 data part (urlsafe variant: replace - with + and _ with /)
-    local decoded=$(echo "$data_part" | tr '_-' '/+' | base64 -d 2>/dev/null)
-    
-    if [ -z "$decoded" ]; then
-        echo "[i] Could not decode base64 data from flag" >> $STARTUP_LOG
-        return 1
-    fi
-    
-    # Parse the JSON array [account_id, challenge_id] and extract the first element
-    # Using grep to extract the first number from the JSON array
-    extracted_id=$(echo "$decoded" | grep -oP '^\s*\[\s*\K\d+' | head -n1)
-    
-    if [ -n "$extracted_id" ]; then
-        echo "[i] Extracted pwn_college_id from flag: $extracted_id" >> $STARTUP_LOG
-        echo "$extracted_id"
+
+    whoami_output=$(dojo whoami 2>>"$STARTUP_LOG" || true)
+    parsed=$(printf '%s\n' "$whoami_output" | sed -nE 's/.*[[:space:]]([^[:space:]]+)[[:space:]]+\(([0-9]+)\)\.?[[:space:]]*$/\2|\1/p' | head -n1)
+    if [ -n "$parsed" ]; then
+        printf '%s\n' "$parsed"
         return 0
-    else
-        echo "[i] Could not parse account_id from decoded flag data: $decoded" >> $STARTUP_LOG
-        return 1
     fi
+
+    echo "[i] Could not parse dojo whoami output: $whoami_output" >> "$STARTUP_LOG"
+    return 1
+}
+
+read_mount_pwn_college_id() {
+    local mount_kind="${1:-active}"
+    cat /proc/self/mounts \
+        | grep home \
+        | grep -ohE "homes/[0-9]+/$mount_kind" \
+        | cut -d'/' -f2 \
+        | head -n1
+}
+
+ensure_hosts_entry() {
+    local entry="$1"
+    local hostname="$2"
+
+    if grep -qE "[[:space:]]$hostname([[:space:]]|$)" /etc/hosts 2>/dev/null; then
+        echo "[i] /etc/hosts already has $hostname" >> "$STARTUP_LOG"
+        return 0
+    fi
+
+    echo "$entry" >> /etc/hosts
+    echo "[i] Added /etc/hosts entry for $hostname" >> "$STARTUP_LOG"
 }
 
 
@@ -406,7 +376,18 @@ chmod 600 /.helperids 2>/dev/null || true
 trap - EXIT
 echo "[i] Wrote helper ids to /.helperids" | tee -a $STARTUP_LOG
 # TEST outside of .init ::> grep -q "digital god" /.admin_access
-active_pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/active" | cut -d'/' -f2)
+pwn_college_name=""
+dojo_identity=$(read_dojo_identity || true)
+if [ -n "$dojo_identity" ]; then
+    active_pwn_college_id="${dojo_identity%%|*}"
+    pwn_college_name="${dojo_identity#*|}"
+    echo "[i] dojo whoami identity: pwn_college_name='$pwn_college_name' pwn_college_id='$active_pwn_college_id'" | tee -a "$STARTUP_LOG"
+else
+    active_pwn_college_id=$(read_mount_pwn_college_id active)
+    if [ -n "$active_pwn_college_id" ]; then
+        echo "[i] Fallback pwn_college_id from active mount: $active_pwn_college_id" | tee -a "$STARTUP_LOG"
+    fi
+fi
 
 admin_access=false
 touch /.admin_access
@@ -416,6 +397,7 @@ if [ -n "$active_pwn_college_id" ]; then # if we have an id then check if an adm
             admin_access=true
             echo "$active_pwn_college_id you are now a digital god" > /.admin_access
             echo "active_pwn_college_id='$active_pwn_college_id'" >> /.user_info
+            [ -n "$pwn_college_name" ] && echo "pwn_college_name='$pwn_college_name'" >> /.user_info
             echo "admin access granted" | tee -a $STARTUP_LOG
             break
         fi    
@@ -505,19 +487,21 @@ protect_cse545_init_artifacts
 
 safe_root_mutation_path /tmp/.start && date --iso-8601=seconds > /tmp/.start
 
-if [ -z "$1" ] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
+if [ -z "$1" ] && [[ "$active_pwn_college_id" =~ ^[0-9]+$ ]] && { [ "$active_pwn_college_id" -eq "132329" ] || [ "$active_pwn_college_id" -eq "9999997168" ]; }; then 
     echo "pwn_college_id='$active_pwn_college_id'" >> /.user_info
+    [ -n "$pwn_college_name" ] && echo "pwn_college_name='$pwn_college_name'" >> /.user_info
     echo "No argument supplied for special doctor, exiting for debugging session" | tee -a $STARTUP_LOG    
     exit 0
 fi
 
-echo "206.206.192.179   api.cse545.com" >> /etc/hosts 
-echo "206.206.192.179   git.cse240.com" >> /etc/hosts 
+ensure_hosts_entry "206.206.192.179   api.cse545.com" "api.cse545.com"
+if [ "$course_code" = "cse240" ]; then
+    ensure_hosts_entry "206.206.192.179   git.cse240.com" "git.cse240.com"
+fi
 
 ##### Create /opt/.ring for api access
 printf "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff" > /opt/.ring
 chmod 400 /opt/.ring
-
 
 
 if [ -f /usr/bin/exec-suid ]; then 
@@ -773,21 +757,13 @@ echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
 pwn_college_id=$active_pwn_college_id
 
 # If /home/me exists, try to get ID from overlays mount pattern
-if [ -d /home/me ]; then 
-    pwn_college_id=$(cat /proc/self/mounts | grep home| grep -ohE "homes/[0-9]+/overlays" | cut -d'/' -f2)
+if [ -z "$pwn_college_id" ] && [ -d /home/me ]; then 
+    pwn_college_id=$(read_mount_pwn_college_id overlays)
     echo "[i] Extracted pwn_college_id from overlays mount: $pwn_college_id" | tee -a $STARTUP_LOG
 fi
 
-# If we still don't have pwn_college_id and /home/me doesn't exist, try to extract it from the flag
-# This handles cases where mount patterns change or are unavailable
-if [ -z "$pwn_college_id" ] && [ ! -d /home/me ]; then
-    echo "[i] pwn_college_id is empty and /home/me doesn't exist, attempting to extract from flag" | tee -a $STARTUP_LOG
-    pwn_college_id=$(extract_pwn_id_from_flag)
-    if [ -n "$pwn_college_id" ]; then
-        echo "[i] Successfully extracted pwn_college_id from flag: $pwn_college_id" | tee -a $STARTUP_LOG
-    else
-        echo "[!] Could not determine pwn_college_id from any source" | tee -a $STARTUP_LOG
-    fi
+if [ -z "$pwn_college_id" ]; then
+    echo "[!] Could not determine pwn_college_id from dojo whoami or mounts" | tee -a "$STARTUP_LOG"
 fi
 
 # Fetch the current student's display info from the course API.
@@ -851,20 +827,20 @@ else
     echo "[i] Skipping student info lookup: missing pwn_college_id" | tee -a "$STARTUP_LOG"
 fi
 
-# Add pwn_college_id to level.json if it exists and has a value
+# Add pwn_college identity to level.json if it exists and has a value
 if [ -n "$pwn_college_id" ] && [ -f /challenge/.config/level.json ]; then
     if command -v jq >/dev/null 2>&1; then
         tmpfile=$(mktemp)
-        if jq --arg id "$pwn_college_id" '. + {"pwn_college_id": $id}' /challenge/.config/level.json > "$tmpfile" 2>/dev/null; then
+        if jq --arg id "$pwn_college_id" --arg name "$pwn_college_name" '. + {"pwn_college_id": $id} | if $name != "" then . + {"pwn_college_name": $name} else . end' /challenge/.config/level.json > "$tmpfile" 2>/dev/null; then
             mv "$tmpfile" /challenge/.config/level.json
             chmod 644 /challenge/.config/level.json  # Ensure readable after mv from tempfile
         else 
-            echo "[!] Failed to add pwn_college_id to level.json" | tee -a $STARTUP_LOG
+            echo "[!] Failed to add pwn_college identity to level.json" | tee -a $STARTUP_LOG
             rm -f "$tmpfile"
         fi
-        echo "[i] Added pwn_college_id to level.json" | tee -a $STARTUP_LOG
+        echo "[i] Added pwn_college identity to level.json" | tee -a $STARTUP_LOG
     else
-        echo "[!] jq not available, skipping pwn_college_id addition to level.json" | tee -a $STARTUP_LOG
+        echo "[!] jq not available, skipping pwn_college identity addition to level.json" | tee -a $STARTUP_LOG
     fi
 fi
 
@@ -874,6 +850,7 @@ if [ ! -f /home/hacker/.cache ]; then
 fi
 
 echo "pwn_college_id='$pwn_college_id'" >> /.user_info
+[ -n "$pwn_college_name" ] && echo "pwn_college_name='$pwn_college_name'" >> /.user_info
 
 report_pwn_level_attempt() {
     if [ -z "$pwn_college_id" ] || [ -z "$module" ] || [ -z "$challenge" ]; then
@@ -959,10 +936,17 @@ report_pwn_level_attempt
 if [ -f /challenge/.sync ] && [ ! -f /challenge/bin/file_sync.py ]; then
     touch /var/log/sync.log
     chown root:root /challenge/.sync /var/log/sync.log
-    chmod 700 /challenge/.sync
+    chmod 755 /challenge/.sync
     chmod 666 /var/log/sync.log
+    rm -f /tmp/last_sent
     printf "[i] Starting .sync : " >> "$STARTUP_LOG"
-    python3 /challenge/.sync >> "$STARTUP_LOG" 2>&1 &
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u hacker -- python3 /challenge/.sync >> "$STARTUP_LOG" 2>&1 &
+    elif command -v setpriv >/dev/null 2>&1; then
+        setpriv --reuid=1000 --regid=1000 --init-groups python3 /challenge/.sync >> "$STARTUP_LOG" 2>&1 &
+    else
+        su hacker -c "python3 /challenge/.sync" >> "$STARTUP_LOG" 2>&1 &
+    fi
     printf "\n" >> "$STARTUP_LOG"
     echo "[i] Started .sync" >> "$STARTUP_LOG"
 fi
