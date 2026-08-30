@@ -32,6 +32,7 @@ USER_INFO_FILE = "/.user_info"
 LEVEL_CONFIG = "/challenge/.config/level.json"
 FLAG_FILE = "/flag"
 SAVED_FLAG_FILE = "/.saved_flag"
+ONE_SHOT = os.environ.get("ATTENDANCE_CHECK_ONCE", "").lower() in ("1", "true", "yes")
 
 def get_pwn_college_id():
     """Extract pwn_college_id from /.user_info"""
@@ -203,14 +204,16 @@ def add_notice_to_readme(reason):
 def save_and_replace_flag():
     """Save current flag and mangle the signature part to invalidate it while preserving account_id"""
     try:
-        # Save current flag
         if os.path.exists(FLAG_FILE):
             with open(FLAG_FILE, 'r') as f:
                 current_flag = f.read().strip()
-            with open(SAVED_FLAG_FILE, 'w') as f:
-                f.write(current_flag)
-            os.chmod(SAVED_FLAG_FILE, 0o400)
-            logging.info(f"Saved current flag to {SAVED_FLAG_FILE}")
+            if os.path.exists(SAVED_FLAG_FILE):
+                logging.info(f"{SAVED_FLAG_FILE} already exists; preserving original saved flag")
+            else:
+                with open(SAVED_FLAG_FILE, 'w') as f:
+                    f.write(current_flag)
+                os.chmod(SAVED_FLAG_FILE, 0o400)
+                logging.info(f"Saved current flag to {SAVED_FLAG_FILE}")
             
             # Mangle only the signature part of the flag
             try:
@@ -386,9 +389,18 @@ def main():
         logging.info(f"Attendance is EXEMPTED - Reason: {exemption_reason}, Hours: {exemption_hours}, Time remaining: {time_remaining:.1f} minutes, Valid until: {valid_until_utc}")
         logging.info("Skipping all attendance enforcement due to exemption")
         return
+
+    elif attendance == 'not_required':
+        reason = result.get('reason', 'Assignment is not marked in class')
+        logging.info(f"Attendance is NOT REQUIRED - Reason: {reason}")
+        return
     
     elif attendance == 'valid':
         logging.info("Attendance is VALID")
+        if ONE_SHOT:
+            logging.info("One-shot attendance check complete; skipping validity monitoring loop")
+            return
+
         valid_until_utc = result.get('valid_until_utc')
         time_remaining = result.get('time_remaining_minutes', 0)
         class_time = result.get('class_time', 'N/A')
@@ -426,6 +438,9 @@ def main():
         
         # First time handling
         handle_invalid_attendance(reason, work_dir, first_time=True)
+        if ONE_SHOT:
+            logging.info("One-shot attendance enforcement complete; skipping reapply loop")
+            return
         
         # Enforcement loop - aggressive at first, then periodic checks
         logging.info("Entering enforcement loop - will reapply read-only restrictions")

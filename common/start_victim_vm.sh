@@ -25,6 +25,19 @@ SSH_PORT="${SSH_PORT:-$((2222 + VICTIM_NUM))}"
 MAC_ADDR="${MAC_ADDR:-52:54:00:12:34:$(printf '%02x' $((VICTIM_NUM + 10)))}"
 MCAST_ADDR="${MCAST_ADDR:-230.0.0.1:1234}"
 
+ATTENDANCE_SENTINEL="/tmp/.attendance_check_before_victim_done"
+if [ -f /challenge/bin/attendance_check.py ] && [ ! -f "$ATTENDANCE_SENTINEL" ]; then
+  echo "[v] Running one-shot attendance check before victim VM startup"
+  touch /var/log/attendance_check.log 2>/dev/null || true
+  chmod 0644 /var/log/attendance_check.log 2>/dev/null || true
+  set +e
+  ATTENDANCE_CHECK_ONCE=1 python3 /challenge/bin/attendance_check.py
+  attendance_status=$?
+  set -e
+  echo "[v] One-shot attendance check completed with exit code ${attendance_status}"
+  touch "$ATTENDANCE_SENTINEL"
+fi
+
 # Sanity checks
 if [ ! -f "${BASE_IMG}" ]; then
   echo "Error: Base image not found at ${BASE_IMG}" >&2

@@ -108,6 +108,15 @@ NUM_VICTIM_VMS=$(python3 -c "import json; d=json.load(open('/challenge/.config/l
 NETWORK_CIDR=$(python3 -c "import json; d=json.load(open('/challenge/.config/level.json')); print(d.get('network_cidr', 24))" 2>/dev/null || echo 24)
 [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Will start ${NUM_VICTIM_VMS} victim VM(s) on /${NETWORK_CIDR} network" >> /challenge/startup.log
 
+if [ -f /challenge/bin/attendance_check.py ] && [ ! -f /tmp/.attendance_check_before_victim_done ]; then
+    echo "[b] $(date '+%H:%M:%S') Running one-shot attendance check before VM startup" >> /challenge/startup.log
+    touch /var/log/attendance_check.log
+    chmod 0644 /var/log/attendance_check.log
+    ATTENDANCE_CHECK_ONCE=1 python3 /challenge/bin/attendance_check.py >> /challenge/startup.log 2>&1
+    echo "[b] $(date '+%H:%M:%S') One-shot attendance check completed with exit code $?" >> /challenge/startup.log
+    touch /tmp/.attendance_check_before_victim_done
+fi
+
 # Generate deterministic network configuration for each victim VM
 FLAG_VALUE=$(cat /flag)
 [ "$IS_ADMIN" = true ] && echo "[b] $(date '+%H:%M:%S') Generating deterministic network config for ${NUM_VICTIM_VMS} victims" >> /challenge/startup.log
@@ -467,7 +476,5 @@ rm -f /tmp/.vm_setup_in_progress
 echo "Server and client have started on the network, but may need a few more seconds to completely startup. Check /challenge/run.log for activity." >> /challenge/run.log
 echo "You can connect to your hackbox VM using the 'hackbox' or 'hb' alias now." >> /challenge/run.log
 echo "***** VM Setup completed ******" >> /challenge/run.log
-
-
 
 

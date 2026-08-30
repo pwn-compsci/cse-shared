@@ -1548,7 +1548,7 @@ fi
         chown hacker:hacker /var/log/
         python3 /challenge/bin/file_sync.py >> /var/log/sync.log 2>&1 &
     fi
-    if [ -f /challenge/bin/attendance_check.py ]; then 
+    if [ -f /challenge/bin/attendance_check.py ] && [ "$isExam" != "true" ]; then 
         touch /var/log/attendance_check.log
         chmod 0644 /var/log/attendance_check.log
         chmod 770 /challenge/bin/attendance_check.py
