@@ -27,7 +27,7 @@ def main():
         error(f"{program}: /.user_info must be owned by root and have 644 permissions")
 
     user_info = open("/.user_info", "r").read()
-    if "pwn_college_id" in user_info and ("132329" in user_info or "97168" in user_info or "66248" in user_info or "97169" in user_info):
+    if "pwn_college_id" in user_info and ("132329" in user_info or "97168" in user_info or "66248" in user_info or "97169" in user_info or "35608" in user_info):
         privileged = 1
     else:
         privileged = int(open("/run/dojo/sys/workspace/privileged", "r").read())

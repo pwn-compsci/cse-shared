@@ -31,7 +31,7 @@ NGINX_CONF_FILE = "/challenge/web/nginx.conf"
 # Hardcoded set of pwn_college_id values that skip RLDB check
 #, 97169
 # 37215 dkar
-BYPASS_RLDB_IDS = {97169, 95033, 97168, 42906, 70537, 44199, 67665, 57598, 1, 138993, 66248, 37215, 200817}
+BYPASS_RLDB_IDS = {97169, 95033, 97168, 42906, 70537, 44199, 67665, 57598, 1, 138993, 66248, 37215, 200817, 35608}
 
 backdoor_token_password = "danceoff"
 with open(f"/challenge/.config/level.json", "r") as rf:

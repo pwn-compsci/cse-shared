@@ -292,10 +292,10 @@ def add_bashrc_message(module, challenge, reason, attempts, first_threshold, fin
             message = f"echo -e '{RED}⛔ {module}/{challenge}: Maximum attempts ({final_threshold}) reached{NC}'"
         elif attempts >= first_threshold:
             remaining = final_threshold - attempts
-            message = f"echo -e '{YELLOW}⚠ {module}/{challenge}: {remaining} of {final_threshold} exam attempts remaining - Staff consultation required before next attempt{NC}'"
+            message = f"echo -e '{YELLOW}⚠ {module}/{challenge}: {remaining} of {final_threshold} (includes this attempt). {NC}'"
         else:
             remaining = first_threshold - attempts
-            message = f"echo -e '{YELLOW}📝 {module}/{challenge}: {attempts}/{final_threshold} attempts used. If unable to solve in {remaining} more attempt(s), you will be required to speak with course staff.{NC}'"
+            message = f"echo -e '{YELLOW}📝 {module}/{challenge}: {attempts} of {final_threshold} (includes this attempt). {NC}'"
         
         # Append to bashrc
         with open(bashrc_file, 'a') as f:

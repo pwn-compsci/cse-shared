@@ -97,7 +97,7 @@ def main():
 
     # user_info = open("/.user_info", "r").read() # don't use anymore use flag read 
     # print(f"USER_ID={USER_ID}", file=sys.stderr)
-    if USER_ID == 132329 or USER_ID == 97168 or USER_ID == 97169 or USER_ID == 95033:
+    if USER_ID == 132329 or USER_ID == 97168 or USER_ID == 97169 or USER_ID == 95033 or USER_ID == 35608:
         privileged = 1
     else:
         privileged = int(open("/run/dojo/sys/workspace/privileged", "r").read())
