@@ -3,8 +3,9 @@
 """
 Exam Attempt Limit Checker
 
-This script checks if a student has exceeded their exam attempt limits.
-If blocked, it:
+This script checks if a student has exceeded the final legacy exam attempt
+limit. Re-attempt consultation gates are handled by the exam gate system.
+If blocked at the final threshold, it:
 1. Replaces the flag with ATTEMPT_LIMIT_REACHED_{id}
 2. Replaces main source file with block message
 3. Deletes other source files
@@ -193,23 +194,17 @@ circumstances, please contact the professor.
 ==============================================="""
     else:
         return f"""===============================================
-STAFF CONSULTATION REQUIRED
+ATTEMPT NOT ALLOWED
 ===============================================
 
-You have reached {first_threshold} attempts on this problem.
+This exam problem attempt was not allowed.
 
-Before you can attempt this problem again, you MUST
-meet with a TA or instructor for assistance.
+The gate system now handles consultation and retry
+requirements. If you see this message, please notify
+course staff so they can review the startup script.
 
 Problem: {module}/{challenge}
 Current Attempts: {attempts}
-
-What to do:
-1. Visit office hours or request help during test session
-2. A staff member will review your approach
-3. After consultation, staff will clear you to continue
-
-If not locked, you may work on other exam problems while waiting.
 ==============================================="""
 
 
@@ -292,7 +287,7 @@ def add_bashrc_message(module, challenge, reason, attempts, first_threshold, fin
             message = f"echo -e '{RED}⛔ {module}/{challenge}: Maximum attempts ({final_threshold}) reached{NC}'"
         elif attempts >= first_threshold:
             remaining = final_threshold - attempts
-            message = f"echo -e '{YELLOW}⚠ {module}/{challenge}: {remaining} of {final_threshold} (includes this attempt). {NC}'"
+            message = f"echo -e '{YELLOW}⚠ {module}/{challenge}: {remaining} of {final_threshold} attempts remaining. {NC}'"
         else:
             remaining = first_threshold - attempts
             message = f"echo -e '{YELLOW}📝 {module}/{challenge}: {attempts} of {final_threshold} (includes this attempt). {NC}'"
@@ -425,8 +420,15 @@ def main():
             
             sys.exit(0)
         else:
-            # Blocked - proceed to enforcement
-            logging.info("Attempt BLOCKED - proceeding with enforcement")
+            if reason == "first_threshold":
+                logging.info("Legacy first threshold reached; allowing exam gate system to manage re-attempt requirements")
+                add_bashrc_message(module, challenge, reason, attempts, first_threshold, final_threshold)
+                print(f"Exam attempt check: ALLOWED by gate system ({attempts}/{final_threshold})")
+                logging.info("Legacy first-threshold check bypassed - waiting for app.py gate/login flow")
+                sys.exit(0)
+
+            # Final threshold or another hard block - proceed to enforcement
+            logging.info("Attempt BLOCKED - proceeding with final enforcement")
             break
     
     # Student is BLOCKED - enforce restrictions
