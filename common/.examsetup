@@ -176,13 +176,11 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
-        /challenge/.bginit \
         /challenge/.examsetup 2>/dev/null || true
     find /challenge -type f \( \
         -name '.init' -o \
         -name '.init_cse545' -o \
         -name '.init.cse545' -o \
-        -name '.bginit' -o \
         -name '.examsetup' -o \
         -name '.prelevelinit' -o \
         -name '.testprobleminit' -o \
