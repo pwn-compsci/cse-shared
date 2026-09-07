@@ -72,6 +72,14 @@ def validate_attendance(pwn_college_id, module=None, challenge=None):
             payload["module"] = module
         if challenge:
             payload["challenge"] = challenge
+        try:
+            with open(LEVEL_CONFIG, "r") as f:
+                level_data = json.load(f)
+            course_code = level_data.get("course_code")
+            if course_code:
+                payload["course_code"] = course_code
+        except Exception as e:
+            logging.debug(f"Could not include course_code in attendance payload: {e}")
         response = requests.post(API_URL, json=payload, timeout=10)
         return response.json()
     except Exception as e:
@@ -375,6 +383,7 @@ def main():
     result = validate_attendance(pwn_college_id, module, challenge)
     if not result:
         logging.error("Failed to get attendance validation result")
+        handle_invalid_attendance("Failed to get attendance validation result", work_dir, first_time=True)
         return
     
     logging.info(f"Attendance check result: {json.dumps(result, indent=2)}")
@@ -462,6 +471,7 @@ def main():
     
     else:
         logging.error(f"Unexpected attendance status: {attendance}")
+        handle_invalid_attendance(f"Unexpected attendance status from API: {attendance}", work_dir, first_time=True)
 
 if __name__ == "__main__":
     try:
