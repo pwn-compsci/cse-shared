@@ -184,14 +184,14 @@ def get_exam_admin_type(pwn_college_id, module, challenge):
         exam_admin_type_lookup_error = "Exam access settings could not be loaded. Please notify your professor."
         return ""
 
-def check_code_server_status():
+def check_code_server_status(max_attempts=10, request_timeout=5):
     found_code_server = False
     try:
-        for _ in range(10):
+        for _ in range(max_attempts):
             result = subprocess.run(["pgrep", "-f", "code-server"]) #, stdout=subprocess.DEVNULL)
             if result.returncode == 0:
                 try:
-                    response = requests.get("http://127.0.0.1:4200", timeout=5)
+                    response = requests.get("http://127.0.0.1:4200", timeout=request_timeout)
                     if response.status_code == 200 or response.status_code == 302:
                         logger.info("code-server is accessible on 127.0.0.1:4200")
                         found_code_server = True
@@ -206,6 +206,17 @@ def check_code_server_status():
     except Exception as e:
         logger.info(f"Error checking for code-server process: {e}")
     return found_code_server
+
+def build_authenticated_redirect(expiration_hours=6):
+    response = make_response(redirect("./"))
+    expires = datetime.now(timezone.utc) + timedelta(hours=expiration_hours)
+    response.set_cookie("auth_token", shapass, path="/", httponly=True, expires=expires)
+    response.exam_auth_expires = expires
+    logger.info(f"Setting login cookie to expire at auth_token={shapass}")
+    return response
+
+def can_resume_started_code_server():
+    return os.path.exists(CODESERVER_TRACK_FILE) and check_code_server_status(max_attempts=1, request_timeout=1)
 
 def check_session_attendance(pwn_college_id):
     """Check session attendance and return attending status and password
@@ -1094,6 +1105,10 @@ def reset():
 def process_login(exam_password, ip_addr):
     
     logger.info(f"=== process_login called === exam_admin_type: '{exam_admin_type}', exam_password: {exam_password is not None}, is_practice_exam: {is_practice_exam}, pwn_college_id: {pwn_college_id}")
+
+    if request.method == "GET" and not exam_password and can_resume_started_code_server():
+        logger.info("Existing started.dat and live code-server found; renewing auth cookie without rechecking gates")
+        return build_authenticated_redirect()
     
     # Check if this is an admin/bypass user (convert to int for comparison)
     is_admin = is_admin_bypass_user(pwn_college_id)
@@ -1247,10 +1262,8 @@ def process_login(exam_password, ip_addr):
             logger.error(f"Error creating session.dat: {e}")
         
         # extract_backup_files()
-        response = make_response(redirect("./"))
-        expires = datetime.now(timezone.utc) + timedelta(minutes=30)
-        response.set_cookie("auth_token", shapass, path="/", httponly=True, expires=expires)
-        logger.info(f"Setting login cookie to expire at auth_token={shapass}")
+        response = build_authenticated_redirect()
+        expires = getattr(response, "exam_auth_expires", "unknown")
 
         try :
             with open(CODESERVER_TRACK_FILE,"w") as af:
