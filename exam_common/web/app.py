@@ -27,6 +27,7 @@ shapass = "SHAPASS_VALUE"
 
 pwn_college_id = "" # initialized at bottom in default script area
 CODESERVER_TRACK_FILE = "/challenge/started.dat"
+EXAM_ATTEMPT_STARTUP_ID_FILE = "/opt/exam_attempt_startup_id"
 NGINX_CONF_FILE = "/challenge/web/nginx.conf"
 FLAG_EXEMPTED_PATH = "/flag_exempted"
 
@@ -346,6 +347,15 @@ def get_level_exam_challenge(level_config):
     """Handle both historical examLevel and current challenge keys."""
     return level_config.get("challenge") or level_config.get("examLevel") or ""
 
+def get_exam_attempt_startup_id():
+    try:
+        with open(EXAM_ATTEMPT_STARTUP_ID_FILE) as f:
+            startup_id = f.read().strip()
+            return startup_id or None
+    except Exception as e:
+        logger.info(f"Could not read startup id from {EXAM_ATTEMPT_STARTUP_ID_FILE}: {e}")
+        return None
+
 def check_exam_gate_status(pwn_college_id, module, challenge):
     """Check configured exam gates through the class_sync REST API."""
     if not pwn_college_id or not module or not challenge:
@@ -363,6 +373,9 @@ def check_exam_gate_status(pwn_college_id, module, challenge):
             "module": module,
             "challenge": challenge
         }
+        startup_id = get_exam_attempt_startup_id()
+        if startup_id:
+            payload["startup_id"] = startup_id
         headers = {
             "Content-Type": "application/json",
             "X-API-Token": EXAM_ADMIN_API_TOKEN
