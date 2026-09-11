@@ -955,6 +955,9 @@ def run_analysis(pid, sid, analyze_files, show_all_diffs, save_tar):
                             try:
                                 subprocess.run(["tar","-czf", code_tar_file,'--exclude=*.bin', '--exclude=core', '--exclude=vgcore*','--exclude=system_tests', '--exclude=*.o', '--exclude=grplab*', '--exclude=labw', '--transform', f"s/^cse240/{pid}_code_cse240/", 'cse240'], cwd="/home/hacker")
                                 subprocess.run(["tar","-czf",f"/home/me/tmp/tars/{pid}_history.tar.gz", '--transform', f"s/^History/{pid}_history/",'History'], cwd="/home/hacker/.local/share/code-server/User")
+                                filewatch_dir = "/home/hacker/.local/share/ultima/filewatch"
+                                if os.path.isdir(filewatch_dir):
+                                    subprocess.run(["tar", "-czf", f"/home/me/tmp/tars/{pid}_filewatch.tar.gz", "--transform", f"s/^filewatch/{pid}_filewatch/", "filewatch"], cwd="/home/hacker/.local/share/ultima")
                             except Exception as ex:
                                 print(ex)
 
