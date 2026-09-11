@@ -1064,9 +1064,9 @@ configure_user_vscode_settings "$cs_user_data_dir"
 
 
 #echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
-if [[ -d $clevel_work_dir ]] && [ "$hw_id" -ne 77 ]; then 
+if [[ -d $clevel_work_dir ]] && [[ "$hw_id" != "77" ]]; then 
     # cleans up path
-    clevel_work_dir=$(realpath $clevel_work_dir)
+    clevel_work_dir=$(realpath "$clevel_work_dir")
 fi 
 
 # copy level's template files if not already copied to working directory
