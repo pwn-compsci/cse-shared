@@ -29,6 +29,7 @@ DEFAULT_OUTPUT_DIR = Path("/home/hacker/.local/share/ultima/filewatch")
 MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
 POLL_INTERVAL_SECONDS = 0.25
 running = True
+LEGACY_LOG_FILE = None
 
 
 def handle_signal(signum, frame):
@@ -101,6 +102,17 @@ def append_jsonl(path, entry):
         log_file.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
+def log_watcher(base_dir, event, **fields):
+    entry = {"ts": time.time(), "event": event}
+    entry.update(fields)
+    append_jsonl(base_dir / "watcher.log.jsonl", entry)
+    if LEGACY_LOG_FILE is not None:
+        try:
+            append_jsonl(LEGACY_LOG_FILE, entry)
+        except Exception:
+            pass
+
+
 def guess_source():
     guesses = []
     try:
@@ -136,10 +148,10 @@ def process_snapshot(path, work_dir, output_dir, context, state, event_name):
     try:
         resolved = path.resolve()
         if not resolved.is_file() or not should_track(resolved):
-            return
+            return False
         relative = rel_path(resolved, work_dir)
     except Exception:
-        return
+        return False
 
     digest, size = sha256_file(resolved)
     prev = state.get(str(relative), {})
@@ -184,6 +196,20 @@ def process_snapshot(path, work_dir, output_dir, context, state, event_name):
 
     append_jsonl(history_dir / "events.jsonl", entry)
     append_jsonl(output_dir / "events.jsonl", entry)
+    log_watcher(
+        output_dir,
+        "file_event",
+        action="snapshot",
+        trigger=event_name,
+        file=str(relative),
+        size=size,
+        sha256=digest,
+        changed=digest != previous_sha or previous_size != size,
+        duplicate_content=entry.get("duplicate_content", False),
+        snapshot=snapshot_rel,
+        skipped_reason=skipped_reason,
+        source_guess=entry["source_guess"],
+    )
     with open(history_dir / "latest.json", "w", encoding="utf-8") as latest_file:
         json.dump(entry, latest_file, sort_keys=True)
         latest_file.write("\n")
@@ -193,6 +219,7 @@ def process_snapshot(path, work_dir, output_dir, context, state, event_name):
     except OSError:
         mtime_ns = None
     state[str(relative)] = {"sha256": digest, "size": size, "mtime_ns": mtime_ns}
+    return True
 
 
 def record_delete(path, work_dir, output_dir, context, state, event_name):
@@ -204,7 +231,7 @@ def record_delete(path, work_dir, output_dir, context, state, event_name):
         except Exception:
             return
     if not should_track(Path(relative)):
-        return
+        return False
 
     timestamp, timestamp_iso = now_info()
     previous = state.pop(str(relative), {})
@@ -229,6 +256,17 @@ def record_delete(path, work_dir, output_dir, context, state, event_name):
     }
     append_jsonl(history_dir / "events.jsonl", entry)
     append_jsonl(output_dir / "events.jsonl", entry)
+    log_watcher(
+        output_dir,
+        "file_event",
+        action="delete",
+        trigger=event_name,
+        file=str(relative),
+        previous_sha256=entry["previous_sha256"],
+        previous_size=entry["previous_size"],
+        source_guess=entry["source_guess"],
+    )
+    return True
 
 
 def walk_tracked_files(work_dir):
@@ -241,8 +279,13 @@ def walk_tracked_files(work_dir):
 
 
 def initial_scan(work_dir, output_dir, context, state):
+    scanned = 0
+    recorded = 0
     for path in walk_tracked_files(work_dir):
-        process_snapshot(path, work_dir, output_dir, context, state, "initial")
+        scanned += 1
+        if process_snapshot(path, work_dir, output_dir, context, state, "initial"):
+            recorded += 1
+    log_watcher(output_dir, "initial_scan_complete", scanned=scanned, recorded=recorded)
 
 
 def monitor_with_inotify(work_dir, output_dir, context, state):
@@ -255,12 +298,14 @@ def monitor_with_inotify(work_dir, output_dir, context, state):
             watch_descriptor = inotify.add_watch(str(directory), mask)
             watch_to_path[watch_descriptor] = Path(directory)
         except OSError as exc:
-            append_jsonl(output_dir / "watcher.log.jsonl", {"ts": time.time(), "event": "watch_failed", "path": str(directory), "error": str(exc)})
+            log_watcher(output_dir, "watch_failed", path=str(directory), error=str(exc))
 
     for root, dirs, _files in os.walk(work_dir):
         root_path = Path(root)
         add_watch(root_path)
         dirs[:] = [dirname for dirname in dirs if should_descend(root_path / dirname)]
+
+    log_watcher(output_dir, "watching", mode="inotify", watch_count=len(watch_to_path), work_dir=str(work_dir))
 
     while running:
         for event in inotify.read(timeout=500):
@@ -283,6 +328,7 @@ def monitor_with_inotify(work_dir, output_dir, context, state):
 
 
 def monitor_with_polling(work_dir, output_dir, context, state):
+    log_watcher(output_dir, "watching", mode="poll", interval_seconds=POLL_INTERVAL_SECONDS, work_dir=str(work_dir))
     while running:
         seen = set()
         for path in walk_tracked_files(work_dir):
@@ -301,6 +347,8 @@ def monitor_with_polling(work_dir, output_dir, context, state):
 
 
 def main():
+    global LEGACY_LOG_FILE
+
     parser = argparse.ArgumentParser()
     parser.add_argument("work_directory")
     parser.add_argument("legacy_log_file", nargs="?")
@@ -312,15 +360,23 @@ def main():
     signal.signal(signal.SIGINT, handle_signal)
     work_dir = Path(args.work_directory).resolve()
     output_dir = Path(args.output_dir).resolve()
+    if args.legacy_log_file:
+        LEGACY_LOG_FILE = Path(args.legacy_log_file).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     context = load_level_config()
     state = {}
-    append_jsonl(output_dir / "watcher.log.jsonl", {"ts": time.time(), "event": "started", "work_dir": str(work_dir), "output_dir": str(output_dir), "module": context["module"], "level": context["level"], "inotify_simple": INOTIFY_SIMPLE_AVAILABLE, "mode": "poll" if args.poll or not INOTIFY_SIMPLE_AVAILABLE else "inotify"})
+    log_watcher(output_dir, "started", pid=os.getpid(), work_dir=str(work_dir), output_dir=str(output_dir), module=context["module"], level=context["level"], challenge=context["challenge"], inotify_simple=INOTIFY_SIMPLE_AVAILABLE, mode="poll" if args.poll or not INOTIFY_SIMPLE_AVAILABLE else "inotify")
     initial_scan(work_dir, output_dir, context, state)
-    if args.poll or not INOTIFY_SIMPLE_AVAILABLE:
-        monitor_with_polling(work_dir, output_dir, context, state)
-    else:
-        monitor_with_inotify(work_dir, output_dir, context, state)
+    try:
+        if args.poll or not INOTIFY_SIMPLE_AVAILABLE:
+            monitor_with_polling(work_dir, output_dir, context, state)
+        else:
+            monitor_with_inotify(work_dir, output_dir, context, state)
+    except Exception as exc:
+        log_watcher(output_dir, "fatal_error", error=repr(exc))
+        raise
+    finally:
+        log_watcher(output_dir, "stopped", pid=os.getpid())
 
 
 if __name__ == "__main__":
