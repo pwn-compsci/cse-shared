@@ -146,6 +146,46 @@ OUTPUT_FILE_LINE_LIMIT = 20
 
 
 
+NON_PRINTABLE_REGEX = re.compile(r'[^\x09\x0A\x0D\x20-\x7E]')
+
+
+def format_nonprintable_chars(text):
+    def replacer(match):
+        char = match.group(0)
+        codepoint = ord(char)
+        if codepoint <= 0xFF:
+            replacement = f"\\x{codepoint:02x}"
+        else:
+            replacement = f"\\u{codepoint:04x}"
+        return f"{YELLOW}{replacement}{RESET_COLOR}"
+
+    return NON_PRINTABLE_REGEX.sub(replacer, text)
+
+
+def print_nonprintable_char_report(output_text, output_file=""):
+    if not NON_PRINTABLE_REGEX.search(output_text):
+        return
+
+    print(f"{YELLOW}Non-printable characters found in output{RESET_COLOR}")
+    print("The marked output below shows non-printable characters as hex values.")
+    print("--------<[ Non-printable Character Check ]>--------")
+
+    affected_lines = [
+        (line_number, line)
+        for line_number, line in enumerate(output_text.splitlines(), start=1)
+        if NON_PRINTABLE_REGEX.search(line)
+    ]
+
+    for line_number, line in affected_lines[:OUTPUT_FILE_LINE_LIMIT]:
+        print(f"{DARK_GREY}{line_number:<2}{RESET_COLOR} {format_nonprintable_chars(line)}")
+
+    if len(affected_lines) > OUTPUT_FILE_LINE_LIMIT:
+        print(f"{DARK_GREY}... truncated, see full output in {output_file or '<actual output file>'}{RESET_COLOR}")
+
+    print(f"{DARK_GREY}↑ EOF ↑{RESET_COLOR}")
+    print(DARK_GREY + f"-"*80 + RESET_COLOR)
+
+
 # SQLite database
 BASE_HOME_DIR = "/home/hacker"
 BASE_CSE240_DIR = f"{BASE_HOME_DIR}/cse240"
@@ -752,6 +792,7 @@ def file_output_failed_test_information(target_path, test, args, input_data, exp
     print(actual_normalized)
     print(f"{DARK_GREY}↑ EOF ↑{RESET_COLOR}")
     print(DARK_GREY + f"-"*80 + RESET_COLOR)
+    print_nonprintable_char_report(actual_normalized, preprocessed_actual_filename)
     
 
 
@@ -823,6 +864,7 @@ def output_failed_test_information(target_path, test, args, input_data, expected
             print(f"{DARK_GREY}...skipping (get the full output using `cat <filename>`)...{RESET_COLOR}")
         print(f"{DARK_GREY}↑ EOF ↑{RESET_COLOR}")
         print(DARK_GREY + f"-"*80 + RESET_COLOR)
+        print_nonprintable_char_report(actual_normalized, preprocessed_actual_filename)
     elif len(out_match_report["unexpected"]) > 0:
         # Unexpected output found, let's grep the output file to show the user
         env_vars = os.environ.copy()          # Start with a copy of the current environment
@@ -841,6 +883,7 @@ def output_failed_test_information(target_path, test, args, input_data, expected
             print(result.stderr)
         print(f"{DARK_GREY}↑ EOF ↑{RESET_COLOR}")
         print(DARK_GREY + f"-"*80 + RESET_COLOR)
+        print_nonprintable_char_report(actual_normalized, preprocessed_actual_filename)
         if len(skipped_lable) > 0:
             print(f"{skipped_lable}")
         else:
@@ -852,6 +895,7 @@ def output_failed_test_information(target_path, test, args, input_data, expected
 
         print(f"{DARK_GREY}↑ EOF ↑{RESET_COLOR}")
         print(DARK_GREY + f"-"*80 + RESET_COLOR)
+        print_nonprintable_char_report(actual_normalized, preprocessed_actual_filename)
         print(f"{DARK_GREY}Expected Output File : {preprocessed_expected_filename}")
         print(f"Actual Output File   : {preprocessed_actual_filename}")
         print(f"Diff Results File    : {tmp_test_diff_results}{RESET_COLOR}")
@@ -1221,8 +1265,7 @@ def run_target_program(test, working_directory, target_path, args, input_data, m
 
 
 def nonprintable_test(target_path, args, input_data, test_name, test_description, actual_output, start_time, output_type=""):
-    non_printable_regex = re.compile(r'[^\x20-\x7E\n\t\r]')
-    if non_printable_regex.findall(actual_output):
+    if NON_PRINTABLE_REGEX.findall(actual_output):
         failed_test_message(target_path, args, input_data, test_name, test_description, start_time=start_time, output_type=output_type)
 
         print(f"Output contains non-printable characters. This is usually caused by using a c-string that's not terminated with a NULL ")
@@ -1231,10 +1274,7 @@ def nonprintable_test(target_path, args, input_data, test_name, test_description
         print("The output below shows where the non-printable characters are appearing.")
         print("------- [ Marked Output ] -------")
 
-        def replacer(match):
-            char = match.group(0)
-            return f'\033[31m\\x{ord(char):02X}\033[0m'
-        marked_output = non_printable_regex.sub(replacer, actual_output)
+        marked_output = format_nonprintable_chars(actual_output)
         print(f"{marked_output}")
         print("")
         return False
@@ -1902,6 +1942,13 @@ def run_tests(args, system_test_dir, test_dir_provided=False):
                 shutil.copy(source_main_bin, system_test_main_bin)
                 md5_chk = calculate_md5(system_test_main_bin)
                 print(f"Copied {source_main_bin} to {system_test_main_bin} for system testing, with an md5 of {md5_chk}")
+                main_source_files = sorted(
+                    fp for fp in glob.glob(os.path.join(source_dir, "main.*"))
+                    if os.path.isfile(fp) and os.path.basename(fp) != "main.bin"
+                )
+                for main_source_file in main_source_files:
+                    source_md5 = calculate_md5(main_source_file)
+                    print(f"Source {main_source_file} md5 is {source_md5}")
                 if os.path.exists("/challenge/modelGood.bin"):
                     mg_md5 = calculate_md5("/challenge/modelGood.bin")
                     if md5_chk == mg_md5:
