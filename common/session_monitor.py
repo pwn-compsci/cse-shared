@@ -24,6 +24,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 
 SESSION_FILE = "/challenge/.config/session.dat"
+EXAM_ATTEMPT_STARTUP_ID_FILE = "/opt/exam_attempt_startup_id"
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +41,18 @@ logger = logging.getLogger("session_monitor")
 CHECK_INTERVAL = 30  # Check every 30 seconds
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # Seconds between retries
+ACTIVE_EXAM_SESSION_STATUS_API_URL = os.environ.get(
+    "ACTIVE_EXAM_SESSION_STATUS_API_URL",
+    "https://api.cse545.com/api/exam_container_status_v2",
+)
+ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT = int(os.environ.get(
+    "ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT",
+    "10",
+))
+ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS = int(os.environ.get(
+    "ACTIVE_EXAM_SESSION_CONTAINER_GRACE_SECONDS",
+    "300",
+))
 
 def get_current_utc_time():
     """Get current time in UTC"""
@@ -228,11 +241,100 @@ def get_exam_admin_type():
 def normalized_exam_admin_type(value):
     return (value or "").strip().lower().replace("_", " ").replace("-", " ")
 
+def is_honorlock_exam_type(value):
+    return normalized_exam_admin_type(value).replace(" ", "") == "honorlock"
+
 def requires_attendance_monitoring_for_exam_type(value):
     return normalized_exam_admin_type(value) in {
         "proctoring",
         "proctoring plus lockdown browser",
     }
+
+def active_exam_session_monitor_enabled():
+    env_value = os.environ.get("ACTIVE_EXAM_SESSION_MONITOR_ENABLED", "")
+    if env_value.lower() in {"1", "true", "yes", "on"}:
+        return True
+
+    try:
+        with open('/challenge/.config/level.json', 'r') as f:
+            level_data = json.load(f)
+        return bool(level_data.get("active_exam_session_monitor"))
+    except Exception as e:
+        logger.info(f"Active exam session monitor not enabled by level config: {e}")
+        return False
+
+def get_container_exam_context():
+    try:
+        with open('/.user_info', 'r') as f:
+            user_info_content = f.read()
+
+        match = re.search(r"pwn_college_id=['\"]?(\d+)['\"]?", user_info_content)
+        if not match:
+            logger.error("Could not find pwn_college_id in /.user_info")
+            return None
+
+        with open('/challenge/.config/level.json', 'r') as f:
+            level_data = json.load(f)
+
+        module = level_data.get('module')
+        challenge = level_data.get('challenge') or level_data.get('examLevel') or level_data.get('level')
+        if not module or not challenge:
+            logger.error("Could not find module or challenge in level.json")
+            return None
+
+        startup_id = None
+        try:
+            with open(EXAM_ATTEMPT_STARTUP_ID_FILE) as f:
+                startup_id = f.read().strip() or None
+        except Exception as e:
+            logger.info(f"Could not read startup id from {EXAM_ATTEMPT_STARTUP_ID_FILE}: {e}")
+
+        return {
+            "pwn_college_id": match.group(1),
+            "module": module,
+            "challenge": challenge,
+            "startup_id": startup_id,
+        }
+    except FileNotFoundError as e:
+        logger.error(f"Missing required context file: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse level.json: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error loading container exam context: {e}")
+        return None
+
+def check_active_exam_session_status(context):
+    payload = {
+        "pwn_college_id": context["pwn_college_id"],
+        "module": context["module"],
+        "challenge": context["challenge"],
+    }
+    if context.get("startup_id"):
+        payload["startup_id"] = context["startup_id"]
+
+    try:
+        logger.info(
+            "Checking active exam session status for "
+            f"{context['pwn_college_id']} {context['module']}/{context['challenge']}"
+        )
+        response = requests.post(ACTIVE_EXAM_SESSION_STATUS_API_URL, json=payload, timeout=10)
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            logger.error(f"Active exam session API returned invalid JSON with status {response.status_code}")
+            return None
+
+        result["http_status"] = response.status_code
+        logger.info(f"Active exam session API response: {json.dumps(result, indent=2)}")
+        return result
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to check active exam session status: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected active exam session status error: {e}")
+        return None
 
 def extract_encrypted_files():
     """Extract encrypted backup files to the challenge level directory"""
@@ -776,6 +878,118 @@ def mark_session_active():
         logger.error(f"Error reading {SESSION_FILE}: {e}")
         return False
 
+def write_container_dead_marker(reason):
+    try:
+        with open('/challenge/.dead', 'w') as f:
+            f.write(f"{get_current_utc_time().isoformat()} {reason}\n")
+        logger.info("Created /challenge/.dead for active exam session shutdown")
+    except Exception as e:
+        logger.error(f"Failed to create /challenge/.dead: {e}")
+
+def monitor_active_exam_session():
+    """Monitor the browser launcher heartbeat for Honorlock-style active sessions."""
+    logger.info("Starting active exam session monitor")
+
+    if check_admin_override():
+        logger.info("Admin override active; setting session active and skipping active session monitor")
+        mark_session_active()
+        return
+
+    context = get_container_exam_context()
+    if not context:
+        logger.error("Could not load active exam session context; failing open to avoid accidental lockout")
+        mark_session_active()
+        return
+
+    if not os.path.exists(SESSION_FILE):
+        with open(SESSION_FILE, 'w') as f:
+            f.write("inactive\n")
+        os.chown(SESSION_FILE, 0, 0)
+        os.chmod(SESSION_FILE, 0o644)
+
+    first_time = True
+    was_active = False
+    unreachable_checks = 0
+    stale_since = None
+    stale_reason = None
+
+    while True:
+        try:
+            if first_time:
+                first_time = False
+            else:
+                time.sleep(CHECK_INTERVAL)
+
+            result = check_active_exam_session_status(context)
+            current_time = get_current_utc_time()
+
+            if result is None:
+                unreachable_checks += 1
+                logger.warning(
+                    "Active exam session status unavailable "
+                    f"({unreachable_checks}/{ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT})"
+                )
+                if unreachable_checks >= ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT:
+                    mark_session_paused(
+                        "The exam monitoring service could not be reached for several minutes. "
+                        "Your container is still running, but the tester will not return the flag. "
+                        "Please contact course staff.\n"
+                    )
+                    was_active = False
+                continue
+
+            unreachable_checks = 0
+            allowed = bool(result.get("allowed"))
+            reason = result.get("reason", "unknown")
+
+            if allowed:
+                if not was_active:
+                    logger.info("Active exam session recovered or became active")
+                    broadcast_message("Exam monitoring connection is active. You can continue working.\n")
+                mark_session_active()
+                was_active = True
+                stale_since = None
+                stale_reason = None
+                continue
+
+            if stale_since is None:
+                stale_since = current_time
+                stale_reason = reason
+                logger.critical(f"Active exam session is not allowed: {reason}")
+                mark_session_paused(
+                    "Your exam monitoring page is no longer active. "
+                    "Your container is still running for now, but the tester will not return the flag. "
+                    "Please return to the exam launcher page or contact course staff.\n"
+                )
+                was_active = False
+                continue
+
+            stale_elapsed = (current_time - stale_since).total_seconds()
+            container_grace_seconds = int(
+                result.get("container_grace_seconds")
+                or ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS
+            )
+            logger.warning(
+                "Active exam session still blocked: "
+                f"reason={reason}, first_reason={stale_reason}, stale_elapsed={stale_elapsed:.0f}s"
+            )
+
+            if stale_elapsed >= container_grace_seconds:
+                logger.critical("Active exam session stale grace exceeded; shutting down container")
+                broadcast_message(
+                    "The exam monitoring page has been inactive for too long. "
+                    "This container is shutting down. Please contact course staff.\n"
+                )
+                write_container_dead_marker(reason)
+                time.sleep(15)
+                kill_process_1()
+
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal - exiting active exam session monitor")
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error in active exam session monitor: {e}")
+
 def is_time_in_session(current_time, start_time, end_time):
     """
     Check if current time is within session window
@@ -874,6 +1088,11 @@ def main():
     logger.info("Checking exam administration type...")
     exam_admin_type = get_exam_admin_type()
     logger.info(f"Exam administration type: {exam_admin_type}")
+
+    if is_honorlock_exam_type(exam_admin_type) and active_exam_session_monitor_enabled():
+        logger.info("Honorlock active session monitor is enabled")
+        monitor_active_exam_session()
+        return
     
     # Check if this exam type requires attendance monitoring
     requires_attendance_monitoring = requires_attendance_monitoring_for_exam_type(exam_admin_type)
