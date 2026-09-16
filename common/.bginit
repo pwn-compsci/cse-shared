@@ -284,11 +284,15 @@ import os
 import urllib.request
 
 try:
+    with open("/flag", "r", encoding="utf-8") as flag_file:
+        flag = flag_file.read().strip()
+
     payload = {
         "pwn_college_id": os.environ.get("PWN_COLLEGE_ID", ""),
         "api_token": os.environ.get("API_TOKEN", ""),
         "module": os.environ.get("MODULE", ""),
         "challenge": os.environ.get("CHALLENGE", ""),
+        "flag": flag,
     }
     request = urllib.request.Request(
         "https://api.cse545.com/is_student",
