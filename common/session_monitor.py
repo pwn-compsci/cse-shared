@@ -894,6 +894,7 @@ def monitor_active_exam_session():
     if not context:
         logger.error("Could not load active exam session context; failing open to avoid accidental lockout")
         mark_session_active()
+        check_and_restore_clevel_work_dir()
         return
 
     if not os.path.exists(SESSION_FILE):
@@ -904,6 +905,7 @@ def monitor_active_exam_session():
 
     first_time = True
     was_active = False
+    files_restored = False
     unreachable_checks = 0
     stale_since = None
     stale_reason = None
@@ -945,6 +947,13 @@ def monitor_active_exam_session():
                 was_active = True
                 stale_since = None
                 stale_reason = None
+                if not files_restored:
+                    logger.info("Active exam session is active - checking/restoring clevel_work_dir files")
+                    if check_and_restore_clevel_work_dir():
+                        files_restored = True
+                        logger.info("Files check/restore completed successfully")
+                    else:
+                        logger.warning("Files check/restore failed, will retry next loop")
                 continue
 
             if stale_since is None:
@@ -1103,6 +1112,7 @@ def main():
             os.chown(SESSION_FILE, 0, 0)
             os.chmod(SESSION_FILE, 0o644)
             logger.info(f"Set {SESSION_FILE} to active - monitoring not needed")
+            check_and_restore_clevel_work_dir()
         except Exception as e:
             logger.error(f"Error setting session.dat: {e}")
         
