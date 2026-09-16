@@ -45,6 +45,10 @@ ACTIVE_EXAM_SESSION_STATUS_API_URL = os.environ.get(
     "ACTIVE_EXAM_SESSION_STATUS_API_URL",
     "https://api.cse545.com/api/exam_container_status_v2",
 )
+EXAM_ADMIN_TYPE_API_URL = os.environ.get(
+    "EXAM_ADMIN_TYPE_API_URL",
+    "https://api.cse545.com/exam_admin_type",
+)
 ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT = int(os.environ.get(
     "ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT",
     "10",
@@ -203,7 +207,7 @@ def get_exam_admin_type():
         
         # API token and URL
         api_token = "08b26e01b8d9cb4f262da37836912504104296c33ab658dca836d032bc47b2ff"
-        api_url = "http://localhost:8080/exam_admin_type"
+        api_url = EXAM_ADMIN_TYPE_API_URL
         
         payload = {
             "api_token": api_token,
@@ -1103,15 +1107,15 @@ def main():
     current_time = get_current_utc_time()
     logger.info(f"Current UTC time: {current_time.isoformat()}")
 
-    # Get exam administration type
-    logger.info("Checking exam administration type...")
-    exam_admin_type = get_exam_admin_type()
-    logger.info(f"Exam administration type: {exam_admin_type}")
-
     if active_exam_session_monitor_enabled():
         logger.info("Active exam session monitor is enabled by level config")
         monitor_active_exam_session()
         return
+
+    # Get exam administration type for legacy attendance monitoring modes.
+    logger.info("Checking exam administration type...")
+    exam_admin_type = get_exam_admin_type()
+    logger.info(f"Exam administration type: {exam_admin_type}")
     
     # Check if this exam type requires attendance monitoring
     requires_attendance_monitoring = requires_attendance_monitoring_for_exam_type(exam_admin_type)
