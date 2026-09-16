@@ -126,6 +126,43 @@ safe_install_file() {
     command install "$@"
 }
 
+copy_challenge_template_to_workdir() {
+    local src=""
+    local dest=""
+    local old_nullglob=""
+
+    [ -d /challenge/template ] || return 0
+    [ -d "$clevel_work_dir" ] || return 0
+
+    old_nullglob=$(shopt -p nullglob)
+    shopt -s nullglob
+
+    for src in /challenge/template/*; do
+        dest="$clevel_work_dir/$(basename "$src")"
+        if ! safe_root_mutation_path "$dest"; then
+            root_mutation_log "blocked template copy to unsafe path: $dest"
+            continue
+        fi
+        if [ -d "$dest" ] && ! safe_root_mutation_tree "$dest"; then
+            root_mutation_log "blocked template copy into unsafe tree: $dest"
+            continue
+        fi
+
+        if cp -a "$src" "$clevel_work_dir"/; then
+            if [ -d "$dest" ]; then
+                safe_root_mutation_tree "$dest" && safe_chown -R hacker:hacker "$dest" 2>/dev/null || true
+            else
+                safe_chown hacker:hacker "$dest" 2>/dev/null || true
+            fi
+            echo "[i] template copied: $src to $dest" | tee -a "$STARTUP_LOG"
+        else
+            echo "[i] WARNING: failed to copy template: $src to $dest" | tee -a "$STARTUP_LOG"
+        fi
+    done
+
+    eval "$old_nullglob"
+}
+
 # Create logs directory if it doesn't exist
 safe_mkdir_p "$course_home/.vscode/logs"
 safe_mkdir_p /home/hacker/.cache
@@ -1009,8 +1046,7 @@ CHECKSTATUS_NOTICE_EOF
             if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
                 if [ -d /challenge/template ]; then 
                     echo "[i] No main file found in $clevel_work_dir, copying template files" | tee -a $STARTUP_LOG
-                    safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/* "$clevel_work_dir"
-                    safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
+                    copy_challenge_template_to_workdir
                 else
                     echo "[i] /challenge/template not found, skipping template copy" | tee -a $STARTUP_LOG
                 fi 
@@ -1094,7 +1130,11 @@ diff_start_time=$(date +%s)
 
 
 # create symlink for system_tests in working directory
-if [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
+# Exam workdirs are populated by .examsetup/session_monitor after the session is active.
+# Do not expose /challenge/system_tests through the generic symlink fallback.
+if [[ -n "${isExam:-}" ]]; then
+    echo "[i] Skipping system_tests symlink for exam; exam setup/session monitor will populate it" | tee -a "$STARTUP_LOG"
+elif [ -e /challenge/system_tests ] && [ ! -d $clevel_work_dir/system_tests ]  && [ ! -f $clevel_work_dir/system_tests ] ; then 
     ls -la $clevel_work_dir | tee -a $STARTUP_LOG
     echo "[i] Creating symlink for system_tests in $clevel_work_dir" | tee -a $STARTUP_LOG
     ln -s /challenge/system_tests $clevel_work_dir/system_tests

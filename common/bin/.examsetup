@@ -130,6 +130,52 @@ safe_install_file() {
     command install "$@"
 }
 
+copy_challenge_template_to_workdir() {
+    local src=""
+    local dest=""
+    local old_nullglob=""
+
+    [ -d /challenge/template ] || return 0
+    [ -d "$clevel_work_dir" ] || return 0
+
+    old_nullglob=$(shopt -p nullglob)
+    shopt -s nullglob
+
+    for src in /challenge/template/*; do
+        dest="$clevel_work_dir/$(basename "$src")"
+        if ! safe_root_mutation_path "$dest"; then
+            root_mutation_log "blocked template copy to unsafe path: $dest"
+            continue
+        fi
+        if [ -d "$dest" ] && ! safe_root_mutation_tree "$dest"; then
+            root_mutation_log "blocked template copy into unsafe tree: $dest"
+            continue
+        fi
+
+        if cp -a "$src" "$clevel_work_dir"/; then
+            if [ -d "$dest" ]; then
+                safe_root_mutation_tree "$dest" && safe_chown -R hacker:hacker "$dest" 2>/dev/null || true
+            else
+                safe_chown hacker:hacker "$dest" 2>/dev/null || true
+            fi
+            echo "[e] template copied: $src to $dest" | tee -a "$STARTUP_LOG"
+        else
+            echo "[e] WARNING: failed to copy template: $src to $dest" | tee -a "$STARTUP_LOG"
+        fi
+    done
+
+    eval "$old_nullglob"
+}
+
+cleanup_non_admin_exam_source_artifacts() {
+    if [ "$admin_access" != false ]; then
+        return 0
+    fi
+
+    echo "[e] Non-admin cleanup: removing exam source template artifacts" | tee -a "$STARTUP_LOG"
+    rm -rf /challenge/template 2>/dev/null || true
+}
+
 if [ "$admin_access" = false ]; then
     # if not admin and started in practice mode then kill container b/c not allowed to practice in exam mode
     # if grep "practice" /flag; then
@@ -411,13 +457,11 @@ if [ -d /challenge/template ]; then
         echo "[e] Listing /challenge/template contents:" | tee -a $STARTUP_LOG
         ls -la /challenge/template | tee -a $STARTUP_LOG
         echo "******************************************************" | tee -a $STARTUP_LOG
-        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/* "$clevel_work_dir"
-        echo "expanded copy command:" cp -a /challenge/template/* $clevel_work_dir >> $STARTUP_LOG
+        copy_challenge_template_to_workdir
         if [ "$course_code" = "cse240" ] && [ -f /challenge/template/README.md ]; then
             safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
             echo "[e] Refreshed README.md in $clevel_work_dir from selected problem template" | tee -a $STARTUP_LOG
         fi
-        safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
     else
         echo "[e] Existing CSE545 work found in $clevel_work_dir, skipping template overwrite." | tee -a $STARTUP_LOG
     fi
@@ -660,6 +704,8 @@ if [ -d "$clevel_work_dir" ]; then
 else
     echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a $STARTUP_LOG
 fi
+
+cleanup_non_admin_exam_source_artifacts
 
 # /home/me means we are doing an as_user
 # this should be run the first time after all the encryption stuff and removal
