@@ -890,11 +890,6 @@ def monitor_active_exam_session():
     """Monitor the browser launcher heartbeat for Honorlock-style active sessions."""
     logger.info("Starting active exam session monitor")
 
-    if check_admin_override():
-        logger.info("Admin override active; setting session active and skipping active session monitor")
-        mark_session_active()
-        return
-
     context = get_container_exam_context()
     if not context:
         logger.error("Could not load active exam session context; failing open to avoid accidental lockout")
@@ -1089,8 +1084,8 @@ def main():
     exam_admin_type = get_exam_admin_type()
     logger.info(f"Exam administration type: {exam_admin_type}")
 
-    if is_honorlock_exam_type(exam_admin_type) and active_exam_session_monitor_enabled():
-        logger.info("Honorlock active session monitor is enabled")
+    if active_exam_session_monitor_enabled():
+        logger.info("Active exam session monitor is enabled by level config")
         monitor_active_exam_session()
         return
     
