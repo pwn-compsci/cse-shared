@@ -53,6 +53,7 @@ ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS = int(os.environ.get(
     "ACTIVE_EXAM_SESSION_CONTAINER_GRACE_SECONDS",
     "300",
 ))
+REPORTED_DUPLICATE_VSCODE_GROUPS = set()
 
 def get_current_utc_time():
     """Get current time in UTC"""
@@ -684,12 +685,13 @@ def check_admin_override():
         logger.error(f"Error checking admin override: {e}")
         return False
 
-def check_and_kill_duplicate_vscode():
+def check_and_report_duplicate_vscode():
     """
-    Check for duplicate VSCode extension host processes and kill the one with highest PID.
+    Check for duplicate VSCode extension host processes and report them.
     Looks for processes containing both '/code-server/' and '--type=extensionHost' in their command line.
     """
     try:
+        global REPORTED_DUPLICATE_VSCODE_GROUPS
         import psutil
         
         # Find all extension host processes
@@ -711,7 +713,7 @@ def check_and_kill_duplicate_vscode():
                 pass
         
         if len(extension_hosts) < 2:
-            logger.info(f"Found {len(extension_hosts)} VSCode extension host process(es), no duplicates to kill")
+            logger.info(f"Found {len(extension_hosts)} VSCode extension host process(es), no duplicates to report")
             return
         
         # Group by parent PID to find duplicates with same parent
@@ -721,20 +723,24 @@ def check_and_kill_duplicate_vscode():
             by_parent[host['ppid']].append(host)
         
         # Find parents with multiple extension hosts
-        killed_any = False
+        reported_any = False
         for ppid, hosts in by_parent.items():
             if len(hosts) >= 2:
-                # Sort by PID and kill the one with highest PID
+                # Sort by PID and report the highest PID as the extra extension host.
                 hosts_sorted = sorted(hosts, key=lambda x: x['pid'], reverse=True)
-                to_kill = hosts_sorted[0]
+                to_report = hosts_sorted[0]
+                report_key = (ppid, tuple(sorted(host['pid'] for host in hosts)))
                 
                 logger.warning(f"Found {len(hosts)} extension hosts with same parent (ppid={ppid})")
-                logger.warning(f"Killing extension host with highest PID: {to_kill['pid']}")
+                logger.warning(f"Reporting duplicate VSCode extension host with highest PID: {to_report['pid']}")
+
+                if report_key in REPORTED_DUPLICATE_VSCODE_GROUPS:
+                    logger.info(f"Duplicate VSCode group already reported for parent {ppid}")
+                    reported_any = True
+                    continue
                 
                 try:
-                    # os.kill(to_kill['pid'], signal.SIGTERM)
-                    # logger.info(f"Successfully sent SIGTERM to PID {to_kill['pid']}")
-                    killed_any = True
+                    reported_any = True
                     
                     # Broadcast message to student
                     # broadcast_message("\n⚠️  Duplicate VSCode instance detected and reported, this will be investigated and you will receive an AIV if multiple instances have been used on the exam.\n")
@@ -767,33 +773,41 @@ def check_and_kill_duplicate_vscode():
                             "module": module,
                             "challenge": challenge,
                             "num_duplicates": len(hosts),
-                            "killed_pid": to_kill['pid'],
+                            "flagged_pid": to_report['pid'],
+                            "killed_pid": to_report['pid'],
                             "parent_pid": ppid,
+                            "action": "reported_only",
+                            "killed": False,
                             "api_token": api_token
                         }
                         
                         response = requests.post(api_url, json=payload, timeout=10)
                         if response.status_code == 200:
                             logger.info(f"Successfully reported duplicate VSCode to API")
+                            REPORTED_DUPLICATE_VSCODE_GROUPS.add(report_key)
                         else:
                             logger.warning(f"API reported duplicate with status {response.status_code}")
                     except Exception as e:
                         logger.error(f"Failed to report duplicate VSCode to API: {e}")
                     
                 except ProcessLookupError:
-                    logger.warning(f"Process {to_kill['pid']} no longer exists")
+                    logger.warning(f"Process {to_report['pid']} no longer exists")
                 except PermissionError:
-                    logger.error(f"Permission denied to kill process {to_kill['pid']}")
+                    logger.error(f"Permission denied to inspect process {to_report['pid']}")
                 except Exception as e:
-                    logger.error(f"Failed to kill process {to_kill['pid']}: {e}")
+                    logger.error(f"Failed to report process {to_report['pid']}: {e}")
         
-        if not killed_any:
+        if not reported_any:
             logger.info(f"Found {len(extension_hosts)} extension hosts but none share the same parent")
             
     except ImportError:
         logger.error("psutil module not available, cannot check for duplicate VSCode processes")
     except Exception as e:
         logger.error(f"Error checking for duplicate VSCode processes: {e}")
+
+def check_and_kill_duplicate_vscode():
+    """Backward-compatible wrapper; duplicate VSCode detection is report-only."""
+    check_and_report_duplicate_vscode()
 
 def broadcast_message(message):
     for tty in glob.glob("/dev/pts/[0-9]*"):
@@ -944,6 +958,7 @@ def monitor_active_exam_session():
                     logger.info("Active exam session recovered or became active")
                     broadcast_message("Exam monitoring connection is active. You can continue working.\n")
                 mark_session_active()
+                check_and_report_duplicate_vscode()
                 was_active = True
                 stale_since = None
                 stale_reason = None
