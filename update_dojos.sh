@@ -85,6 +85,6 @@ if $all_success; then
   echo "🎉 All runs completed successfully."
   exit 0
 else
-  echo "⚠️ One or more runs failed."
+  echo "⚠️ One or more runs failed." 
   exit 1
 fi
