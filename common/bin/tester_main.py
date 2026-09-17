@@ -69,6 +69,7 @@ DATABASE = f'{BASE_CSE240_DIR}/.vscode/trdb.db'
 CHALLENGE_DIR = "/challenge"
 SYSTEM_TESTS_DIR = f"{CHALLENGE_DIR}/system_tests"
 LEVEL_CONFIG_FP = os.path.join(CHALLENGE_DIR, ".config", "level.json")
+EXAM_TEMPLATE_STASH_DIR = "/opt/exam_template"
 ED_ENV = False
 
 if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
@@ -115,6 +116,32 @@ if not os.path.exists(BASE_HOME_DIR) and os.path.exists("/course"):
         shutil.copytree(f"/course/grouplab{labnum}/system_tests", SYSTEM_TESTS_DIR)
 
     ED_ENV = True
+
+
+def resolve_hidden_template_args(args):
+    resolved_args = []
+    temp_root = os.path.join("/tmp", f"tester_template_fallback_{os.getpid()}")
+
+    for arg in args:
+        if (
+            isinstance(arg, str)
+            and arg.startswith("/challenge/template/")
+            and not os.path.exists(arg)
+        ):
+            relative_path = os.path.relpath(arg, "/challenge/template")
+            stash_path = os.path.join(EXAM_TEMPLATE_STASH_DIR, relative_path)
+            if os.path.exists(stash_path):
+                fallback_path = os.path.join(temp_root, relative_path)
+                os.makedirs(os.path.dirname(fallback_path), mode=0o755, exist_ok=True)
+                shutil.copy2(stash_path, fallback_path)
+                os.chmod(fallback_path, 0o444)
+                logger.info("Using hidden template fallback %s for %s", fallback_path, arg)
+                resolved_args.append(fallback_path)
+                continue
+
+        resolved_args.append(arg)
+
+    return resolved_args
 
 
 def chown_recursive(path, uid, gid):
@@ -1223,6 +1250,7 @@ def run_test(source_dir, test_dir, test_json_file, target_path=None, expect_fail
 
     args = [a.replace("<testsdir>", test_dir + "/").replace("<sourcedir>", source_dir + "/")
             for a in test_json.get("args",[])]
+    args = resolve_hidden_template_args(args)
 
     input_data = test_json.get("input", "")
 

@@ -236,7 +236,14 @@ cleanup_non_admin_exam_source_artifacts() {
         return 0
     fi
 
-    echo "[e] Non-admin cleanup: removing exam source template artifacts" | tee -a "$STARTUP_LOG"
+    echo "[e] Non-admin cleanup: stashing and removing exam source template artifacts" | tee -a "$STARTUP_LOG"
+    rm -rf /opt/exam_template 2>/dev/null || true
+    if [ -d /challenge/template ]; then
+        mkdir -p /opt/exam_template
+        cp -a /challenge/template/. /opt/exam_template/ 2>/dev/null || true
+        chown -R root:root /opt/exam_template 2>/dev/null || true
+        chmod -R go-rwx /opt/exam_template 2>/dev/null || true
+    fi
     rm -rf /challenge/template 2>/dev/null || true
 }
 
