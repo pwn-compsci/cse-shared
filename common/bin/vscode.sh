@@ -226,6 +226,7 @@ while [ $attempts -lt $max_attempts ]; do
           --extensions-dir=$EXTENSIONS_DIR 
           --user-data-dir=$code_server_data_dir 
           --config=/dev/null
+          $coder_workspace_file
     " | tr -d "\n" |tr -s " ")
   
   echo "[c] Command: $cmd" >> $STARTUP_LOG
