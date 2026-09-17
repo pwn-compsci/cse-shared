@@ -479,7 +479,7 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/solution.* \
         /challenge/sln* \
         ./*.rm ./*.rm.* 2>/dev/null || true
-    find /challenge -type f \( \
+    find /challenge -type f ! -path "${c_file:-/__no_generated_exam_c_file__}" \( \
         -name '.init' -o \
         -name '.init_cse545' -o \
         -name '.init.cse545' -o \
@@ -1222,6 +1222,9 @@ fi
 if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
     safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
+fi
+if [[ -n "${isExam:-}" ]] && declare -F cleanup_non_admin_exam_source_artifacts >/dev/null; then
+    cleanup_non_admin_exam_source_artifacts
 fi
 unset PRESERVE_LEVELINIT_UNTIL_SOURCED
 

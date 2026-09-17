@@ -779,8 +779,6 @@ else
     echo "[e] WARNING: $clevel_work_dir does not exist, skipping tarball creation" | tee -a $STARTUP_LOG
 fi
 
-cleanup_non_admin_exam_source_artifacts
-
 # /home/me means we are doing an as_user
 # this should be run the first time after all the encryption stuff and removal
 if [ -f /challenge/bin/session_monitor.py ] && [ ! -d /home/me ]; then
