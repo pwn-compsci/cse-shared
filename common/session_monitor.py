@@ -1107,15 +1107,19 @@ def main():
     current_time = get_current_utc_time()
     logger.info(f"Current UTC time: {current_time.isoformat()}")
 
-    if active_exam_session_monitor_enabled():
-        logger.info("Active exam session monitor is enabled by level config")
-        monitor_active_exam_session()
-        return
-
-    # Get exam administration type for legacy attendance monitoring modes.
     logger.info("Checking exam administration type...")
     exam_admin_type = get_exam_admin_type()
     logger.info(f"Exam administration type: {exam_admin_type}")
+
+    if active_exam_session_monitor_enabled() and is_honorlock_exam_type(exam_admin_type):
+        logger.info("Active exam session monitor is enabled for Honorlock by level config")
+        monitor_active_exam_session()
+        return
+    if active_exam_session_monitor_enabled():
+        logger.info(
+            "Active exam session monitor is enabled by level config, but exam type "
+            f"'{exam_admin_type}' is not Honorlock; using legacy monitoring path"
+        )
     
     # Check if this exam type requires attendance monitoring
     requires_attendance_monitoring = requires_attendance_monitoring_for_exam_type(exam_admin_type)
