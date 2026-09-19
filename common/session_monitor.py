@@ -905,7 +905,7 @@ def write_container_dead_marker(reason):
         logger.error(f"Failed to create /challenge/.dead: {e}")
 
 def monitor_active_exam_session():
-    """Monitor the browser launcher heartbeat for Honorlock-style active sessions."""
+    """Monitor the browser launcher heartbeat for v2 active exam sessions."""
     logger.info("Starting active exam session monitor")
 
     context = get_container_exam_context()
@@ -1111,15 +1111,13 @@ def main():
     exam_admin_type = get_exam_admin_type()
     logger.info(f"Exam administration type: {exam_admin_type}")
 
-    if active_exam_session_monitor_enabled() and is_honorlock_exam_type(exam_admin_type):
-        logger.info("Active exam session monitor is enabled for Honorlock by level config")
-        monitor_active_exam_session()
-        return
     if active_exam_session_monitor_enabled():
         logger.info(
-            "Active exam session monitor is enabled by level config, but exam type "
-            f"'{exam_admin_type}' is not Honorlock; using legacy monitoring path"
+            "Active exam session monitor is enabled by level config "
+            f"for exam type '{exam_admin_type}'"
         )
+        monitor_active_exam_session()
+        return
     
     # Check if this exam type requires attendance monitoring
     requires_attendance_monitoring = requires_attendance_monitoring_for_exam_type(exam_admin_type)
