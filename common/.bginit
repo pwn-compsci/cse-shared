@@ -24,21 +24,6 @@ else
     mkdir -p "$course_home/.vscode/logs"
 fi
 
-if [ "$course_code" = "cse545" ]; then
-    echo "Checking CSE545 /opt/gef symlink setup" >> "$STARTUP_LOG"
-    if [ -e /opt/gef ]; then
-        echo "Skipping /opt/gef symlink: /opt/gef already exists" >> "$STARTUP_LOG"
-    elif [ -L /opt/gef ]; then
-        echo "Skipping /opt/gef symlink: /opt/gef is already a symlink to $(readlink /opt/gef 2>/dev/null || echo unknown)" >> "$STARTUP_LOG"
-    elif [ ! -d /usr/share/gef ]; then
-        echo "Skipping /opt/gef symlink: /usr/share/gef not found" >> "$STARTUP_LOG"
-    elif ln_output=$(ln -s /usr/share/gef /opt/gef 2>&1); then
-        echo "Created /opt/gef symlink to /usr/share/gef" >> "$STARTUP_LOG"
-    else
-        echo "Failed to create /opt/gef symlink to /usr/share/gef: $ln_output" >> "$STARTUP_LOG"
-    fi
-fi
-
 for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
     if [ -e "$init_file" ]; then
         chown root:root "$init_file" 2>/dev/null || true

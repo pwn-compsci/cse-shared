@@ -197,6 +197,21 @@ else
     exit 0    
 fi 
 
+if [ "$course_code" = "cse545" ]; then
+    echo "Checking CSE545 /opt/gef symlink setup" >> "$STARTUP_LOG"
+    if [ -e /opt/gef ]; then
+        echo "Skipping /opt/gef symlink: /opt/gef already exists" >> "$STARTUP_LOG"
+    elif [ -L /opt/gef ]; then
+        echo "Skipping /opt/gef symlink: /opt/gef is already a symlink to $(readlink /opt/gef 2>/dev/null || echo unknown)" >> "$STARTUP_LOG"
+    elif [ ! -d /usr/share/gef ]; then
+        echo "Skipping /opt/gef symlink: /usr/share/gef not found" >> "$STARTUP_LOG"
+    elif ln_output=$(ln -s /usr/share/gef /opt/gef 2>&1); then
+        echo "Created /opt/gef symlink to /usr/share/gef" >> "$STARTUP_LOG"
+    else
+        echo "Failed to create /opt/gef symlink to /usr/share/gef: $ln_output" >> "$STARTUP_LOG"
+    fi
+fi
+
 # Delete large core file if it exists at /home/hacker/core
 if [ -f /home/hacker/core ]; then
     file_size=$(stat -f %z /home/hacker/core 2>/dev/null || stat -c %s /home/hacker/core 2>/dev/null || echo 0)
