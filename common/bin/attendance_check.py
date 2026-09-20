@@ -33,6 +33,7 @@ LEVEL_CONFIG = "/challenge/.config/level.json"
 FLAG_FILE = "/flag"
 SAVED_FLAG_FILE = "/.saved_flag"
 ONE_SHOT = os.environ.get("ATTENDANCE_CHECK_ONCE", "").lower() in ("1", "true", "yes")
+DOJO_METADATA_URL_TEMPLATE = "https://{host}/pwncollege_api/v1/docker"
 
 def get_pwn_college_id():
     """Extract pwn_college_id from /.user_info"""
@@ -48,18 +49,85 @@ def get_pwn_college_id():
         logging.error(f"Error reading {USER_INFO_FILE}: {e}")
         return None
 
-def get_work_dir():
-    """Get the lab's working directory from level.json"""
+def get_level_data():
+    """Read the challenge level metadata bundled in the challenge image."""
     try:
         with open(LEVEL_CONFIG, 'r') as f:
-            level_data = json.load(f)
-        hwdir = level_data.get('hwdir', '')
-        level = level_data.get('level', '')
-        work_dir = f"{hwdir}/{level}"
-        return work_dir
+            return json.load(f)
     except Exception as e:
         logging.error(f"Error reading {LEVEL_CONFIG}: {e}")
+        return {}
+
+def get_work_dir():
+    """Get the lab's working directory from level.json"""
+    level_data = get_level_data()
+    hwdir = level_data.get('hwdir', '')
+    level = level_data.get('level', '')
+    return f"{hwdir}/{level}"
+
+def get_dojo_current_challenge_metadata():
+    """Return pwn.college's resolved wrapper module/challenge for this container."""
+    token = os.environ.get("DOJO_AUTH_TOKEN")
+    host = os.environ.get("DOJO_HOST")
+    if not token or not host:
+        logging.info("DOJO metadata unavailable: missing DOJO_AUTH_TOKEN or DOJO_HOST")
         return None
+
+    try:
+        response = requests.get(
+            DOJO_METADATA_URL_TEMPLATE.format(host=host),
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        metadata = response.json()
+    except Exception as e:
+        logging.warning(f"Could not get pwn.college current challenge metadata: {e}")
+        return None
+
+    if not metadata.get("success"):
+        logging.warning(f"pwn.college current challenge metadata was unsuccessful: {metadata}")
+        return None
+
+    return metadata
+
+def should_use_dojo_metadata(level_data, metadata):
+    """Limit wrapper metadata overrides to CSE545 lab challenges only."""
+    metadata = metadata or {}
+    course_code = str(level_data.get("course_code") or "").lower()
+    metadata_dojo = str(metadata.get("dojo") or "").lower()
+    is_cse545 = (
+        course_code == "cse545"
+        or metadata_dojo == "cse545"
+        or metadata_dojo.startswith("cse545-")
+        or metadata_dojo.startswith("cse545~")
+    )
+    if not is_cse545:
+        return False
+
+    level_module = str(level_data.get("module") or "")
+    metadata_module = str(metadata.get("module") or "")
+    return level_module.startswith("lab") or metadata_module.startswith("lab")
+
+def resolve_attendance_metadata(level_data):
+    """Resolve module/challenge for attendance policy without affecting exams."""
+    module = level_data.get('module')
+    challenge = level_data.get('challenge')
+    metadata = get_dojo_current_challenge_metadata()
+
+    if metadata and should_use_dojo_metadata(level_data, metadata):
+        metadata_module = metadata.get("module")
+        metadata_challenge = metadata.get("challenge")
+        if metadata_module and metadata_challenge:
+            logging.info(
+                "Using pwn.college wrapper metadata for CSE545 lab attendance: "
+                f"{metadata_module}/{metadata_challenge} "
+                f"(level.json had {module}/{challenge})"
+            )
+            return metadata_module, metadata_challenge
+
+    logging.info(f"Using level.json metadata for attendance: {module}/{challenge}")
+    return module, challenge
 
 def validate_attendance(pwn_college_id, module=None, challenge=None):
     """Make API request to validate attendance"""
@@ -72,14 +140,10 @@ def validate_attendance(pwn_college_id, module=None, challenge=None):
             payload["module"] = module
         if challenge:
             payload["challenge"] = challenge
-        try:
-            with open(LEVEL_CONFIG, "r") as f:
-                level_data = json.load(f)
-            course_code = level_data.get("course_code")
-            if course_code:
-                payload["course_code"] = course_code
-        except Exception as e:
-            logging.debug(f"Could not include course_code in attendance payload: {e}")
+        level_data = get_level_data()
+        course_code = level_data.get("course_code")
+        if course_code:
+            payload["course_code"] = course_code
         response = requests.post(API_URL, json=payload, timeout=10)
         return response.json()
     except Exception as e:
@@ -367,17 +431,12 @@ def main():
     # Set all .c and .cpp files to read-write at program start
     make_files_readwrite(work_dir)
     
-    # Get module and challenge from level.json
-    module = None
-    challenge = None
-    try:
-        with open(LEVEL_CONFIG, 'r') as f:
-            level_data = json.load(f)
-        module = level_data.get('module')
-        challenge = level_data.get('challenge')
-        logging.info(f"Module: {module}, Challenge: {challenge}")
-    except Exception as e:
-        logging.warning(f"Could not read module/challenge from level.json: {e}")
+    # Get module and challenge metadata for attendance policy. For CSE545 labs,
+    # prefer pwn.college's wrapper metadata so imported challenges use the
+    # containing course module instead of their source dojo module.
+    level_data = get_level_data()
+    module, challenge = resolve_attendance_metadata(level_data)
+    logging.info(f"Attendance policy metadata: Module: {module}, Challenge: {challenge}")
     
     # Validate attendance
     result = validate_attendance(pwn_college_id, module, challenge)
