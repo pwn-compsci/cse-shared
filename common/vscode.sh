@@ -124,6 +124,34 @@ safe_mkdir_p() {
   command mkdir -p "${args[@]}"
 }
 
+configure_python_interpreter() {
+  [ "$course_code" = "cse545" ] || return 0
+
+  local interpreter="/run/dojo/bin/python3"
+  local settings_dir="${code_server_data_dir%/}/User"
+  local settings_file="$settings_dir/settings.json"
+  local tmp_file
+
+  [ -x "$interpreter" ] || interpreter="$(command -v python3 2>/dev/null || true)"
+  [ -n "$interpreter" ] || return 0
+
+  safe_mkdir_p "$settings_dir" || return 0
+  safe_touch "$settings_file" || return 0
+  tmp_file=$(mktemp /tmp/code-settings.XXXXXX) || return 0
+
+  if ! jq --arg interpreter "$interpreter" \
+      '. as $settings
+       | (if type == "object" then . else {} end)
+       | .["python.defaultInterpreterPath"] = $interpreter' \
+      "$settings_file" > "$tmp_file" 2>/dev/null; then
+    printf '{\n  "python.defaultInterpreterPath": "%s"\n}\n' "$interpreter" > "$tmp_file"
+  fi
+
+  mv "$tmp_file" "$settings_file"
+  safe_chown hacker:hacker "$settings_file" 2>/dev/null || true
+  echo "[c] Python interpreter preset: $interpreter" >> "$STARTUP_LOG"
+}
+
 until [ -f /run/dojo/var/ready ]; do sleep 0.1; done
 
 if [ -d /run/challenge/share/code/extensions ]; then
@@ -183,6 +211,7 @@ fi
 code_server_data_dir="${cs_user_data_dir%/}/"
 
 prepare_landrun_paths
+configure_python_interpreter
 
 # Ensure code-service directory exists with correct ownership
 mkdir -p /run/dojo/var/code-service
