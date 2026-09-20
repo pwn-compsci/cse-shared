@@ -24,6 +24,14 @@ else
     mkdir -p "$course_home/.vscode/logs"
 fi
 
+if [ "$course_code" = "cse545" ] && [ ! -e /opt/gef ] && [ ! -L /opt/gef ]; then
+    if [ -d /usr/share/gef ]; then
+        ln -s /usr/share/gef /opt/gef && echo "Created /opt/gef symlink to /usr/share/gef" >> "$STARTUP_LOG"
+    else
+        echo "Skipping /opt/gef symlink: /usr/share/gef not found" >> "$STARTUP_LOG"
+    fi
+fi
+
 for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
     if [ -e "$init_file" ]; then
         chown root:root "$init_file" 2>/dev/null || true
