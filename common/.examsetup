@@ -597,7 +597,9 @@ if [ -z "$hwdir" ] && [ -n "$module" ]; then
 fi
 echo "[e] project directory is $hwdir, setting up coder_workspace_file"
 # hw_id and level come from parent call .init, .examsetup is sourced
-if [ -n "$hwdir" ] && [ -n "$hw_id" ]; then
+if [ "$course_code" = "cse545" ] && [ -z "$hw_id" ]; then
+    coder_workspace_file="$course_home/$module/lab--$level.code-workspace"
+elif [ -n "$hwdir" ] && [ -n "$hw_id" ]; then
     coder_workspace_file="$hwdir/proj-$hw_id-$level.code-workspace"
 else
     coder_workspace_file="$course_home/$module/exam.code-workspace"
