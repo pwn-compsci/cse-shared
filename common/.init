@@ -562,11 +562,25 @@ fi
 echo "[i] Creating /challenge/bin directory" | tee -a $STARTUP_LOG
 mkdir -p /challenge/bin 2| tee -a $STARTUP_LOG
 
+nginx_listens_on_port() {
+    local port="$1"
+    [ -f /challenge/web/nginx.conf ] && grep -Eq "^[[:space:]]*listen[[:space:]]+${port}([[:space:];]|$)" /challenge/web/nginx.conf
+}
+
+start_redirector_port() {
+    local port="$1"
+    if nginx_listens_on_port "$port"; then
+        echo "[i] Skipping redirector on port $port because nginx.conf listens there" | tee -a $STARTUP_LOG
+    else
+        python3 /challenge/bin/redirector.py -d -p "$port"
+    fi
+}
+
 if [ -f /challenge/bin/redirector.py ]; then 
     #chmod 700 /challenge/bin/redirector.py
     echo "[i] Running terminal redirector, logging available at /var/log/redirector.log " | tee -a $STARTUP_LOG
-    python3 /challenge/bin/redirector.py  -d -p 7681 
-    python3 /challenge/bin/redirector.py  -d -p 6080
+    start_redirector_port 7681
+    start_redirector_port 6080
 else 
     echo "[i] No redirector.py found, not running" | tee -a $STARTUP_LOG
 fi
