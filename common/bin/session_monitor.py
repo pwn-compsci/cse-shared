@@ -20,6 +20,7 @@ import re
 import subprocess
 import pwd
 import threading
+import tempfile
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -39,6 +40,7 @@ logger = logging.getLogger("session_monitor")
 
 # Configuration
 CHECK_INTERVAL = 30  # Check every 30 seconds
+ACTIVE_EXAM_SESSION_ALERT_CHECK_INTERVAL = 5
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # Seconds between retries
 ACTIVE_EXAM_SESSION_STATUS_API_URL = os.environ.get(
@@ -53,10 +55,18 @@ ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT = int(os.environ.get(
     "ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT",
     "10",
 ))
-ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS = int(os.environ.get(
-    "ACTIVE_EXAM_SESSION_CONTAINER_GRACE_SECONDS",
+ACTIVE_EXAM_SESSION_DEFAULT_PAUSE_GRACE_SECONDS = int(os.environ.get(
+    "ACTIVE_EXAM_SESSION_PAUSE_GRACE_SECONDS",
     "180",
 ))
+ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS = int(os.environ.get(
+    "ACTIVE_EXAM_SESSION_CONTAINER_GRACE_SECONDS",
+    "360",
+))
+EXAM_MONITOR_STATUS_FILE = os.environ.get(
+    "EXAM_MONITOR_STATUS_FILE",
+    "/challenge/.config/exam-monitor-status.json",
+)
 REPORTED_DUPLICATE_VSCODE_GROUPS = set()
 
 def get_current_utc_time():
@@ -904,8 +914,85 @@ def write_container_dead_marker(reason):
     except Exception as e:
         logger.error(f"Failed to create /challenge/.dead: {e}")
 
+def _status_timestamp(value):
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
+
+
+def write_exam_monitor_status(
+    state,
+    reason,
+    message,
+    *,
+    result=None,
+    pause_at=None,
+    shutdown_at=None,
+    shutdown_pending=False,
+):
+    """Atomically publish local exam monitoring state for the workspace badge."""
+    result = result or {}
+    now = get_current_utc_time()
+
+    def remaining(deadline):
+        if deadline is None:
+            return None
+        return max(0, int((deadline - now).total_seconds() + 0.999))
+
+    payload = {
+        "schema_version": 1,
+        "state": state,
+        "reason": reason,
+        "message": message,
+        "updated_at": _status_timestamp(now),
+        "launcher_age_seconds": result.get("launcher_age_seconds"),
+        "heartbeat_grace_seconds": result.get("heartbeat_grace_seconds"),
+        "pause_grace_seconds": result.get(
+            "pause_grace_seconds",
+            ACTIVE_EXAM_SESSION_DEFAULT_PAUSE_GRACE_SECONDS,
+        ),
+        "container_grace_seconds": result.get(
+            "container_grace_seconds",
+            ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS,
+        ),
+        "pause_at": _status_timestamp(pause_at),
+        "shutdown_at": _status_timestamp(shutdown_at),
+        "seconds_until_pause": remaining(pause_at),
+        "seconds_until_shutdown": remaining(shutdown_at),
+        "shutdown_pending": bool(shutdown_pending),
+        "source": "session-monitor",
+        "launcher_url": result.get("launcher_url"),
+    }
+
+    status_path = os.path.abspath(EXAM_MONITOR_STATUS_FILE)
+    status_dir = os.path.dirname(status_path)
+    temporary_path = None
+    try:
+        os.makedirs(status_dir, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=status_dir,
+            prefix=f".{os.path.basename(status_path)}.",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            json.dump(payload, temporary_file, sort_keys=True)
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.chmod(temporary_path, 0o644)
+        os.replace(temporary_path, status_path)
+    except Exception as e:
+        logger.error(f"Failed to write exam monitor status: {e}")
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+
+
 def monitor_active_exam_session():
-    """Monitor the browser launcher heartbeat for v2 active exam sessions."""
+    """Monitor browser heartbeats with warning, pause, and shutdown phases."""
     logger.info("Starting active exam session monitor")
 
     context = get_container_exam_context()
@@ -927,13 +1014,15 @@ def monitor_active_exam_session():
     unreachable_checks = 0
     stale_since = None
     stale_reason = None
+    session_paused_for_monitoring = False
+    next_check_interval = CHECK_INTERVAL
 
     while True:
         try:
             if first_time:
                 first_time = False
             else:
-                time.sleep(CHECK_INTERVAL)
+                time.sleep(next_check_interval)
 
             result = check_active_exam_session_status(context)
             current_time = get_current_utc_time()
@@ -945,27 +1034,49 @@ def monitor_active_exam_session():
                     f"({unreachable_checks}/{ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT})"
                 )
                 if unreachable_checks >= ACTIVE_EXAM_SESSION_UNREACHABLE_LIMIT:
-                    mark_session_paused(
-                        "The exam monitoring service could not be reached for several minutes. "
-                        "Your container is still running, but the tester will not return the flag. "
-                        "Please contact course staff.\n"
+                    if not session_paused_for_monitoring:
+                        mark_session_paused(
+                            "The exam monitoring service could not be reached for several minutes. "
+                            "Your container is still running, but the tester will not return the flag. "
+                            "Please contact course staff.\n"
+                        )
+                        session_paused_for_monitoring = True
+                    write_exam_monitor_status(
+                        "warning",
+                        "monitoring_service_unreachable",
+                        "The exam monitoring service cannot currently be reached. Contact course staff.",
                     )
                     was_active = False
+                else:
+                    write_exam_monitor_status(
+                        "active",
+                        "monitoring_service_retrying",
+                        "Exam monitoring is retrying a temporary status-check failure.",
+                    )
                 continue
 
             unreachable_checks = 0
             allowed = bool(result.get("allowed"))
+            monitoring_warning = bool(result.get("monitoring_warning"))
             reason = result.get("reason", "unknown")
 
-            if allowed:
+            if allowed and not monitoring_warning:
                 if not was_active:
                     logger.info("Active exam session recovered or became active")
                     broadcast_message("Exam monitoring connection is active. You can continue working.\n")
                 mark_session_active()
                 check_and_report_duplicate_vscode()
                 was_active = True
+                session_paused_for_monitoring = False
                 stale_since = None
                 stale_reason = None
+                next_check_interval = CHECK_INTERVAL
+                write_exam_monitor_status(
+                    "active",
+                    reason,
+                    "Exam monitoring is connected.",
+                    result=result,
+                )
                 if not files_restored:
                     logger.info("Active exam session is active - checking/restoring clevel_work_dir files")
                     if check_and_restore_clevel_work_dir():
@@ -976,29 +1087,91 @@ def monitor_active_exam_session():
                 continue
 
             if stale_since is None:
-                stale_since = current_time
+                try:
+                    interruption_age = max(0.0, float(result.get("interruption_age_seconds") or 0))
+                except (TypeError, ValueError):
+                    interruption_age = 0.0
+                stale_since = current_time - timedelta(seconds=interruption_age)
                 stale_reason = reason
                 logger.critical(f"Active exam session is not allowed: {reason}")
-                mark_session_paused(
-                    "Your exam monitoring page is no longer active. "
-                    "Your container is still running for now, but the tester will not return the flag. "
-                    "Please return to the exam launcher page or contact course staff.\n"
-                )
-                was_active = False
-                continue
 
             stale_elapsed = (current_time - stale_since).total_seconds()
-            container_grace_seconds = int(
-                result.get("container_grace_seconds")
-                or ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS
+            pause_grace_value = result.get("pause_grace_seconds")
+            pause_grace_seconds = int(
+                ACTIVE_EXAM_SESSION_DEFAULT_PAUSE_GRACE_SECONDS
+                if pause_grace_value is None else pause_grace_value
             )
+            container_grace_value = result.get("container_grace_seconds")
+            container_grace_seconds = int(
+                ACTIVE_EXAM_SESSION_DEFAULT_CONTAINER_GRACE_SECONDS
+                if container_grace_value is None else container_grace_value
+            )
+            pause_at = stale_since + timedelta(seconds=pause_grace_seconds)
+            shutdown_at = stale_since + timedelta(seconds=container_grace_seconds)
+
+            if stale_elapsed < pause_grace_seconds:
+                mark_session_active()
+                session_paused_for_monitoring = False
+                logger.warning(
+                    "Active exam session launcher is stale but still in warning grace: "
+                    f"reason={reason}, stale_elapsed={stale_elapsed:.0f}s"
+                )
+                write_exam_monitor_status(
+                    "warning",
+                    reason,
+                    (
+                        "The exam launcher page was closed or refreshed. Reconnect within one minute before the tester pauses."
+                        if reason.startswith("launcher_page_unloaded")
+                        else "The exam launcher heartbeat is stale. Reconnect monitoring before the tester pauses."
+                    ),
+                    result=result,
+                    pause_at=pause_at,
+                    shutdown_at=shutdown_at,
+                )
+                next_check_interval = ACTIVE_EXAM_SESSION_ALERT_CHECK_INTERVAL
+                continue
+
+            if not session_paused_for_monitoring:
+                logger.critical("Active exam session warning grace exceeded; pausing tester")
+                inactive_message = (
+                    "The exam launcher page was closed or refreshed. "
+                    if reason.startswith("launcher_page_unloaded")
+                    else "Your exam monitoring page has been inactive for five minutes. "
+                )
+                mark_session_paused(
+                    inactive_message +
+                    "The tester is paused, but your container is still running. "
+                    "Reconnect monitoring now or contact course staff.\n"
+                )
+                session_paused_for_monitoring = True
+                was_active = False
+
             logger.warning(
-                "Active exam session still blocked: "
+                "Active exam session blocked: "
                 f"reason={reason}, first_reason={stale_reason}, stale_elapsed={stale_elapsed:.0f}s"
             )
+            write_exam_monitor_status(
+                "blocked",
+                reason,
+                "The tester is paused. Reconnect monitoring before the workspace shuts down.",
+                result=result,
+                pause_at=pause_at,
+                shutdown_at=shutdown_at,
+                shutdown_pending=True,
+            )
+            next_check_interval = ACTIVE_EXAM_SESSION_ALERT_CHECK_INTERVAL
 
             if stale_elapsed >= container_grace_seconds:
-                logger.critical("Active exam session stale grace exceeded; shutting down container")
+                logger.critical("Active exam session shutdown grace exceeded; shutting down container")
+                write_exam_monitor_status(
+                    "blocked",
+                    "launcher_heartbeat_stale_container_grace_exceeded",
+                    "Exam monitoring has been disconnected for eight minutes. Workspace shutdown is imminent.",
+                    result=result,
+                    pause_at=pause_at,
+                    shutdown_at=shutdown_at,
+                    shutdown_pending=True,
+                )
                 broadcast_message(
                     "The exam monitoring page has been inactive for too long. "
                     "This container is shutting down. Please contact course staff.\n"
