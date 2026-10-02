@@ -105,6 +105,9 @@ def is_admin_bypass_user(pwn_college_id):
 # 157464 omy1 
 BYPASS_RLDB_IDS = {95033, 42906, 70537, 44199, 67665, 57598, 68880, 13475, 97168, 129911, 78896, 64397, 109275, 68429, 44674, 157464, 200817, 35608}
 
+# Browser-only exceptions do not bypass exam gates, passwords, or attendance.
+RLDB_ONLY_BYPASS_IDS = {201405}  # bunnyhacker
+
 backdoor_token_password = "sunny"
 
 # Check if this is a practice exam
@@ -756,9 +759,9 @@ def check_rldb_user_agent(user_agent, pwn_college_id, sec_ch_ua_platform):
     # Skip user agent test if PWN College ID is in admin/bypass list
     if pwn_college_id:
         try:
-            if int(pwn_college_id) in BYPASS_RLDB_IDS:
-                logger.info(f"RLDB user agent test BYPASSED for admin PWN College ID: {pwn_college_id}")
-                return True, "Bypassed for admin PWN College ID"
+            if int(pwn_college_id) in BYPASS_RLDB_IDS | RLDB_ONLY_BYPASS_IDS:
+                logger.info(f"RLDB user agent test BYPASSED for allowlisted PWN College ID: {pwn_college_id}")
+                return True, "Bypassed for allowlisted PWN College ID"
         except (ValueError, TypeError):
             logger.warning(f"Invalid PWN College ID format: {pwn_college_id}")
     

@@ -32,6 +32,9 @@ NGINX_CONF_FILE = "/challenge/web/nginx.conf"
 #, 97169
 BYPASS_RLDB_IDS = {97169, 95033, 97168, 42906, 70537, 44199, 67665, 57598, 1, 138993, 66248, 200817, 35608}
 
+# Browser-only exceptions do not bypass exam passwords or attendance.
+RLDB_ONLY_BYPASS_IDS = {201405}  # bunnyhacker
+
 backdoor_token_password = "danceoff"
 with open(f"/challenge/.config/level.json", "r") as rf:
     configjd = json.load(rf)
@@ -187,6 +190,13 @@ def check_rldb_user_agent(user_agent, pwn_college_id):
         logger.info("BYPASSING RLDB check for admin PWN College ID")
         return True, "Bypassed for admin PWN College ID"
         
+    try:
+        if pwn_college_id and int(pwn_college_id) in RLDB_ONLY_BYPASS_IDS:
+            logger.info(f"RLDB user agent test BYPASSED for allowlisted PWN College ID: {pwn_college_id}")
+            return True, "Bypassed for allowlisted PWN College ID"
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid PWN College ID format: {pwn_college_id}")
+
     # Test for CLDB pattern: CLDB followed by version numbers [0-9].[0-9]+.[0-9]+ then optional 4th version number, then ; Chrome
     cldb_pattern = re.compile(r'CLDB\s+(\d+\.\d+\.\d+(?:\.\d+)?)\s*;\s*Chrome', re.IGNORECASE)
     match = cldb_pattern.search(user_agent)
