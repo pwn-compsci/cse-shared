@@ -618,7 +618,9 @@ safe_mkdir_p $cs_user_data_dir
 safe_chown hacker:hacker $cs_user_data_dir
 # mkdir -p $(dirname $coder_workspace_file)
 
-echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
+if [ "$course_code" != "cse545" ]; then
+    echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
+fi
 
 if [ -f /challenge/bin/cserver.py ]; then
     echo "[e] starting command server" | tee -a $STARTUP_LOG
@@ -749,11 +751,11 @@ echo "[e] Adding session status check to /etc/bash.bashrc" | tee -a $STARTUP_LOG
 cat >> /etc/bash.bashrc << 'EOF'
 
 # Session status check
-if [ -f /challenge/.config/session.dat ]; then
+if [ -f /challenge/.config/session.dat ] && ! jq -e '.practice_exam == true or .is_practice_exam == true' /challenge/.config/level.json >/dev/null 2>&1; then
     session_status=$(cat /challenge/.config/session.dat 2>/dev/null | tr -d '\n')
     if [ "$session_status" != "active" ]; then
         echo -e "\033[31m⚠️  WARNING: Session is not active (status: $session_status)\033[0m"
-        echo -e "\033[31m   You cannot currently get the flag from the tester.\033[0m"
+        echo -e "\033[31m   You cannot currently get the flag from the challenge.\033[0m"
         echo -e "\033[31m   Please contact course staff if you believe this is an error.\033[0m"
     fi
 fi

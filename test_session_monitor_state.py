@@ -3,7 +3,7 @@ import importlib.util
 import logging
 from pathlib import Path
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import call, mock_open, patch
 
 
 MODULE_PATH = Path(__file__).parent / "common" / "session_monitor.py"
@@ -37,6 +37,44 @@ class SessionMonitorStateTests(unittest.TestCase):
             "pause_grace_seconds": 60,
             "container_grace_seconds": 120,
         }
+
+    def test_practice_exam_skips_all_session_checks(self):
+        for flag in ("practice_exam", "is_practice_exam"):
+            with (
+                self.subTest(flag=flag),
+                patch("builtins.open", mock_open(read_data='{"%s": true}' % flag)),
+                patch.object(self.monitor, "mark_session_active") as mark_active,
+                patch.object(self.monitor, "check_and_restore_clevel_work_dir") as restore,
+                patch.object(self.monitor, "get_exam_admin_type") as admin_type,
+                patch.object(self.monitor, "active_exam_session_monitor_enabled", return_value=True) as enabled,
+                patch.object(self.monitor, "monitor_active_exam_session") as active_monitor,
+                patch.object(self.monitor, "check_exam_attendance") as attendance,
+            ):
+                self.monitor.main()
+                mark_active.assert_called_once()
+                restore.assert_called_once()
+                admin_type.assert_not_called()
+                enabled.assert_not_called()
+                active_monitor.assert_not_called()
+                attendance.assert_not_called()
+
+    def test_regular_exam_still_checks_session_policy(self):
+        with (
+            patch("builtins.open", mock_open(read_data='{"practice_exam": false}')),
+            patch.object(self.monitor, "get_exam_admin_type", return_value="Proctoring"),
+            patch.object(self.monitor, "active_exam_session_monitor_enabled", return_value=True),
+            patch.object(self.monitor, "monitor_active_exam_session") as active_monitor,
+            patch.object(self.monitor, "mark_session_active") as mark_active,
+        ):
+            self.monitor.main()
+            active_monitor.assert_called_once()
+            mark_active.assert_not_called()
+
+    def test_cse545_broadcast_uses_challenge_wording(self):
+        config = mock_open(read_data='{"course_code": "cse545"}')
+        with patch("builtins.open", config), patch.object(self.monitor.glob, "glob", return_value=["/dev/pts/1"]):
+            self.monitor.broadcast_message("You cannot get the flag from the tester.")
+        config().write.assert_called_once_with("You cannot get the flag from the challenge.")
 
     def run_monitor(self, results, times):
         statuses = []

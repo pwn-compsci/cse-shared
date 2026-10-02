@@ -265,6 +265,16 @@ def requires_attendance_monitoring_for_exam_type(value):
         "proctoring plus lockdown browser",
     }
 
+def is_practice_exam():
+    """Practice challenges do not require an exam or attendance session."""
+    try:
+        with open('/challenge/.config/level.json', 'r') as f:
+            level_data = json.load(f)
+        return bool(level_data.get("practice_exam") or level_data.get("is_practice_exam"))
+    except (OSError, ValueError) as e:
+        logger.warning(f"Could not read practice exam config: {e}")
+        return False
+
 def active_exam_session_monitor_enabled():
     env_value = os.environ.get("ACTIVE_EXAM_SESSION_MONITOR_ENABLED", "")
     if env_value.lower() in {"1", "true", "yes", "on"}:
@@ -824,6 +834,12 @@ def check_and_kill_duplicate_vscode():
     check_and_report_duplicate_vscode()
 
 def broadcast_message(message):
+    try:
+        with open('/challenge/.config/level.json', 'r') as f:
+            if json.load(f).get("course_code") == "cse545":
+                message = message.replace("the tester", "the challenge").replace("tester", "challenge")
+    except (OSError, ValueError):
+        pass
     for tty in glob.glob("/dev/pts/[0-9]*"):
         try:
             with open(tty, "w") as f:
@@ -1279,6 +1295,12 @@ def main():
     logger.info(f"Parent Process ID: {os.getppid()}")
     current_time = get_current_utc_time()
     logger.info(f"Current UTC time: {current_time.isoformat()}")
+
+    if is_practice_exam():
+        logger.info("Practice exam: activating session without attendance or launcher monitoring")
+        mark_session_active()
+        check_and_restore_clevel_work_dir()
+        return
 
     logger.info("Checking exam administration type...")
     exam_admin_type = get_exam_admin_type()
