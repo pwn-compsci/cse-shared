@@ -131,20 +131,35 @@ configure_python_interpreter() {
   local settings_dir="${code_server_data_dir%/}/User"
   local settings_file="$settings_dir/settings.json"
   local tmp_file
+  local locator
+  local legacy_discovery=true
 
   [ -x "$interpreter" ] || interpreter="$(command -v python3 2>/dev/null || true)"
   [ -n "$interpreter" ] || return 0
+
+  # Some packaged Python extensions omit the native environment locator.
+  # Keep interpreter selection working through the Python extension in that case.
+  for locator in "$EXTENSIONS_DIR"/ms-python.python-*/python-env-tools/bin/pet; do
+    if [ -x "$locator" ]; then
+      legacy_discovery=false
+      break
+    fi
+  done
 
   safe_mkdir_p "$settings_dir" || return 0
   safe_touch "$settings_file" || return 0
   tmp_file=$(mktemp /tmp/code-settings.XXXXXX) || return 0
 
-  if ! jq --arg interpreter "$interpreter" \
-      '. as $settings
+  if ! jq -s --arg interpreter "$interpreter" --argjson legacy_discovery "$legacy_discovery" \
+      '(.[0] // {})
        | (if type == "object" then . else {} end)
-       | .["python.defaultInterpreterPath"] = $interpreter' \
+       | .["python.defaultInterpreterPath"] = $interpreter
+       | if $legacy_discovery then .["python.useEnvironmentsExtension"] = false else . end' \
       "$settings_file" > "$tmp_file" 2>/dev/null; then
     printf '{\n  "python.defaultInterpreterPath": "%s"\n}\n' "$interpreter" > "$tmp_file"
+    if [ "$legacy_discovery" = true ]; then
+      jq '.["python.useEnvironmentsExtension"] = false' "$tmp_file" > "$tmp_file.updated" && mv "$tmp_file.updated" "$tmp_file"
+    fi
   fi
 
   mv "$tmp_file" "$settings_file"

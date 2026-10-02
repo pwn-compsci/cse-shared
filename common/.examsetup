@@ -227,13 +227,22 @@ cleanup_non_admin_solution_artifacts() {
     fi
 
     echo "[e] Non-admin cleanup: removing solution and generator artifacts" | tee -a "$STARTUP_LOG"
-    rm -f /challenge/solution.* /challenge/sln* ./*.rm ./*.rm.* 2>/dev/null || true
+    rm -f /challenge/solution.* /challenge/sln* 2>/dev/null || true
     find /challenge -type f \( \
         -name 'sln*' -o \
-        -name 'solution*' -o \
-        -name '*.rm' -o \
-        -name '*.rm.*' \
+        -name 'solution*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "$course_code" = "cse545" ] && [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" = true ]; then
+        # Reversing exams compile main.rm.c in .levelinit. Preserve the build
+        # inputs until then, but keep them unreadable to the student.
+        find /challenge -type f \( -name '*.rm' -o -name '*.rm.*' \) \
+            -exec chown root:root {} + -exec chmod 600 {} +
+    else
+        rm -f ./*.rm ./*.rm.* 2>/dev/null || true
+        find /challenge -type f \( -name '*.rm' -o -name '*.rm.*' \) \
+            -exec rm -f {} \; 2>/dev/null || true
+    fi
 }
 
 cleanup_non_admin_challenge_artifacts() {
@@ -277,6 +286,9 @@ cleanup_non_admin_exam_source_artifacts() {
     fi
 
     echo "[e] Non-admin cleanup: stashing and removing exam source template artifacts" | tee -a "$STARTUP_LOG"
+    # .levelinit has finished; remove any protected compilation inputs left over.
+    find /challenge -type f \( -name '*.rm' -o -name '*.rm.*' \) \
+        -exec rm -f {} \; 2>/dev/null || true
     rm -rf /opt/exam_template 2>/dev/null || true
     if [ -d /challenge/template ]; then
         mkdir -p /opt/exam_template
