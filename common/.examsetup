@@ -296,7 +296,11 @@ if [ "$admin_access" = false ]; then
     #     pkill -9 -f /run/dojo/bin/sleep
     # fi
     # TODO: REENBLE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1  &
+    # CSE545 exams need the desktop service started below; only CSE240
+    # students should receive the desktop-disabled response on port 6080.
+    if [ "$course_code" = "cse240" ]; then
+        nohup python3 /challenge/bin/nodesktop.py > /var/log/nodesktop.log 2>&1 &
+    fi
 fi
 timestamp=$(date '+%Y-%m-%d_%H%M')
 testpass="luckystar"
