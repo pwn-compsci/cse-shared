@@ -36,6 +36,7 @@ class SessionMonitorStateTests(unittest.TestCase):
             "reason": "launcher_heartbeat_stale",
             "pause_grace_seconds": 60,
             "container_grace_seconds": 120,
+            "stopped_url": "https://cse240.com/api/exam_session_stopped?reason=launcher_heartbeat_stale",
         }
 
     def test_practice_exam_skips_all_session_checks(self):
@@ -131,6 +132,7 @@ class SessionMonitorStateTests(unittest.TestCase):
         first_warning = next(entry for entry in statuses if entry[0] == "warning")
         self.assertEqual(first_warning[2]["pause_at"], self.start + timedelta(seconds=90))
         self.assertEqual(first_warning[2]["shutdown_at"], self.start + timedelta(seconds=150))
+        self.assertEqual(statuses[-1][2]["redirect_url"], self.stale["stopped_url"])
 
     def test_unload_immediately_pauses_then_recovery_restores_tester(self):
         times = [self.start + timedelta(seconds=value) for value in (0, 30)]

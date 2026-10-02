@@ -943,6 +943,7 @@ def write_exam_monitor_status(
     pause_at=None,
     shutdown_at=None,
     shutdown_pending=False,
+    redirect_url=None,
 ):
     """Atomically publish local exam monitoring state for the workspace badge."""
     result = result or {}
@@ -974,6 +975,7 @@ def write_exam_monitor_status(
         "seconds_until_pause": remaining(pause_at),
         "seconds_until_shutdown": remaining(shutdown_at),
         "shutdown_pending": bool(shutdown_pending),
+        "redirect_url": redirect_url,
         "source": "session-monitor",
         "launcher_url": result.get("launcher_url"),
     }
@@ -1181,19 +1183,20 @@ def monitor_active_exam_session():
                 logger.critical("Active exam session shutdown grace exceeded; shutting down container")
                 write_exam_monitor_status(
                     "blocked",
-                    "launcher_heartbeat_stale_container_grace_exceeded",
-                    "Exam monitoring has been disconnected for eight minutes. Workspace shutdown is imminent.",
+                    result.get("reason") or f"{reason}_container_grace_exceeded",
+                    "Exam monitoring remained disconnected beyond the recovery period. The workspace is now stopped.",
                     result=result,
                     pause_at=pause_at,
                     shutdown_at=shutdown_at,
                     shutdown_pending=True,
+                    redirect_url=result.get("stopped_url"),
                 )
                 broadcast_message(
                     "The exam monitoring page has been inactive for too long. "
                     "This container is shutting down. Please contact course staff.\n"
                 )
                 write_container_dead_marker(reason)
-                time.sleep(15)
+                time.sleep(20)
                 kill_process_1()
 
         except KeyboardInterrupt:

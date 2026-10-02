@@ -48,6 +48,7 @@ let lastMonitorStatus = null;
 let monitorMessage = '';
 let monitorPauseDeadlineMs = null;
 let monitorShutdownDeadlineMs = null;
+let monitorRedirectStarted = false;
 
 function positionMonitorHint() {
   const badge = document.querySelector(".exam-badge");
@@ -154,6 +155,26 @@ function validLauncherUrl(value) {
   } catch (error) {
     return null;
   }
+}
+
+function validStoppedUrl(value) {
+  const url = validLauncherUrl(value);
+  if (!url) return null;
+  const hostname = new URL(url).hostname.toLowerCase();
+  return hostname === 'cse240.com' || hostname.endsWith('.cse240.com') ? url : null;
+}
+
+function redirectToStoppedPage(status) {
+  if (monitorRedirectStarted || !status || !status.redirect_url) return false;
+  const redirectUrl = validStoppedUrl(status.redirect_url);
+  if (!redirectUrl) return false;
+  monitorRedirectStarted = true;
+  try {
+    window.top.location = redirectUrl;
+  } catch (error) {
+    window.location.replace(redirectUrl);
+  }
+  return true;
 }
 
 function showMonitorModal() {
@@ -300,6 +321,7 @@ function applyMonitorStatus(status) {
   lastMonitorStatus = Object.assign({}, lastMonitorStatus || {}, status);
   monitorPauseDeadlineMs = monitorDeadline(status, "pause_at", "seconds_until_pause");
   monitorShutdownDeadlineMs = monitorDeadline(status, "shutdown_at", "seconds_until_shutdown");
+  if (redirectToStoppedPage(status)) return;
   const badge = document.querySelector(".exam-badge");
   if (!badge) return;
 
