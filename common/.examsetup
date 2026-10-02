@@ -167,6 +167,46 @@ copy_challenge_template_to_workdir() {
     eval "$old_nullglob"
 }
 
+copy_system_tests_to_workdir() {
+    local src_dir="/challenge/system_tests"
+    local dest_dir="$clevel_work_dir/system_tests"
+    local src=""
+    local rel=""
+    local dest=""
+
+    [ -d "$src_dir" ] || return 0
+
+    if ! safe_root_mutation_path "$dest_dir"; then
+        root_mutation_log "blocked system_tests copy to unsafe path: $dest_dir"
+        return 1
+    fi
+
+    if [ -L "$dest_dir" ]; then
+        echo "[e] $dest_dir is a symlink, removing and copying from $src_dir" | tee -a "$STARTUP_LOG"
+        rm "$dest_dir"
+    fi
+
+    safe_mkdir_p "$dest_dir"
+    safe_root_mutation_tree "$dest_dir" || return 1
+
+    while IFS= read -r -d '' src; do
+        rel="${src#$src_dir/}"
+        dest="$dest_dir/$rel"
+        safe_mkdir_p "$(dirname "$dest")"
+
+        case "$rel" in
+            *hidden*)
+                install -o root -g root -m 0400 "$src" "$dest"
+                ;;
+            *)
+                cp -a "$src" "$dest"
+                ;;
+        esac
+    done < <(find "$src_dir" -type f -print0 2>/dev/null)
+
+    find "$dest_dir" -type f -path '*hidden*' -exec chown root:root {} + -exec chmod 0400 {} + 2>/dev/null || true
+}
+
 protect_cse545_init_artifacts() {
     for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
         if [ -e "$init_file" ]; then
@@ -495,20 +535,12 @@ else
     fi
     cleanup_non_admin_solution_artifacts
 
-    # If nothing exists at $clevel_work_dir/system_tests then cp -a /challenge/system_tests
-    if [ ! -e "$clevel_work_dir/system_tests" ]; then
-        echo "[e] $clevel_work_dir/system_tests does not exist, copying from /challenge/system_tests" | tee -a $STARTUP_LOG
-        ls -la /challenge | tee -a /challenge/challenge.log
-        safe_mkdir_p "$clevel_work_dir/system_tests"
-        safe_root_mutation_tree "$clevel_work_dir/system_tests" && cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
-        ls -la "$clevel_work_dir" | tee -a $STARTUP_LOG
-    elif [ -L "$clevel_work_dir/system_tests" ]; then
-        echo "[e] $clevel_work_dir/system_tests is a symlink, removing and copying from /challenge/system_tests" | tee -a $STARTUP_LOG
-        rm "$clevel_work_dir/system_tests"
-        safe_mkdir_p "$clevel_work_dir/system_tests"
-        safe_root_mutation_tree "$clevel_work_dir/system_tests" && cp -a /challenge/system_tests/. "$clevel_work_dir/system_tests/" || true
-    fi
-    find $clevel_work_dir -type f -name 'stest*hidden*' -exec rm -f {} \;
+    # Keep system tests in the workdir. Hidden tests are installed root-owned
+    # and unreadable by hacker so the setuid tester can run them without leaking.
+    echo "[e] ensuring $clevel_work_dir/system_tests is copied from /challenge/system_tests" | tee -a "$STARTUP_LOG"
+    ls -la /challenge | tee -a /challenge/challenge.log
+    copy_system_tests_to_workdir || true
+    ls -la "$clevel_work_dir" | tee -a "$STARTUP_LOG"
 fi
 
 if [ -f /challenge/.testprobleminit ]; then
