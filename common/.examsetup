@@ -597,7 +597,7 @@ if [ "$admin_access" = true ]; then
     fi
 fi
 
-# Copy the exam reference file into working directory.
+# Copy the exam reference file into working directory
 if [ -f /challenge/exam-reference.md ] && [ -d "$clevel_work_dir" ]; then
     safe_install_file -T -o hacker -g hacker -m 0644 \
         /challenge/exam-reference.md "$clevel_work_dir/exam-reference.md"
