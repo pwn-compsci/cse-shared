@@ -588,14 +588,6 @@ if [ -d /challenge/template ]; then
         echo "[e] Existing CSE545 work found in $clevel_work_dir, skipping template overwrite." | tee -a $STARTUP_LOG
     fi
 fi
-if [ "$admin_access" = true ]; then
-    if [ -d /challenge/model ]; then
-        safe_mkdir_p $clevel_work_dir/template
-        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/. "$clevel_work_dir/template/" || true
-        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/model/* "$clevel_work_dir"
-        safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
-    fi
-fi
 
 # Copy the exam reference file into working directory
 if [ -f /challenge/exam-reference.md ] && [ -d "$clevel_work_dir" ]; then
@@ -604,6 +596,15 @@ if [ -f /challenge/exam-reference.md ] && [ -d "$clevel_work_dir" ]; then
     # Log an error if the destination file is missing.
     if [ ! -f "$clevel_work_dir/exam-reference.md" ]; then
         echo "[e] ERROR: exam-reference.md is missing from $clevel_work_dir after copying" | tee -a "$STARTUP_LOG"
+    fi
+fi
+
+if [ "$admin_access" = true ]; then
+    if [ -d /challenge/model ]; then
+        safe_mkdir_p $clevel_work_dir/template
+        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/template/. "$clevel_work_dir/template/" || true
+        safe_root_mutation_tree "$clevel_work_dir" && cp -a /challenge/model/* "$clevel_work_dir"
+        safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
     fi
 fi
 
