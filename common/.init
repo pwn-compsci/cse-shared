@@ -1252,6 +1252,19 @@ if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/RE
     safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
 fi
+# Select the build task before exam cleanup removes /challenge/template.
+# Student exams have already removed /challenge/model, and session_monitor may
+# not have restored the workdir yet, so use the selected problem's template too.
+if [ "$module" != "pretest" ]; then
+    if [ -f /challenge/template/Makefile ] || [ -f "$clevel_work_dir/Makefile" ] || [ -f /challenge/model/Makefile ]; then
+        builder="build-make"
+    elif [ -f /challenge/template/main.cpp ] || [ -f "$clevel_work_dir/main.cpp" ] || [ -f /challenge/model/main.cpp ]; then
+        builder="build-g++"
+    else
+        builder="build-gcc"
+    fi
+fi
+
 if [[ -n "${isExam:-}" ]] && declare -F cleanup_non_admin_exam_source_artifacts >/dev/null; then
     cleanup_non_admin_exam_source_artifacts
 fi
@@ -1281,13 +1294,6 @@ if [ "$module" != "pretest" ]; then
     # Creates one launch for the current level based on whether Makefile, main.cpp, or main.c exist                          #
     # For Java (pretest module), build tasks are configured in .javainit                                                     #
     # ###################################################################################################################### #
-    if [ -f /challenge/model/Makefile ]; then 
-        builder="build-make"
-    elif [ -f /challenge/model/main.cpp ]; then 
-        builder="build-g++"
-    else
-        builder="build-gcc"
-    fi 
     problem_matcher='$gcc'
 
     generate_task() {
