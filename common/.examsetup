@@ -597,6 +597,17 @@ if [ "$admin_access" = true ]; then
     fi
 fi
 
+# Copy the exam reference file into working directory.
+if [ -f /challenge/exam-reference.md ] && [ -d "$clevel_work_dir" ]; then
+    safe_install_file -T -o hacker -g hacker -m 0644 \
+        /challenge/exam-reference.md "$clevel_work_dir/exam-reference.md"
+
+    # Log an error if the destination file is missing.
+    if [ ! -f "$clevel_work_dir/exam-reference.md" ]; then
+        echo "[e] ERROR: exam-reference.md is missing from $clevel_work_dir after copying" | tee -a "$STARTUP_LOG"
+    fi
+fi
+
 # create FIFOs for landrun communication to the non-locked world
 CMD_FIFO="/run/landrun-cmd.fifo"
 RESP_FIFO="/run/landrun-resp.fifo"
