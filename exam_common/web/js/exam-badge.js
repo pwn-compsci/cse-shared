@@ -43,6 +43,8 @@ const monitorStatusUrl = (() => {
 const monitorPollIntervalMs = 15000;
 const monitorFileStaleMs = 90000;
 let monitorStatusSeen = false;
+let monitorLastUpdatedAt = null;
+let monitorLastUpdateObservedMs = null;
 let monitorFetchFailures = 0;
 let lastMonitorStatus = null;
 let monitorMessage = '';
@@ -398,7 +400,19 @@ async function pollExamMonitorStatus() {
     monitorStatusSeen = true;
     monitorFetchFailures = 0;
     const updatedAt = Date.parse(status.updated_at);
-    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > monitorFileStaleMs) {
+    // The HTTP server supplies 'now'; the student clock is never used for age.
+    const serverNow = Date.parse(response.headers.get('Date'));
+    const serverAgeMs = serverNow - updatedAt;
+    // Keep elapsed-time detection as a fallback if a proxy omits Date.
+    const observedAt = performance.now();
+    if (Number.isFinite(updatedAt) && status.updated_at !== monitorLastUpdatedAt) {
+      monitorLastUpdatedAt = status.updated_at;
+      monitorLastUpdateObservedMs = observedAt;
+    }
+    const stale = Number.isFinite(serverNow)
+      ? serverAgeMs > monitorFileStaleMs || serverAgeMs < -monitorFileStaleMs
+      : observedAt - monitorLastUpdateObservedMs > monitorFileStaleMs;
+    if (!Number.isFinite(updatedAt) || stale) {
       applyMonitorStatus(Object.assign({}, status, {
         state: 'warning',
         message: 'The local exam monitor status has stopped updating. Contact course staff.'
