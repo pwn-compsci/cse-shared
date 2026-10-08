@@ -1,53 +1,5 @@
 #!/usr/bin/env bash
 
-# Emit diagnostics before any access to the student home. dojo-init captures
-# stderr in /run/dojo/var/root/init.log even if the home log cannot be opened.
-early_startup_log() {
-    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
-    local message="[early-init] timestamp=$now pid=$$ $1"
-    printf '%s\n' "$message" >&2
-    if [ -n "${early_startup_fd:-}" ]; then
-        printf '%s\n' "$message" >&"$early_startup_fd"
-    fi
-}
-
-early_startup_step() {
-    local label="$1"
-    shift
-    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
-    local started="${now/./}"
-    local status=0
-    early_startup_log "START $label"
-    "$@" || status=$?
-    now="${EPOCHREALTIME:-${SECONDS}.000000}"
-    early_startup_log "END $label elapsed_ms=$(( (${now/./} - started) / 1000 )) status=$status"
-    return "$status"
-}
-
-early_startup_log "ENTER .init"
-early_startup_log "START create temporary diagnostic log"
-if early_startup_path=$(mktemp /tmp/cse-startup-early.XXXXXX.log); then
-    if exec {early_startup_fd}>>"$early_startup_path"; then
-        early_startup_log "END create temporary diagnostic log status=0 path=$early_startup_path"
-    else
-        early_startup_log "END open temporary diagnostic log status=$?"
-    fi
-else
-    early_startup_log "END create temporary diagnostic log status=$?"
-fi
-trap 'early_startup_log "TERM received line=$LINENO"; exit 143' TERM
-
-early_startup_log "START read course metadata"
-
-
-# Initialize STARTUP_LOG at the very top so all functions and code can use it
-course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
-course_home=${course_home:-"/home/hacker/$course_code"}
-course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
-extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
-export course_code course_home course_env_file extension_log_file
-early_startup_log "END read course metadata course=$course_code home=$course_home"
-
 root_mutation_log() {
     local message="$1"
     if [ -n "${STARTUP_LOG:-}" ]; then
@@ -103,6 +55,79 @@ safe_root_mutation_tree() {
     fi
     return 0
 }
+
+
+# Mirror progress markers to the home log and platform stderr.
+early_startup_log() {
+    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    local message="[early-init] timestamp=$now pid=$$ $1"
+    printf '%s\n' "$message" >&2
+    if [ -n "${early_startup_fd:-}" ]; then
+        printf '%s\n' "$message" >&"$early_startup_fd"
+    fi
+}
+
+early_startup_step() {
+    local label="$1"
+    shift
+    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    local started="${now/./}"
+    local status=0
+    early_startup_log "START $label"
+    "$@" || status=$?
+    now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    early_startup_log "END $label elapsed_ms=$(( (${now/./} - started) / 1000 )) status=$status"
+    return "$status"
+}
+
+# Create the persistent home log before metadata, cache, or ownership work.
+# Honor an explicitly supplied course path; cse240 is the bootstrap default.
+unset STARTUP_LOG
+bootstrap_course_home="${course_home:-/home/hacker/${course_code:-cse240}}"
+bootstrap_log_dir="$bootstrap_course_home/.vscode/logs"
+safe_root_mutation_path "$bootstrap_log_dir" || exit 1
+mkdir -p "$bootstrap_log_dir" || exit 1
+printf -v startup_log_name 'startup-%(%Y%m%d-%H%M%S)T-%s.log' -1 "$$"
+bootstrap_log_path="$bootstrap_log_dir/$startup_log_name"
+safe_root_mutation_path "$bootstrap_log_path" || exit 1
+if ! (set -o noclobber; printf '[early-init] %(%Y-%m-%dT%H:%M:%S%z)T ENTER .init pid=%s\n' -1 "$$" > "$bootstrap_log_path"); then
+    printf 'Unable to create startup log: %s\n' "$bootstrap_log_path" >&2
+    exit 1
+fi
+STARTUP_LOG="$bootstrap_log_path"
+export STARTUP_LOG
+exec {early_startup_fd}>>"$STARTUP_LOG" || exit 1
+early_startup_log "HOME LOG READY path=$STARTUP_LOG"
+early_startup_step "remove old startup log link" rm -f /challenge/startup.log || true
+early_startup_step "create startup log link" ln -s "$STARTUP_LOG" /challenge/startup.log
+trap 'early_startup_log "TERM received line=$LINENO"; exit 143' TERM
+
+early_startup_log "START read course metadata"
+
+
+# Resolve course metadata after the first startup message is safely written
+course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
+course_home=${course_home:-"/home/hacker/$course_code"}
+course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
+extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
+export course_code course_home course_env_file extension_log_file
+early_startup_log "END read course metadata course=$course_code home=$course_home"
+
+# Preserve the usual log destination when metadata selects another course.
+if [ "$course_home" != "$bootstrap_course_home" ]; then
+    early_startup_log "START switch log to course home=$course_home"
+    safe_root_mutation_path "$course_home/.vscode/logs" || exit 1
+    mkdir -p "$course_home/.vscode/logs" || exit 1
+    course_startup_log="$course_home/.vscode/logs/$startup_log_name"
+    safe_root_mutation_path "$course_startup_log" || exit 1
+    (set -o noclobber; cat "$STARTUP_LOG" > "$course_startup_log") || exit 1
+    exec {early_startup_fd}>&-
+    STARTUP_LOG="$course_startup_log"
+    exec {early_startup_fd}>>"$STARTUP_LOG" || exit 1
+    early_startup_step "update startup log link for course" ln -sfn "$STARTUP_LOG" /challenge/startup.log
+    early_startup_log "END switch log to course home=$course_home"
+fi
+
 
 # Timing uses Bash built-ins so diagnostics do not add subprocesses per marker.
 declare -A startup_timing_starts
@@ -258,26 +283,13 @@ copy_challenge_template_to_workdir() {
     eval "$old_nullglob"
 }
 
-# Create logs directory if it doesn't exist
-early_startup_step "create student log directory" safe_mkdir_p "$course_home/.vscode/logs"
 early_startup_step "create student cache directory" safe_mkdir_p /home/hacker/.cache
-
-# Generate log filename based on current date/time
-early_startup_log "START select startup log path"
-STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
-
-early_startup_log "END select startup log path path=$STARTUP_LOG"
 
 # Store the log path so other scripts (.bginit, .examsetup, vscode.sh) can use the same file
 early_startup_log "START write startup log pointer"
 safe_root_mutation_path /tmp/.startup_log_path && echo "$STARTUP_LOG" > /tmp/.startup_log_path
 early_startup_log "END write startup log pointer status=$?"
 early_startup_step "set startup pointer permissions" safe_chmod 644 /tmp/.startup_log_path
-
-# Create symlink at /challenge/startup.log pointing to the current log file
-# Remove old symlink if it exists, then create new one
-early_startup_step "remove old startup log link" rm -f /challenge/startup.log || true
-early_startup_step "create startup log link" ln -s "$STARTUP_LOG" /challenge/startup.log
 
 early_startup_step "create challenge config directory" mkdir -p /challenge/.config
 if [ -f /challenge/readme.html ] && [ ! -e /challenge/.config/readme.html ]; then
@@ -291,16 +303,7 @@ rm -f "$course_home/.vscode/trdb.db-journal" 2>/dev/null || true
 early_startup_log "END cleanup tracking DB backups status=$?"
 
 start_time=$(date +%s)
-if [[ ! -f $STARTUP_LOG ]]; then 
-    if early_startup_step "create student startup log" tee -a "$STARTUP_LOG" <<< "first time"; then
-        early_startup_log "HOME LOG READY path=$STARTUP_LOG"
-    else
-        early_startup_log "HOME LOG FAILED status=$? path=$STARTUP_LOG"
-    fi
-else 
-    echo "SECOND time" | tee -a $STARTUP_LOG
-    exit 0    
-fi 
+early_startup_log "START remaining initialization"
 
 if [ "$course_code" = "cse545" ]; then
     echo "Checking CSE545 /opt/gef symlink setup" >> "$STARTUP_LOG"
@@ -1822,4 +1825,5 @@ else
 fi 
 
 startup_timing_end "final setup"
+early_startup_log "END remaining initialization"
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
