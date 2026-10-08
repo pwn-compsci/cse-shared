@@ -261,8 +261,6 @@ copy_challenge_template_to_workdir() {
 # Create logs directory if it doesn't exist
 early_startup_step "create student log directory" safe_mkdir_p "$course_home/.vscode/logs"
 early_startup_step "create student cache directory" safe_mkdir_p /home/hacker/.cache
-# Keep startup ownership repairs shallow; logs and caches can contain many files.
-early_startup_step "repair log directory ownership" safe_chown hacker:hacker "$course_home/.vscode" "$course_home/.vscode/logs" || true
 
 # Generate log filename based on current date/time
 early_startup_log "START select startup log path"
@@ -802,6 +800,9 @@ safe_chmod 666 /home/hacker/.local/share/ultima/c.dat
 safe_chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 
 ## incorporate cse240 environment changes
+# Root opens the startup log before repairing ownership of its parent directories.
+# Keep this shallow so saved logs and editor metadata are never traversed.
+safe_chown hacker:hacker "$course_home/.vscode" "$course_home/.vscode/logs" || true
 safe_chown hacker:hacker "$STARTUP_LOG"
 chmod 666 $STARTUP_LOG
 
