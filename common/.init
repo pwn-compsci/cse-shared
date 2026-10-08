@@ -166,7 +166,8 @@ copy_challenge_template_to_workdir() {
 # Create logs directory if it doesn't exist
 safe_mkdir_p "$course_home/.vscode/logs"
 safe_mkdir_p /home/hacker/.cache
-safe_chown -R hacker:hacker "$course_home/.vscode" 2>/dev/null || true
+# Keep startup ownership repairs shallow; logs and caches can contain many files.
+safe_chown hacker:hacker "$course_home/.vscode" "$course_home/.vscode/logs" 2>/dev/null || true
 
 # Generate log filename based on current date/time
 STARTUP_LOG="$course_home/.vscode/logs/startup-$(date +%Y%m%d-%H%M%S).log"
@@ -319,6 +320,7 @@ configure_user_vscode_settings() {
     local settings_dir="$(dirname "$settings_json")"
     safe_root_mutation_path "$settings_json" || return 1
     safe_mkdir_p "$settings_dir"
+    safe_chown hacker:hacker "$user_dir" "$settings_dir"
 
     # If file doesn't exist, create with all default settings.
     if [ ! -f "$settings_json" ]; then
@@ -630,21 +632,21 @@ fi
 # TODO: remove after first few weeks
 safe_chown hacker:hacker /home/hacker/.local
 safe_chown hacker:hacker /home/hacker/.local/share
-safe_chown -R hacker:hacker /home/hacker/.local/share/ultima
+safe_chown hacker:hacker /home/hacker/.local/share/ultima /home/hacker/.local/share/ultima/skipped
 
 if [ ! -f /home/hacker/.local/share/ultima/skipped/log.json ]; then
     safe_root_mutation_path /home/hacker/.local/share/ultima/skipped/log.json && echo "{}" > /home/hacker/.local/share/ultima/skipped/log.json
 fi 
+safe_chown hacker:hacker /home/hacker/.local/share/ultima/skipped/log.json 2>/dev/null || true
 
 if [ ! -d "$course_home" ]; then
     safe_mkdir_p "$course_home"
     safe_mkdir_p "$course_home/.vscode"
     safe_mkdir_p "$course_home/labw"
     safe_mkdir_p "$course_home/grplab"
-    safe_chown -R hacker:hacker "$course_home"
+    safe_chown hacker:hacker "$course_home" "$course_home/.vscode" "$course_home/labw" "$course_home/grplab"
 fi 
 safe_chown hacker:hacker "$course_home" 2>/dev/null || true
-safe_chown -R hacker:hacker "$course_home/.vscode"
 
 if [ ! -f /home/hacker/.bashrc ]; then 
     safe_root_mutation_path /home/hacker/.bashrc && cp /etc/skel/.bashrc /home/hacker/.bashrc
@@ -695,6 +697,7 @@ safe_chmod 666 /home/hacker/.local/share/ultima/c.dat
 safe_chown hacker:hacker /home/hacker/.local/share/ultima/c.dat
 
 ## incorporate cse240 environment changes
+safe_chown hacker:hacker "$STARTUP_LOG"
 chmod 666 $STARTUP_LOG
 
 if [ -f "$ENVFILE" ] && grep -q "ZSH_ENABLE" "$ENVFILE" ; then 
@@ -1069,7 +1072,7 @@ CHECKSTATUS_NOTICE_EOF
     if [[ ! -d $clevel_work_dir ]] ; then 
         if grep -iq '"createHWDir".*true' /challenge/.config/level.json || [ "$course_code" = "cse545" ]; then
             safe_mkdir_p $clevel_work_dir
-            safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker $clevel_work_dir
+            safe_chown hacker:hacker "$clevel_work_dir"
             # if no main file then copy template files 
             if [[ ! -f $clevel_work_dir/main.c ]] && [[ ! -f $clevel_work_dir/main.cpp ]] && [[ ! -f $clevel_work_dir/main.rkt ]] && [[ ! -f $clevel_work_dir/main.pl ]]; then 
                 if [ -d /challenge/template ]; then 
@@ -1117,7 +1120,8 @@ CHECKSTATUS_NOTICE_EOF
         echo "[i] Found EXAM_REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
-    safe_root_mutation_tree "$clevel_work_dir" && safe_chown -R hacker:hacker "$clevel_work_dir"
+    # Existing student files are repaired by .bginit, outside blocking startup.
+    safe_chown hacker:hacker "$clevel_work_dir"
 
 fi
 
@@ -1400,8 +1404,7 @@ if [ "$module" != "pretest" ]; then
     # To pretty-print for debugging
     #echo "$launch" | jq '.' >> /challenge/pretty_vscode.json
 
-    find /home/hacker/.local/share/code-server ! -type l ! -user hacker -exec chown hacker:hacker {} +
-    find /home/hacker/.config ! -type l ! -user hacker -exec chown hacker:hacker {} +
+    safe_chown hacker:hacker /home/hacker/.config
 
     # ###################################################################################################################### #
     # ^^^^ END Build Tasks and Launcher for workspace ^^^^                                                                   #
@@ -1604,7 +1607,7 @@ if [ -f "$logfile" ]; then
 fi
 
 safe_touch "$extension_log_file"
-safe_chown -R hacker:hacker "$course_home/.vscode"
+safe_chown hacker:hacker "$extension_log_file"
 safe_chmod 664 "$extension_log_file" 2>/dev/null || true
 
 echo 'course_code=${course_code:-$(jq -r '"'"'.course_code // "cse240"'"'"' /challenge/.config/level.json 2>/dev/null || echo cse240)}; echo "$(printf "bash started at $(date)" | base64)" >> "/home/hacker/${course_code}/.vscode/cp.dat" 2>/dev/null || true' >> /etc/bash.bashrc
