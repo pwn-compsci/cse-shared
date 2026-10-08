@@ -64,20 +64,75 @@ safe_root_mutation_tree() {
     return 0
 }
 
+# Timing uses Bash built-ins so diagnostics do not add subprocesses per marker.
+declare -A startup_timing_starts
+startup_timing_log() {
+    [ -n "${STARTUP_LOG:-}" ] || return 0
+    printf '[timing] %(%Y-%m-%dT%H:%M:%S%z)T %s %s\n' -1 "$1" "$2" >> "$STARTUP_LOG"
+}
+
+startup_timing_begin() {
+    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    startup_timing_starts["$1"]="${now/./}"
+    startup_timing_log START "$1"
+}
+
+startup_timing_end() {
+    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    local started="${startup_timing_starts[$1]:-${now/./}}"
+    local elapsed_ms=$(( (${now/./} - started) / 1000 ))
+    startup_timing_log END "$1 elapsed_ms=$elapsed_ms status=${2:-0}"
+    unset 'startup_timing_starts[$1]'
+}
+
+timed_startup_step() {
+    local label="$1"
+    shift
+    local now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    local started="${now/./}"
+    local status=0
+    startup_timing_log START "$label"
+    "$@" || status=$?
+    now="${EPOCHREALTIME:-${SECONDS}.000000}"
+    startup_timing_log END "$label elapsed_ms=$(( (${now/./} - started) / 1000 )) status=$status"
+    return "$status"
+}
+
 safe_chown() {
     local seen_owner=false
+    local owner=""
+    local recursive=false
+    local supported=true
     local arg
+    local paths=()
     for arg in "$@"; do
         [ -n "$arg" ] || continue
+        if [[ "$arg" == -* ]]; then
+            if [ "$arg" = "-R" ]; then
+                recursive=true
+            else
+                supported=false
+            fi
+            continue
+        fi
         if [ "$seen_owner" = false ]; then
-            [[ "$arg" == -* ]] && continue
+            owner="$arg"
             seen_owner=true
             continue
         fi
-        [[ "$arg" == -* ]] && continue
         safe_root_mutation_path "$arg" || return 1
+        paths+=("$arg")
     done
-    command chown "$@"
+    if [[ "$owner" = "hacker:hacker" || "$owner" = "root:root" ]] && [ "$supported" = true ] && [ "${#paths[@]}" -gt 0 ]; then
+        # Shallow by default; batch only mismatched owners/groups into one chown.
+        local depth=(-maxdepth 0)
+        [ "$recursive" = true ] && depth=()
+        timed_startup_step "ownership repair: ${paths[*]}" \
+            find "${paths[@]}" "${depth[@]}" ! -type l \
+            \( ! -user "${owner%:*}" -o ! -group "${owner#*:}" \) -exec chown "$owner" {} +
+    else
+        timed_startup_step "ownership repair: ${paths[*]}" chown "$@"
+    fi
 }
 
 safe_chmod() {
@@ -222,18 +277,23 @@ if [ -f /home/hacker/core ]; then
     fi
 fi
 
-nohup bash -c '
+timed_startup_step "tracking DB cleanup" nohup bash -c '
   db="${course_home:-/home/hacker/cse240}/.vscode/trdb.db"
   [ -f "$db" ] &&
   [ $(stat -c%s "$db") -gt $((750*1024*1024)) ] &&
   rm -f "$db" "${db}-journal" ' | tee -a $STARTUP_LOG 2>&1
 
+cleanup_course_core_files() {
 # Delete all core files in the course home.
 if find "$course_home" -name 'core' -type f -print -quit | grep -q .; then
     echo "[i] Removing core files from $course_home" | tee -a $STARTUP_LOG
     find "$course_home" -name 'core' -type f -exec rm -f {} \;
 fi
 
+}
+timed_startup_step "course core-file scan" cleanup_course_core_files
+
+cleanup_cpptools_cache() {
 ### cleanup vscode-cpptools cache if it grows too large
 cache_dir="/home/hacker/.cache/vscode-cpptools"
 cache_size=$(du -sm "$cache_dir" 2>/dev/null | cut -f1)
@@ -257,6 +317,9 @@ if [[ "$cache_size" =~ ^[0-9]+$ ]]; then
 else
     echo "[i] vscode-cpptools cache dir does not exist or is inaccessible: $cache_dir" >> $STARTUP_LOG
 fi
+
+}
+timed_startup_step "cpptools cache size and cleanup" cleanup_cpptools_cache
 
 
 create_model_bad() { 
@@ -402,6 +465,7 @@ ensure_hosts_entry() {
 }
 
 
+startup_timing_begin "tool and shell setup"
 echo ".init Starting at $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 # check for admin access 
@@ -422,7 +486,7 @@ done
 
 # move into place atomically, set ownership and permissions
 mv "$tmpfile" /.helperids
-chown root:root /.helperids 2>/dev/null || true
+safe_chown root:root /.helperids 2>/dev/null || true
 chmod 600 /.helperids 2>/dev/null || true
 
 trap - EXIT
@@ -463,13 +527,13 @@ fi
 protect_cse545_init_artifacts() {
     for init_file in /challenge/.init_cse545 /challenge/.init.cse545; do
         if [ -e "$init_file" ]; then
-            chown root:root "$init_file" 2>/dev/null || true
+            safe_chown root:root "$init_file" 2>/dev/null || true
             chmod 400 "$init_file" 2>/dev/null || true
         fi
     done
 
     if [ -e /challenge/bin/init_cse545 ]; then
-        chown root:root /challenge/bin/init_cse545 2>/dev/null || true
+        safe_chown root:root /challenge/bin/init_cse545 2>/dev/null || true
         chmod 500 /challenge/bin/init_cse545 2>/dev/null || true
     fi
 }
@@ -833,10 +897,12 @@ if [ -z "$pwn_college_id" ]; then
     echo "[!] Could not determine pwn_college_id from dojo whoami or mounts" | tee -a "$STARTUP_LOG"
 fi
 
+startup_timing_end "tool and shell setup"
+
 # Fetch the current student's display info from the course API.
 rm -f /challenge/.config/info.dat
 if [ -n "$pwn_college_id" ]; then
-    PWN_COLLEGE_ID="$pwn_college_id" python3 - <<'PY' >> "$STARTUP_LOG" 2>&1 || true
+    PWN_COLLEGE_ID="$pwn_college_id" timed_startup_step "student info API" python3 - <<'PY' >> "$STARTUP_LOG" 2>&1 || true
 import csv
 import json
 import os
@@ -998,11 +1064,11 @@ except Exception as exc:
 PY
 }
 
-report_pwn_level_attempt
+timed_startup_step "student check and level attempt APIs" report_pwn_level_attempt
 
 if [ -f /challenge/.sync ] && [ ! -f /challenge/bin/file_sync.py ]; then
     touch /var/log/sync.log
-    chown root:root /challenge/.sync /var/log/sync.log
+    safe_chown root:root /challenge/.sync /var/log/sync.log
     chmod 755 /challenge/.sync
     chmod 666 /var/log/sync.log
     rm -f /tmp/last_sent
@@ -1034,7 +1100,9 @@ if [[ -n $isExam ]]; then
     PRESERVE_LEVELINIT_UNTIL_SOURCED=true
     export PRESERVE_LEVELINIT_UNTIL_SOURCED
     if [ -f /challenge/bin/.examsetup ]; then        
+        startup_timing_begin "exam setup"
         source /challenge/bin/.examsetup
+        startup_timing_end "exam setup" "$?"
         echo "[i] Completed .examsetup" >> "$STARTUP_LOG"
     fi 
 
@@ -1127,7 +1195,7 @@ fi
 
 # END Exam Setup
 
-configure_user_vscode_settings "$cs_user_data_dir"
+timed_startup_step "VS Code settings" configure_user_vscode_settings "$cs_user_data_dir"
 
 
 #echo "clevel_work_dir=$clevel_work_dir" | tee -a $STARTUP_LOG
@@ -1197,6 +1265,7 @@ if [ -f /challenge/patched_dash ]; then
     mv /challenge/patched_dash /bin/sh
 fi
 
+startup_timing_begin "level initialization hooks"
 echo "[i] checking for .prelevelinit" >> "$STARTUP_LOG"
 if [ -f /challenge/.prelevelinit ]; then
     level_start_time=$(date +%s)
@@ -1251,6 +1320,7 @@ if [ -f /challenge/.levelinit ]; then
     echo "Completed .levelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
     start_time=$(date +%s)
 fi 
+startup_timing_end "level initialization hooks" "$?"
 if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/README.md && -d "$clevel_work_dir" ]]; then
     safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
@@ -1411,6 +1481,7 @@ if [ "$module" != "pretest" ]; then
     # ###################################################################################################################### #
 fi  # End of C/C++ build section (skip for Java/pretest module)
 
+startup_timing_begin "workspace autoload"
 echo "[+] Starting environment config for VSCode"
 # if the user does not want autoload (likely me) then do not automatically change environment
 if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then 
@@ -1524,6 +1595,8 @@ if ! grep -q "DO_NOT_AUTOLOAD" $ENVFILE && [ -d $clevel_work_dir ]; then
 else
     echo "No autoload performed"    
 fi 
+startup_timing_end "workspace autoload"
+startup_timing_begin "MUD setup"
 echo "Starting MUD specific stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
 # for MUD levels update items.json and rooms.json on each instance start
 if [ -f /challenge/system_tests/items.json ]; then 
@@ -1617,6 +1690,8 @@ if safe_root_mutation_path "$extension_log_file"; then
 fi
 ############################################################################################
 
+startup_timing_end "MUD setup"
+startup_timing_begin "final setup"
 echo "Wrapup stuff $(date) in pid=$$" | tee -a $STARTUP_LOG 
 
 
@@ -1626,14 +1701,16 @@ if [ "$admin_access" = true ]; then
     true
 else 
     if [ -d /challenge/model ]; then 
-        chown root:root /challenge/model
+        safe_chown root:root /challenge/model
         chmod 700 /challenge/model
     fi 
     if [ -d /challenge/system_tests ]; then
-        chown root:root -R /challenge/system_tests
-        find /challenge/system_tests -type f -name '*.json' -exec chmod 744 {} \;
-        find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} \;
-        find /challenge/system_tests -type f -name 'stest*hidden*' -exec chmod 400 {} \;
+        startup_timing_begin "challenge test permissions"
+        find /challenge/system_tests ! -type l \( ! -user root -o ! -group root \) -exec chown root:root {} +
+        find /challenge/system_tests -type f -name '*.json' -exec chmod 744 {} +
+        find /challenge/system_tests -type d -name 'hidden_data*' -exec chmod 700 {} +
+        find /challenge/system_tests -type f -name 'stest*hidden*' -exec chmod 400 {} +
+        startup_timing_end "challenge test permissions" "$?"
     fi    
 fi
 
@@ -1645,7 +1722,7 @@ fi
     if [ -f /challenge/bin/file_sync.py ]; then 
         touch /var/log/sync.log
         chmod 0666 /var/log/sync.log
-        chown hacker:hacker /var/log/
+        safe_chown hacker:hacker /var/log/
         python3 /challenge/bin/file_sync.py >> /var/log/sync.log 2>&1 &
     fi
     if [ -f /challenge/bin/attendance_check.py ] && [ "$isExam" != "true" ]; then 
@@ -1696,4 +1773,5 @@ else
     chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
 fi 
 
+startup_timing_end "final setup"
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
