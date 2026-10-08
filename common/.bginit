@@ -254,11 +254,20 @@ diff_execution_time=$((end_time - diff_start_time))
 echo "@@ .bginit @@ $(date) pid=$$, total_time=${execution_time}, self_exec=${diff_execution_time}, after module test " | tee -a "$STARTUP_LOG"
 diff_start_time=$(date +%s)
 
-# clean up ownership under cse240 if needed
-
-find "$course_home" ! -user hacker ! -type l -not -path "$course_home/exam/*" -not -path "$course_home/.vscode/*" -exec chown hacker:hacker {} +
-# find /home/hacker/cse240 ! -user hacker and ! -type l -exec chown hacker:hacker {} +
-# find /home/hacker/cse240 -type l -exec sh -c '[ "$(readlink -f {})" != "/flag" ]' \; -print -or -not -type l -print
+# Repair other course files in the background. Prune editor metadata and the
+# exam tree (whose ownership is managed by exam setup) rather than walking them.
+ownership_started="${EPOCHREALTIME:-${SECONDS}.000000}"
+printf '[timing] %(%Y-%m-%dT%H:%M:%S%z)T START background course ownership\n' -1 >> "$STARTUP_LOG"
+ownership_status=0
+if [ -d "$course_home" ] && [ ! -L "$course_home" ]; then
+    find "$course_home" \( -path "$course_home/.vscode" -o -path "$course_home/exam" \) -prune -o \
+        ! -type l \( ! -user hacker -o ! -group hacker \) \
+        -exec chown hacker:hacker {} + || ownership_status=$?
+fi
+ownership_finished="${EPOCHREALTIME:-${SECONDS}.000000}"
+ownership_elapsed_ms=$(( (${ownership_finished/./} - ${ownership_started/./}) / 1000 ))
+printf '[timing] %(%Y-%m-%dT%H:%M:%S%z)T END background course ownership elapsed_ms=%s status=%s\n' \
+    -1 "$ownership_elapsed_ms" "$ownership_status" >> "$STARTUP_LOG"
 
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))

@@ -1188,8 +1188,14 @@ CHECKSTATUS_NOTICE_EOF
         echo "[i] Found EXAM_REFERENCE.md, including in user's directory $clevel_work_dir" | tee -a $STARTUP_LOG
     fi
 
-    # Existing student files are repaired by .bginit, outside blocking startup.
-    safe_chown hacker:hacker "$clevel_work_dir"
+    # Repair the active level before the editor opens; defer other levels to .bginit.
+    # find does not follow system_tests symlinks or walk editor metadata.
+    if safe_root_mutation_path "$clevel_work_dir"; then
+        timed_startup_step "current level ownership: $clevel_work_dir" \
+            find "$clevel_work_dir" -type d -name .vscode -prune -o \
+            ! -type l \( ! -user hacker -o ! -group hacker \) \
+            -exec chown hacker:hacker {} +
+    fi
 
 fi
 
