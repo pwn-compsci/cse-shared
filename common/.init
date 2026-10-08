@@ -81,10 +81,9 @@ early_startup_step() {
 }
 
 # Create the persistent home log before metadata, cache, or ownership work.
-# Honor an explicitly supplied course path; cse240 is the bootstrap default.
+# The course is unknown until level.json is read, so use a neutral directory.
 unset STARTUP_LOG
-bootstrap_course_home="${course_home:-/home/hacker/${course_code:-cse240}}"
-bootstrap_log_dir="$bootstrap_course_home/.vscode/logs"
+bootstrap_log_dir=/home/hacker/.initlogs
 safe_root_mutation_path "$bootstrap_log_dir" || exit 1
 mkdir -p "$bootstrap_log_dir" || exit 1
 printf -v startup_log_name 'startup-%(%Y%m%d-%H%M%S)T-%s.log' -1 "$$"
@@ -113,13 +112,14 @@ extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 export course_code course_home course_env_file extension_log_file
 early_startup_log "END read course metadata course=$course_code home=$course_home"
 
-# Preserve the usual log destination when metadata selects another course.
-if [ "$course_home" != "$bootstrap_course_home" ]; then
+# Copy the early messages into the resolved course log, then switch logging.
+if [ "$course_home/.vscode/logs" != "$bootstrap_log_dir" ]; then
     early_startup_log "START switch log to course home=$course_home"
     safe_root_mutation_path "$course_home/.vscode/logs" || exit 1
     mkdir -p "$course_home/.vscode/logs" || exit 1
     course_startup_log="$course_home/.vscode/logs/$startup_log_name"
     safe_root_mutation_path "$course_startup_log" || exit 1
+    early_startup_log "CONTINUE logging at $course_startup_log"
     (set -o noclobber; cat "$STARTUP_LOG" > "$course_startup_log") || exit 1
     exec {early_startup_fd}>&-
     STARTUP_LOG="$course_startup_log"
