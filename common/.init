@@ -319,13 +319,6 @@ configure_user_vscode_settings() {
     local settings_dir="$(dirname "$settings_json")"
     safe_root_mutation_path "$settings_json" || return 1
     safe_mkdir_p "$settings_dir"
-    # Repair ownership only for regular files that are not already hacker-owned.
-    local ownership_dir
-    for ownership_dir in /home/hacker/cse240 /home/hacker/.local/share; do
-        if [ -d "$ownership_dir" ] && safe_root_mutation_path "$ownership_dir"; then
-            find "$ownership_dir" -type f ! -user hacker -exec chown hacker:hacker {} +
-        fi
-    done
 
     # If file doesn't exist, create with all default settings.
     if [ ! -f "$settings_json" ]; then
