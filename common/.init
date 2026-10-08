@@ -283,16 +283,6 @@ timed_startup_step "tracking DB cleanup" nohup bash -c '
   [ $(stat -c%s "$db") -gt $((750*1024*1024)) ] &&
   rm -f "$db" "${db}-journal" ' | tee -a $STARTUP_LOG 2>&1
 
-cleanup_course_core_files() {
-# Delete all core files in the course home.
-if find "$course_home" -name 'core' -type f -print -quit | grep -q .; then
-    echo "[i] Removing core files from $course_home" | tee -a $STARTUP_LOG
-    find "$course_home" -name 'core' -type f -exec rm -f {} \;
-fi
-
-}
-timed_startup_step "course core-file scan" cleanup_course_core_files
-
 cleanup_cpptools_cache() {
 ### cleanup vscode-cpptools cache if it grows too large
 cache_dir="/home/hacker/.cache/vscode-cpptools"

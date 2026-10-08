@@ -155,7 +155,7 @@ if [ -f /challenge/.config/noexec.c ] && [ ! -f /challenge/.config/noexec.so ]; 
 fi 
 
  # make core dumps go to away each time to save space for users 
-find "$course_home" -name 'core.*' -type f -exec rm -f {} \;
+find "$course_home" -type f \( -name core -o -name 'core.*' \) -exec rm -f {} +
 find "$course_home" -type f -name 'vgcore.*' -mmin +360 -exec rm -f {} +
 find /home/hacker/ -type f -name '.zcompdump*' -mmin +360 -exec rm -f {} +
 
