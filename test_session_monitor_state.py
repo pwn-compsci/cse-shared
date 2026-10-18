@@ -134,8 +134,19 @@ class SessionMonitorStateTests(unittest.TestCase):
         self.assertEqual(first_warning[2]["shutdown_at"], self.start + timedelta(seconds=150))
         self.assertEqual(statuses[-1][2]["redirect_url"], self.stale["stopped_url"])
 
-    def test_unload_immediately_pauses_then_recovery_restores_tester(self):
-        times = [self.start + timedelta(seconds=value) for value in (0, 30)]
+    def test_unload_kills_container_at_thirty_seconds(self):
+        result = dict(self.stale, reason='launcher_page_unloaded',
+                      interruption_age_seconds=0, pause_grace_seconds=0,
+                      container_grace_seconds=30)
+        statuses, mocks = self.run_monitor(
+            [result, result], [self.start, self.start + timedelta(seconds=30)],
+        )
+        self.assertTrue(all(entry[0] == 'blocked' for entry in statuses))
+        mocks[7].assert_called_once()
+        mocks[12].assert_called_once()
+
+    def test_unload_immediately_pauses_then_quick_recovery_restores_tester(self):
+        times = [self.start + timedelta(seconds=value) for value in (0, 10)]
         statuses = []
         unload_blocked = {
             "allowed": False,
@@ -143,7 +154,7 @@ class SessionMonitorStateTests(unittest.TestCase):
             "reason": "launcher_page_unloaded",
             "interruption_age_seconds": 0,
             "pause_grace_seconds": 0,
-            "container_grace_seconds": 480,
+            "container_grace_seconds": 30,
         }
 
         with (

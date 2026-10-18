@@ -1138,7 +1138,7 @@ def monitor_active_exam_session():
                     "warning",
                     reason,
                     (
-                        "The exam launcher page was closed or refreshed. Reconnect within one minute before the tester pauses."
+                        "The exam launcher page was closed or refreshed. Reconnect before the tester pauses."
                         if reason.startswith("launcher_page_unloaded")
                         else "The exam launcher heartbeat is stale. Reconnect monitoring before the tester pauses."
                     ),
@@ -1154,7 +1154,7 @@ def monitor_active_exam_session():
                 inactive_message = (
                     "The exam launcher page was closed or refreshed. "
                     if reason.startswith("launcher_page_unloaded")
-                    else "Your exam monitoring page has been inactive for five minutes. "
+                    else "Your exam monitoring page has exceeded the allowed recovery period. "
                 )
                 mark_session_paused(
                     inactive_message +
@@ -1196,7 +1196,8 @@ def monitor_active_exam_session():
                     "This container is shutting down. Please contact course staff.\n"
                 )
                 write_container_dead_marker(reason)
-                time.sleep(20)
+                if not reason.startswith('launcher_page_unloaded'):
+                    time.sleep(20)
                 kill_process_1()
 
         except KeyboardInterrupt:
