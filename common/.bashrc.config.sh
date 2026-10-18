@@ -7,9 +7,13 @@ if [ -e /challenge/model ] || [ -e /challenge/.init ]; then
     printf "\n\033[33mWARN: either /challenge/model or /challenge/.init is available\033[0m\n"
 fi 
 
-export clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
 export course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
 export course_home=${course_home:-"/home/hacker/$course_code"}
+# Match .init: use an explicit hwdir, otherwise derive it from the course and module.
+export clevel_work_dir=$(jq -r --arg course_home "$course_home" '
+    ((.hwdir | select(. != null and . != "")) // ($course_home + "/" + .module))
+    + "/" + .level
+' /challenge/.config/level.json)
 export course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
 export extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 
@@ -42,7 +46,6 @@ function save_compile(){
     local module=$(jq -r 'if .module == null or .module == "" then .hw else .module end' /challenge/.config/level.json)
     local lab_id=$(jq -r 'if .labid == null then "" else .labid end' /challenge/.config/level.json)
     local level_id=$(jq -r 'if .level == null then "" else .level end' /challenge/.config/level.json)
-    local clevel_work_dir=$(jq -r '. | "\(.hwdir)/\(.level)"' /challenge/.config/level.json)
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     # Store the entire compile.log (which now only contains the current compilation since we truncate on each run)
     local outcome_text=$(cat "$clevel_work_dir/compile.log" 2>/dev/null | sed "s/'/''/g")
