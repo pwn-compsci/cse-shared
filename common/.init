@@ -592,7 +592,6 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.init \
         /challenge/.init_cse545 \
         /challenge/.init.cse545 \
-        /challenge/.prelevelinit \
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
@@ -607,7 +606,6 @@ cleanup_non_admin_challenge_artifacts() {
         -name '.init.cse545' -o \
         -name '.bginit' -o \
         -name '.examsetup' -o \
-        -name '.prelevelinit' -o \
         -name '.testprobleminit' -o \
         -name '.moduleinit' -o \
         -name '.moduleinit.*' -o \
@@ -616,6 +614,14 @@ cleanup_non_admin_challenge_artifacts() {
         -name '*.rm' -o \
         -name '*.rm.*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "${PRESERVE_PRELEVELINIT_UNTIL_SOURCED:-false}" = "true" ]; then
+        find /challenge -type f -name '.prelevelinit' \
+            -exec chmod 700 {} + -exec chown root:root {} + 2>/dev/null || true
+    else
+        rm -f /challenge/.prelevelinit 2>/dev/null || true
+        find /challenge -type f -name '.prelevelinit' -exec rm -f {} \; 2>/dev/null || true
+    fi
 
     if [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" != "true" ]; then
         rm -f /challenge/.levelinit 2>/dev/null || true
@@ -1143,7 +1149,9 @@ if [[ -n $isExam ]]; then
         safe_chown hacker:hacker $cs_user_data_dir/.. $cs_user_data_dir
     fi 
     PRESERVE_LEVELINIT_UNTIL_SOURCED=true
+    PRESERVE_PRELEVELINIT_UNTIL_SOURCED=true
     export PRESERVE_LEVELINIT_UNTIL_SOURCED
+    export PRESERVE_PRELEVELINIT_UNTIL_SOURCED
     if [ -f /challenge/bin/.examsetup ]; then        
         startup_timing_begin "exam setup"
         source /challenge/bin/.examsetup
@@ -1329,6 +1337,11 @@ if [ -f /challenge/.prelevelinit ]; then
     execution_time=$((end_time - level_start_time))
     echo "[i] Completed .prelevelinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
 fi
+if [ "${admin_access:-false}" = false ]; then
+    rm -f /challenge/.prelevelinit 2>/dev/null || true
+    find /challenge -type f -name '.prelevelinit' -exec rm -f {} \; 2>/dev/null || true
+fi
+unset PRESERVE_PRELEVELINIT_UNTIL_SOURCED
 
 echo "[i] checking for .moduleinit" >> "$STARTUP_LOG"
 if [ -f /challenge/.moduleinit ]; then
