@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
- 
+  
 # List of update scripts
 scripts=(
   "/cse/intro-to-programming-languages/update_dojo.sh"
