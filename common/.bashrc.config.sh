@@ -17,6 +17,18 @@ export clevel_work_dir=$(jq -r --arg course_home "$course_home" '
 export course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
 export extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 
+# CSE545 exams use a problem-specific home; select its tmux config explicitly.
+if [[ "$course_code" = "cse545" ]] && jq -e '.examLevel // empty' /challenge/.config/level.json >/dev/null 2>&1; then
+    alias tmux='tmux -f "$clevel_work_dir/.tmux.conf"'
+    # PROMPT_COMMAND is exported by course history setup, but VS Code's
+    # shell integration functions are local to the original terminal shell.
+    if [[ -n "${BASH_VERSION:-}" && -n "${TMUX:-}" ]]; then
+        if ! declare -F __vsc_prompt_cmd_original >/dev/null; then
+            PROMPT_COMMAND=${PROMPT_COMMAND//__vsc_prompt_cmd_original/:}
+        fi
+    fi
+fi
+
 # if template does not contain student test skeletons then log it and re-add
 if grep -q "requiredUserTests"  '/challenge/.config/level.json'; then 
     jq -r '.requiredUserTests[]' /challenge/.config/level.json | while read -r ut_path; do
