@@ -215,6 +215,19 @@ safe_chmod() {
     command chmod "$@"
 }
 
+ensure_default_tmux_config() {
+    local config="$1/.tmux.conf"
+    # Preserve existing configs, including dangling symlinks.
+    [ ! -e "$config" ] && [ ! -L "$config" ] || return 0
+    safe_root_mutation_path "$config" || return 1
+    # noclobber also protects a config created after the existence check.
+    if (umask 022; set -o noclobber; printf '%s\n' \
+        '# Enable mouse scrolling, selection, and pane dragging.' \
+        'set -g mouse on' > "$config"); then
+        safe_chown hacker:hacker "$config"
+    fi
+}
+
 safe_touch() {
     local arg
     for arg in "$@"; do
@@ -753,6 +766,8 @@ if [ ! -d "$course_home" ]; then
     safe_chown hacker:hacker "$course_home" "$course_home/.vscode" "$course_home/labw" "$course_home/grplab"
 fi 
 safe_chown hacker:hacker "$course_home" 2>/dev/null || true
+
+ensure_default_tmux_config /home/hacker
 
 if [ ! -f /home/hacker/.bashrc ]; then 
     safe_root_mutation_path /home/hacker/.bashrc && cp /etc/skel/.bashrc /home/hacker/.bashrc

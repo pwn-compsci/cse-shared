@@ -693,6 +693,8 @@ else
     echo "[e] WARNING: /challenge/bin/cserver.py not found, skipping command server startup" | tee -a $STARTUP_LOG
 fi
 
+ensure_default_tmux_config "$clevel_work_dir"
+
 if [ "$course_code" = "cse545" ]; then
     safe_mkdir_p /home/hacker/.ssh
     ln -s /home/hacker/.ssh "$clevel_work_dir/.ssh" 2>/dev/null || true
