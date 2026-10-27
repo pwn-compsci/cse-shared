@@ -258,7 +258,6 @@ cleanup_non_admin_challenge_artifacts() {
         /challenge/.init \
         /challenge/.init_cse545 \
         /challenge/.init.cse545 \
-        /challenge/.prelevelinit \
         /challenge/.testprobleminit \
         /challenge/.moduleinit \
         /challenge/.moduleinit.tmp \
@@ -268,11 +267,20 @@ cleanup_non_admin_challenge_artifacts() {
         -name '.init_cse545' -o \
         -name '.init.cse545' -o \
         -name '.examsetup' -o \
-        -name '.prelevelinit' -o \
         -name '.testprobleminit' -o \
         -name '.moduleinit' -o \
         -name '.moduleinit.*' \
     \) -exec rm -f {} \; 2>/dev/null || true
+
+    if [ "${PRESERVE_PRELEVELINIT_UNTIL_SOURCED:-false}" = "true" ]; then
+        # .init owns this hook and runs it after exam setup returns. Keep staged
+        # copies inaccessible to the student until then.
+        find /challenge -type f -name '.prelevelinit' \
+            -exec chmod 700 {} + -exec chown root:root {} + 2>/dev/null || true
+    else
+        rm -f /challenge/.prelevelinit 2>/dev/null || true
+        find /challenge -type f -name '.prelevelinit' -exec rm -f {} \; 2>/dev/null || true
+    fi
 
     if [ "${PRESERVE_LEVELINIT_UNTIL_SOURCED:-false}" != "true" ]; then
         rm -f /challenge/.levelinit 2>/dev/null || true
