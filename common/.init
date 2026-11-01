@@ -1852,6 +1852,10 @@ else
     chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
 fi 
 
+# VS Code terminals inherit the environment of the code-server started below.
+# Match vscode.sh so early startup includes the platform and challenge tools.
+export PATH="/run/challenge/bin:/run/dojo/bin:$PATH:/challenge/"
+
 # Terminal clipboard tracking: exams never invoke it.
 # Keep this after workspace settings, before the platform launches code-server.
 if [[ -z "${isExam:-}" ]]; then
