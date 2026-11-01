@@ -1852,13 +1852,13 @@ else
     chmod +x /challenge/bin/vim /challenge/bin/vi /challenge/bin/emacs 
 fi 
 
-# Terminal clipboard tracking pilot: exams and other users never invoke it.
+# Terminal clipboard tracking: exams never invoke it.
 # Keep this after workspace settings, before the platform launches code-server.
-if [[ "${pwn_college_id:-}" == "97168" || "${pwn_college_id:-}" == "97169" ]] && [[ -z "${isExam:-}" ]]; then
+if [[ -z "${isExam:-}" ]]; then
     if [ -f /challenge/bin/terminal_clipboard.py ]; then
         startup_timing_begin "terminal clipboard tracking"
         if /run/dojo/bin/python /challenge/bin/terminal_clipboard.py --start --pwn-college-id "$pwn_college_id" >> "$STARTUP_LOG" 2>&1; then
-            echo "[i] Terminal clipboard tracking pilot processed for user=$pwn_college_id" | tee -a "$STARTUP_LOG"
+            echo "[i] Terminal clipboard tracking processed for user=$pwn_college_id" | tee -a "$STARTUP_LOG"
             startup_timing_end "terminal clipboard tracking" 0
         else
             clipboard_tracking_status=$?

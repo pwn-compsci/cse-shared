@@ -7,11 +7,11 @@
   behavior change or bug fix to one should be applied to the other in the same
   commit.
 
-## Terminal clipboard pilot
+## Terminal clipboard tracking
 
-`common/.init` invokes `/challenge/bin/terminal_clipboard.py` only for
-`pwn_college_id` 97168 or 97169 on non-exam levels. The helper independently
-checks the ID and lab/project metadata, including class labs, before preparing
+`common/.init` invokes `/challenge/bin/terminal_clipboard.py` for all students
+on non-exam levels when the helper is packaged. The helper independently
+checks lab/project metadata, including class labs, before preparing
 or launching anything. Lectures and exams are excluded. Failure is logged in
 the startup log and normal initialization continues.
 

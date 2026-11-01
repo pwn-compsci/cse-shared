@@ -12,7 +12,7 @@ exec(compile(SOURCE, '<terminal clipboard installer>', 'exec'), PILOT)
 
 
 class TerminalClipboardInitTests(unittest.TestCase):
-    def test_rollout_allowlist_and_activity_scope(self):
+    def test_all_students_and_activity_scope(self):
         allowed = PILOT['tracking_allowed']
         activities = [
             {'module': '25-lela-heap', 'challenge': 'lab2516-stack', 'labid': '2516'},
@@ -20,15 +20,12 @@ class TerminalClipboardInitTests(unittest.TestCase):
             {'module': 'classlab01', 'labid': 'classlab01'},
             {'module': '21-grouplab-menu'},
         ]
-        for identity in ('97168', '97169'):
+        for identity in ('97168', '97169', '12345', '97167', 132329, ''):
             for activity in activities:
                 with self.subTest(identity=identity, activity=activity):
                     self.assertTrue(allowed(activity, identity))
                     for exam in (True, '01', 'false', 1):
                         self.assertFalse(allowed(dict(activity, examLevel=exam), identity))
-        for identity in ('', '97167', '971680', 'admin', 132329):
-            for activity in activities:
-                self.assertFalse(allowed(activity, identity))
         for activity in (
             {}, {'module': '25-lela-heap', 'challenge': 'lec2513-the-heap'},
             {'module': 'exam20', 'labid': '20'}, {'module': 'pex23', 'hw': '23'},
@@ -72,15 +69,16 @@ class TerminalClipboardInitTests(unittest.TestCase):
                 PILOT['prepare'](root, root / 'patched')
             self.assertFalse((root / 'patched').exists())
 
-    def test_shell_gate_skips_python_for_other_users_and_exams(self):
-        # Replace only the actual command; exercise the real shell allowlist.
-        gate = INIT[INIT.index('if [[ "${pwn_college_id:-}" == "97168"'):]
+    def test_shell_gate_allows_all_students_and_skips_exams(self):
+        # Exercise the real shell exam guard.
+        gate = INIT[INIT.index('# Terminal clipboard tracking:'):]
+        gate = gate[gate.index('if [['):]
         condition = gate.split('; then', 1)[0]
         script = condition + '; then echo enabled; else echo skipped; fi'
         for identity, exam, expected in (
             ('97168', '', 'enabled'), ('97169', '', 'enabled'),
-            ('97167', '', 'skipped'), ('97168', 'true', 'skipped'),
-            ('97169', '01', 'skipped'), ('', '', 'skipped'),
+            ('97167', '', 'enabled'), ('97168', 'true', 'skipped'),
+            ('97169', '01', 'skipped'), ('', '', 'enabled'),
         ):
             result = subprocess.run(['bash', '-c', script], capture_output=True,
                                     text=True, check=True,

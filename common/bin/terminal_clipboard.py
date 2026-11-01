@@ -166,10 +166,8 @@ def prepare(source, destination):
 
 
 def tracking_allowed(level, identity):
-    # Keep this rollout closed to the two approved users. Exam exclusion wins
-    # over lab/project metadata, which may also be present in exam configs.
-    if str(identity) not in {'97168', '97169'}:
-        return False
+    # All users are eligible. Exam exclusion wins over lab/project metadata,
+    # which may also be present in exam configs.
     exam = level.get('examLevel')
     if exam is not None and exam is not False and str(exam).strip() != '':
         return False
@@ -196,7 +194,7 @@ def main():
         print('Terminal clipboard tracking skipped: unavailable level metadata', flush=True)
         return
     if not isinstance(level, dict) or not tracking_allowed(level, args.pwn_college_id):
-        print('Terminal clipboard tracking skipped: user or activity outside rollout', flush=True)
+        print('Terminal clipboard tracking skipped: activity outside tracking scope', flush=True)
         return
     source, node = discover()
     prepare(source, args.destination)
