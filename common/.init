@@ -1,5 +1,54 @@
 #!/usr/bin/env bash
 
+# Install before dojo marks the workspace ready. Build privately, then atomically
+# replace the bin symlink; never modify the shared, read-only Nix installation.
+install_ssh_audit_entrypoint() (
+    set -eu
+    [ -L /run/dojo/bin ] || return 0
+    original_bin=$(readlink -f /run/dojo/bin)
+    # Re-running .init must not wrap our own entrypoint recursively.
+    [ ! -f "$original_bin/.cse-ssh-audit" ] || return 0
+    original_entrypoint="$original_bin/ssh-entrypoint"
+    [ -x "$original_entrypoint" ] || return 0
+    audit_dir=$(mktemp -d /run/dojo/cse-ssh-audit.XXXXXX)
+    trap 'rm -rf "$audit_dir"' EXIT
+    chmod 755 "$audit_dir"
+    mkdir "$audit_dir/bin"
+    for binary in "$original_bin"/*; do
+        ln -s "$binary" "$audit_dir/bin/${binary##*/}"
+    done
+    rm "$audit_dir/bin/ssh-entrypoint"
+    # Embed a trusted absolute path, never an environment-provided executable.
+    printf '#!/bin/bash\noriginal_entrypoint=%q\n' "$original_entrypoint" > "$audit_dir/bin/ssh-entrypoint"
+    cat >> "$audit_dir/bin/ssh-entrypoint" <<'SSH_AUDIT_EOF'
+# Runs as hacker: never open a home-directory log with initialization's root UID.
+# This is best-effort history, not a tamper-proof security audit.
+(
+    history_dir=/home/hacker/.local/share/ultima
+    mkdir -p "$history_dir" || exit 0
+    instance=$(jq -r '[.module // "unknown", .challenge // .level // "unknown"] | join(" ")' /challenge/.config/level.json 2>/dev/null) || instance='unknown unknown'
+    printf -v instance '%q' "$instance"
+    if [ "$#" -gt 0 ]; then
+        printf -v request '%q ' "$@"
+        kind=command
+    else
+        request='login'
+        kind=session
+    fi
+    printf '%s %s | [SSH %s] %s\n' "$(date '+%F %T')" "$instance" "$kind" "$request" >> "$history_dir/c.dat"
+) 2>/dev/null || true
+exec "$original_entrypoint" "$@"
+SSH_AUDIT_EOF
+    chmod 755 "$audit_dir/bin/ssh-entrypoint"
+    touch "$audit_dir/bin/.cse-ssh-audit"
+    ln -s "$audit_dir/bin" "$audit_dir/bin-link"
+    mv -Tf "$audit_dir/bin-link" /run/dojo/bin
+    trap - EXIT
+)
+install_ssh_audit_entrypoint
+if [ "$?" -ne 0 ]; then printf '%s\n' '[ssh audit] Installation failed; original SSH entrypoint retained' >&2; fi
+
+
 root_mutation_log() {
     local message="$1"
     if [ -n "${STARTUP_LOG:-}" ]; then

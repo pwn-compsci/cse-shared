@@ -450,28 +450,10 @@ if [ -d $clevel_work_dir ]; then
                 fi
             fi
         fi 
-    else # we are sshing
-        if [ -d /home/me ]; then 
-            echo "ALLOWING ssh access in asuser mode"
-            cd $clevel_work_dir
-        elif  { [ -r "$ENVFILE" ] && grep -q YOUVE_GOT_SHELL "$ENVFILE"; } || grep -q "digital god" /.admin_access; then
-            echo "ALLOWING ssh access with bypass enabled"
-            cd $clevel_work_dir
-        else
-            if grep -q -E "129884|128254|37215|201405|200817|198483" /.user_info; then
-                echo "ALLOWING ssh access with bypass enabled for 129884, 128254, 37215, 201405, 200817, and 198483"
-                cd $clevel_work_dir
-            else
-                echo "You do not have access to the shell in this mode. Please use the VS Code interface."
-                echo "Please use the VS Code interface to work on your code."
-                echo "If you need terminal access, please contact your instructor or system administrator."
-                echo "DIRECT TERMINAL ACCESS AND THE DESKTOP MODES ARE NOT PERMITTED "
-                echo "IF pwn.college defaulted you to this view, click on the word terminal below and select code."
-                echo "This will change you into the VS Code view."
-                exec true
-            fi 
-        fi
-    fi 
+    else # SSH access is allowed; the dojo entrypoint records connection requests.
+        cd "$clevel_work_dir"
+    fi
+
     
 fi 
 
