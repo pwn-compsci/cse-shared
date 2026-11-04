@@ -10,6 +10,9 @@ import os
 import logging
 import json
 import html
+from functools import wraps
+from time import monotonic
+from flask import g
 import csv
 
 # Setup logger
@@ -21,6 +24,64 @@ logger.addHandler(handler)
 
 app = Flask(__name__)
 app.secret_key = 'donnowhatyouthinkyouwant'
+
+def configure_exam_timing_logger(pointer="/tmp/.startup_log_path"):
+    try:
+        with open(pointer) as source:
+            startup_log = source.read().strip()
+        if not os.path.isabs(startup_log):
+            return None
+        timing_log = os.path.splitext(startup_log)[0] + "-web-timing.jsonl"
+        timing_logger = logging.Logger("exam.load_timing")
+        timing_logger.addHandler(logging.FileHandler(timing_log))
+        timing_logger.setLevel(logging.INFO)
+        return timing_logger
+    except Exception:
+        return None
+
+
+persistent_exam_timing_logger = configure_exam_timing_logger()
+
+
+# Passive timing only: failures in diagnostics must never affect exam access.
+def log_exam_timing(event, **fields):
+    record = {"time": datetime.now(timezone.utc).isoformat(), "event": event, **fields}
+    try:
+        if persistent_exam_timing_logger is not None:
+            persistent_exam_timing_logger.info(json.dumps(record, sort_keys=True))
+    except Exception:
+        pass
+    try:
+        logger.info("[exam-timing] %s", json.dumps(record, sort_keys=True))
+    except Exception:
+        pass
+
+
+def timed_exam_check(function):
+    @wraps(function)
+    def measured(*args, **kwargs):
+        started = monotonic()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            log_exam_timing(function.__name__, elapsed_ms=round((monotonic() - started) * 1000, 1))
+    return measured
+
+
+@app.before_request
+def begin_exam_request_timing():
+    g.exam_request_started = monotonic()
+    log_exam_timing("request_start", method=request.method, path=request.path)
+
+
+@app.after_request
+def finish_exam_request_timing(response):
+    started = getattr(g, "exam_request_started", None)
+    if started is not None:
+        log_exam_timing("request_end", method=request.method, path=request.path,
+                        status=response.status_code, elapsed_ms=round((monotonic() - started) * 1000, 1))
+    return response
+
 
 # SHAPASS_VALUE is replaced with the actual sha value, which will match nginx's LETMEIN
 shapass = "SHAPASS_VALUE"
@@ -188,6 +249,7 @@ def get_exam_admin_type(pwn_college_id, module, challenge):
         exam_admin_type_lookup_error = "Exam access settings could not be loaded. Please notify your professor."
         return ""
 
+@timed_exam_check
 def check_code_server_status(max_attempts=10, request_timeout=5):
     found_code_server = False
     try:
@@ -222,6 +284,7 @@ def build_authenticated_redirect(expiration_hours=6):
 def can_resume_started_code_server():
     return os.path.exists(CODESERVER_TRACK_FILE) and check_code_server_status(max_attempts=1, request_timeout=1)
 
+@timed_exam_check
 def check_session_attendance(pwn_college_id):
     """Check session attendance and return attending status and password
     
@@ -300,6 +363,7 @@ def check_session_attendance(pwn_college_id):
         logger.error(f"Unexpected error checking session attendance: {e}")
         return None
 
+@timed_exam_check
 def check_password_api(pwn_college_id, password):
     """Check password against API endpoint and return boolean result"""
     if not pwn_college_id or not password:

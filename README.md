@@ -88,3 +88,33 @@ existing `/opt/class_sync/apivenv/bin/python` installation.
 
 Test without publishing:
 `/opt/class_sync/apivenv/bin/python -m unittest test_update_dojos -v`.
+
+### Passive exam load timing
+
+Both exam web variants record nginx request timing in
+`/var/log/nginx/exam-timing.log` (JSON lines). Entries include request duration,
+upstream connection/header/response duration, status, URI without query strings,
+and connection number. Badge JavaScript requests are included; frequent monitor
+status polls remain excluded. WebSocket entries are written when the connection
+closes, so a long WebSocket request duration is normally its session lifetime.
+During exam setup, `/var/log/nginx/exam-timing.log` is linked to
+`<startup-log-stem>-proxy-timing.jsonl` in the persistent course `.vscode/logs`
+directory. Flask also writes timing-only JSON lines to
+`<startup-log-stem>-web-timing.jsonl`, resolving the startup path through
+`/tmp/.startup_log_path`. Both files survive container removal alongside the
+startup log, and each startup gets separate files. For CSE240 these are under
+`/home/hacker/cse240/.vscode/logs/`. If persistent logging cannot be configured,
+exam access continues; proxy setup emits a warning in the startup log.
+
+`/var/log/nginx/flask.log` contains `[exam-timing]` request start/end entries and
+elapsed times for attendance, password, and code-server readiness checks.
+The new timing entries exclude cookies, passwords, query strings, and request
+bodies; existing application/auth logs retain their existing behavior.
+No browser script, network request, authentication decision, proxy route, or
+timeout is changed. Diagnostic logger failures are ignored.
+
+Validate without deploying to any dojo:
+`/opt/class_sync/apivenv/bin/python -m unittest test_exam_timing test_exam_nginx_listeners test_rldb_allowlist test_prelevelinit_lifecycle test_terminal_clipboard_init`.
+The timing tests need permission to create local sockets for nginx validation
+and an isolated mock proxy test. Deployment uses the normal dojo update process;
+editing these shared templates does not change running exam containers.

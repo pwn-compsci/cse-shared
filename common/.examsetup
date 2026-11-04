@@ -784,6 +784,16 @@ if [ "$course_code" = "cse240" ] && [ -f /challenge/web/nginx.conf ]; then
     sed -i '/# BEGIN_CSE545_DESKTOP/,/# END_CSE545_DESKTOP/d' /challenge/web/nginx.conf
 fi
 
+# Persist passive proxy timings beside this attempt's startup log.
+# A diagnostics setup failure must not stop an exam from starting.
+exam_proxy_timing_log="${STARTUP_LOG%.log}-proxy-timing.jsonl"
+if mkdir -p /var/log/nginx && touch "$exam_proxy_timing_log" && \
+    ln -sfn "$exam_proxy_timing_log" /var/log/nginx/exam-timing.log; then
+    echo "[e] Persistent proxy timing log: $exam_proxy_timing_log" >> "$STARTUP_LOG"
+else
+    echo "[e] WARNING: could not configure persistent proxy timing log" >> "$STARTUP_LOG"
+fi
+
 # Start nginx with error checking
 if command -v nginx >/dev/null 2>&1; then
     nohup nginx -c /challenge/web/nginx.conf > /challenge/web/nginx.log 2>&1 &
