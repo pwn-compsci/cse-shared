@@ -1423,8 +1423,13 @@ fi
 if [ -f /challenge/.levelinit ]; then
     if [[ "$module" = "33-proj-pokemud" && "$challenge" = "p33-level-01" ]]; then
         level_start_time=$(date +%s)
-        ( source /challenge/.levelinit ) >> "$STARTUP_LOG" 2>&1
-        levelinit_exit_code=$?
+        # PokeMUD owns prerequisite checks, including a missing main.cpp.
+        # Isolate its exit and handle failure explicitly so startup can continue.
+        if ( source /challenge/.levelinit ) >> "$STARTUP_LOG" 2>&1; then
+            levelinit_exit_code=0
+        else
+            levelinit_exit_code=$?
+        fi
         if [ "$levelinit_exit_code" -ne 0 ]; then
             echo "[i] .levelinit failed with exit code $levelinit_exit_code" >> "$STARTUP_LOG"
             readme="/challenge/.config/readme.html"
@@ -1432,7 +1437,7 @@ if [ -f /challenge/.levelinit ]; then
                 readme_target=$(realpath "$readme" 2>/dev/null || printf '%s' "$readme")
                 tmp=$(mktemp /tmp/readme-alert.XXXXXX) || tmp=""
                 if [ -n "$tmp" ]; then
-                    alert='<div id="cse240-init-alert" role="alert" aria-live="assertive" style="margin:0 0 1.5rem 0;padding:1.25rem 1.5rem;border:6px solid #ff0033;background:linear-gradient(135deg,#fff2f2 0%,#ffe066 100%);color:#180006;box-shadow:0 0 0 4px #180006,0 0 28px rgba(255,0,51,.55);font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><strong style="display:block;font-size:1.65rem;font-weight:900;text-transform:uppercase;margin-bottom:.45rem">Setup problem: required prior file is missing</strong><p><strong>This workspace opened, but Project 3.3 Level 01 could not copy your prior MUD/MUDShop work.</strong></p><p>The setup requires a C++ MUDShop handoff file. It first checks for <code style="background:#180006;color:#fff;padding:.15rem .35rem;border-radius:.2rem;font-weight:800">/home/hacker/cse240/32-proj-mudshop/08/main.cpp</code>, then falls back to <code style="background:#180006;color:#fff;padding:.15rem .35rem;border-radius:.2rem;font-weight:800">/home/hacker/cse240/32-proj-mudshop/01/main.cpp</code>.</p><p>Complete MUDShop Level 01 or contact course staff if this file should exist.</p></div>'
+                    alert='<div id="cse240-init-alert" role="alert" aria-live="assertive" style="margin:0 0 1.5rem 0;padding:1.25rem 1.5rem;border:6px solid #ff0033;background:linear-gradient(135deg,#fff2f2 0%,#ffe066 100%);color:#180006;box-shadow:0 0 0 4px #180006,0 0 28px rgba(255,0,51,.55);font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><strong style="display:block;font-size:1.65rem;font-weight:900;text-transform:uppercase;margin-bottom:.45rem">Setup problem: MUDShop handoff unavailable</strong><p><strong>This workspace opened, but Project 3.3 Level 01 could not copy your prior MUD/MUDShop work.</strong></p><p>Complete through Level 07 of MUDShop before starting PokeMUD. Setup checks Level 07, then Level 06, and requires nonempty main.cpp, shop.cpp, and shop.h in the same directory.</p><p>After completing your MUDShop work, restart PokeMUD. Setup will retry the copy automatically.</p></div>'
                     awk -v alert="$alert" '{ print; if (!inserted && tolower($0) ~ /<body[^>]*>/) { print alert; inserted=1 } } END { if (!inserted) print alert }' "$readme" > "$tmp" && safe_root_mutation_path "$readme_target" && cp "$tmp" "$readme_target"
                     rm -f "$tmp"
                 fi
