@@ -267,6 +267,7 @@ while [ $attempts -lt $max_attempts ]; do
           --auth=none 
           --bind-addr=127.0.0.1:4200 
           --trusted-origins='*' 
+          --disable-update-check
           --disable-telemetry 
           --extensions-dir=$EXTENSIONS_DIR 
           --user-data-dir=$code_server_data_dir 
