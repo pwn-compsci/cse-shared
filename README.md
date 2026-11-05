@@ -28,6 +28,25 @@ units are marked. Unsupported platform layouts or an existing unpatched service
 cause the helper to refuse activation. Platform updates require a fresh copy
 and browser verification.
 
+## Exam access and attempt limits
+
+Exam access is enforced by the configured gates at problem launch, exam web
+login, and the `/attempt_exam` recording endpoint. The legacy background
+`.exam_attempts_check` is retired: it independently enforced a final attempt
+cap and could overwrite files after staff had authorized another attempt.
+The configured maximum remains visible to staff as a warning; gate clearance
+can authorize an attempt beyond that maximum. The separate pretest limit
+enforced by the backend is unchanged.
+
+Setup still creates the encrypted work backup, clears the CSE240 student work
+directory for normal student startups, and starts the session monitor. The
+monitor restores files when the required session is active; web login retains
+its gate, password, attendance, and proctoring checks. Attempt reporting still
+uses the startup UUID to avoid recording the same startup twice.
+
+These shared-source changes require the normal dojo update process and a new
+container startup. They do not repair files overwritten in an existing home.
+
 ## SSH connection history
 
 `common/.init` installs a root-owned wrapper at `/run/dojo/bin/ssh-entrypoint`

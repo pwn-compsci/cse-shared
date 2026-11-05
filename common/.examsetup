@@ -887,12 +887,6 @@ else
     echo "[e] session_monitor.py not found, skipping" | tee -a $STARTUP_LOG
 fi
 
-if [ -f /challenge/bin/.exam_attempts_check ]; then
-    echo "[e] Found .exam_attempts_check, setting permissions" | tee -a $STARTUP_LOG
-    chmod 700 /challenge/bin/.exam_attempts_check
-    chown root:root /challenge/bin/.exam_attempts_check 2>/dev/null || true
-    /challenge/bin/.exam_attempts_check >> $STARTUP_LOG 2>&1 &
-    echo "[e] Started .exam_attempts_check" | tee -a $STARTUP_LOG
-else
-    echo "[e] .exam_attempts_check not found, skipping" | tee -a $STARTUP_LOG
-fi
+# Exam launch, web login, and /attempt_exam enforce the configured exam gates.
+# Keep file protection/restoration in setup and session_monitor.py; do not run
+# a second attempt-limit process that can overwrite an authorized exam's files.
