@@ -1,11 +1,6 @@
 #!/opt/pwn.college/python
 
 import time
-import os
-import sys
-# .init moves this executable to /challenge/bin; helpers remain in /challenge.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from event_log import update_event_log
 import subprocess
 import os
 import base64
@@ -22,6 +17,47 @@ import os
 import zipfile
 from pathlib import Path
 import shutil 
+
+import uuid
+
+# Challenges distribute this executable through explicit symlinks. Keep the log
+# writer self-contained: common/event_log.py is not part of every challenge.
+def update_event_log(file, update):
+    file = Path(file)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    lock = Path(str(file) + '.lock')
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            lock.mkdir()
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f'Log lock remains held: {lock}')
+            time.sleep(.02)
+    temp = Path(str(file) + '.tmp-' + uuid.uuid4().hex)
+    try:
+        data = {}
+        if file.exists():
+            raw = file.read_bytes()
+            try:
+                data = json.loads(raw)
+                if not isinstance(data, dict):
+                    raise ValueError('Invalid log root')
+            except (ValueError, UnicodeError):
+                backup = Path(str(file) + '.malformed-' + uuid.uuid4().hex)
+                with backup.open('xb') as stream:
+                    stream.write(raw)
+                data = {}
+        update(data)
+        with temp.open('x') as stream:
+            json.dump(data, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, file)
+    finally:
+        temp.unlink(missing_ok=True)
+        lock.rmdir()
 
 logging.basicConfig(filename='/home/hacker/.local/share/ultima/pexs.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
