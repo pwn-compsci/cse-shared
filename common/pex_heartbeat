@@ -1,6 +1,11 @@
 #!/opt/pwn.college/python
 
 import time
+import os
+import sys
+# .init moves this executable to /challenge/bin; helpers remain in /challenge.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from event_log import update_event_log
 import subprocess
 import os
 import base64
@@ -254,26 +259,27 @@ def copy_missing_copies_to_hist_dir():
         return None, None
 
     skipped_dir = "/home/hacker/.local/share/ultima/skipped/"
-    with open(f"{skipped_dir}/log.json", "r") as rf:
-        jd = json.load(rf)
-
-    for relpath, copies in jd.items():
-        for index, info in enumerate(copies):
-            if not info.get('copied', False):
+    def migrate(jd):
+        for relpath, copies in jd.items():
+            # Hash-keyed requirements records coexist with legacy path arrays.
+            if not isinstance(copies, list):
+                continue
+            for info in copies:
+                if not isinstance(info, dict) or info.get('copied'):
+                    continue
+                filename = info.get('hashed_filename')
+                if not filename or os.path.basename(filename) != filename:
+                    continue
                 entries_file, entries = find_entries_json_with_file(relpath)
-                if not entries_file or not entries:
-                    print(f"skipping because did not find {relpath=}")
-                    continue 
-                hash_fp = os.path.join(skipped_dir,info["hashed_filename"])
-                hash_dest_fp = os.path.join(os.path.dirname(entries_file), info["hashed_filename"])
-                if os.path.exists(hash_fp):
-                    shutil.copy2(hash_fp, hash_dest_fp)
-                jd[relpath][index]["copied"] = True 
+                if not entries_file:
+                    continue
+                source = os.path.join(skipped_dir, filename)
+                destination = os.path.join(os.path.dirname(entries_file), filename)
+                if os.path.isfile(source):
+                    shutil.copy2(source, destination)
+                    info['copied'] = True
+    update_event_log(f"{skipped_dir}/log.json", migrate)
 
-
-    with open(f"{skipped_dir}/log.json", "w") as wf:
-        json.dump(jd, wf)
-     
 # Path to the monitored and output files
 extension_loaded = True
 
