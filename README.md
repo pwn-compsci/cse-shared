@@ -9,17 +9,23 @@
 
 ## Terminal clipboard tracking
 
-`common/.init` invokes `/challenge/bin/terminal_clipboard.py` for all students
-on non-exam levels when the helper is packaged. The helper independently
-checks lab/project metadata, including class labs, before preparing
-or launching anything. Lectures and exams are excluded. Failure is logged in
-the startup log and normal initialization continues.
+`common/.init` prefers the image-packaged collector at
+`/usr/local/lib/cse240/terminal_clipboard.py`, falling back to the challenge helper.
+Projects 2.3, 2.5, 3.2 and 3.3 are eligible. Practice exams (`pexNN`) prepare the
+patched executable in both copies of `common/vscode.sh` before the normal
+sandboxed exam code-server launch. Actual exams and other activities are excluded.
+The helper checks scope for every student; no instructor-account restriction applies.
 
-Eligible challenges must package a `bin/terminal_clipboard.py` symlink to
-`common/bin/terminal_clipboard.py`. That single Python file embeds the browser
-and server assets; no additional JavaScript files need packaging. It copies
-platform code-server into `/run/ultima-code-server` and starts it as `hacker`
-under the existing dojo service name before the platform launcher runs.
+Image v162 includes the scoped collector; extension 0.0.57 remains unchanged.
+The Python helper embeds browser and server assets, copies platform code-server
+into `/run/ultima-code-server`, and supports project service startup or preparing
+a launcher for the practice-exam service. The latter preserves port 4200,
+workspace, user data, service name and landrun restrictions.
+
+The reference dojo has a separate `cse-shared` submodule checkout. To deploy,
+publish these shared changes, update the reference dojo submodule and refresh
+the dojo. Section projects import those challenges. A new image alone does not
+replace deployed challenge `.init` or `vscode.sh` files.
 
 Copy/paste events, text, and server-read `module`, `challenge`, and
 `pwn_college_id` append to `~/.local/share/ultima/terminal-clipboard.jsonl`.

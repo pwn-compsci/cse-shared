@@ -234,10 +234,29 @@ safe_chown hacker:hacker /run/dojo/var/code-service
 safe_chmod 755 /run/dojo/var/code-service
 echo "[c] Created /run/dojo/var/code-service with hacker ownership" >> $STARTUP_LOG
 
+# Prepare practice-exam browser instrumentation before the existing sandboxed launch.
+# Keep the service, port, workspace and user-data arguments below unchanged.
+clipboard_code_server=/run/dojo/bin/code-server
+clipboard_tracking_helper=/usr/local/lib/cse240/terminal_clipboard.py
+if [ ! -f "$clipboard_tracking_helper" ]; then
+    clipboard_tracking_helper=/challenge/bin/terminal_clipboard.py
+fi
+if [ -f "$clipboard_tracking_helper" ]; then
+    if /run/dojo/bin/python "$clipboard_tracking_helper" --prepare-launcher \
+        --pwn-college-id "${pwn_college_id:-}" >> "$STARTUP_LOG" 2>&1; then
+        if [ -x /run/ultima-code-server/ultima-code-server ]; then
+            clipboard_code_server=/run/ultima-code-server/ultima-code-server
+            echo "[c] Browser clipboard collector prepared for practice-exam launch" >> "$STARTUP_LOG"
+        fi
+    fi
+fi
+
+code_server_process_pattern='/(ultima-)?code-server/'
+
 # Clean up any existing code-server processes
-if ps -ef | grep -q "/code-server/"; then
+if pgrep -f "$code_server_process_pattern" >/dev/null; then
     echo "[c] Code-server already running - cleaning up" >> $STARTUP_LOG
-    pkill -f "/code-server/" || true
+    pkill -f "$code_server_process_pattern" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     mv /run/dojo/var/code-service/code-server.log /challenge/old_code-server.log 2>/dev/null || true 
 fi
@@ -263,7 +282,7 @@ while [ $attempts -lt $max_attempts ]; do
       --rwx /run
       --rwx /challenge
       -- /run/dojo/bin/dojo-service start code-service/code-server
-          /run/dojo/bin/code-server
+          $clipboard_code_server
           --auth=none 
           --bind-addr=127.0.0.1:4200 
           --trusted-origins='*' 
@@ -308,12 +327,12 @@ while [ $attempts -lt $max_attempts ]; do
   if echo "$output" | grep -q "already running"; then
     echo "[c] Code-server already running - retrying..." >> $STARTUP_LOG
     attempts=$((attempts + 1))
-    pkill -9 -f "/code-server/" || true
+    pkill -9 -f "$code_server_process_pattern" || true
     rm -f /run/dojo/var/code-service/code-server.pid || true
     
     # Wait for process to die
     for i in {1..10}; do
-      pgrep -f "/code-server/" > /dev/null || break
+      pgrep -f "$code_server_process_pattern" > /dev/null || break
       sleep 1
     done
     
@@ -326,7 +345,7 @@ while [ $attempts -lt $max_attempts ]; do
   # Verify process started
   success=0
   for i in {1..5}; do
-    if pgrep -f "/code-server/" > /dev/null; then
+    if pgrep -f "$code_server_process_pattern" > /dev/null; then
       echo "[c] Process verified running" >> $STARTUP_LOG
       success=1
       break
@@ -349,7 +368,7 @@ while [ $attempts -lt $max_attempts ]; do
 done
 
 # Wait for HTTP server to respond
-if pgrep -f "/code-server/"; then
+if pgrep -f "$code_server_process_pattern"; then
   for i in {1..10}; do
     if /run/dojo/bin/curl -s localhost:4200 >/dev/null; then
       echo "[c] Code-server ready on port 4200 (attempt $i)" >> $STARTUP_LOG

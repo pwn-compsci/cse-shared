@@ -15,23 +15,48 @@ class TerminalClipboardInitTests(unittest.TestCase):
     def test_all_students_and_activity_scope(self):
         allowed = PILOT['tracking_allowed']
         activities = [
-            {'module': '25-lela-heap', 'challenge': 'lab2516-stack', 'labid': '2516'},
-            {'module': '25-proj-mud', 'hw': '25-mud'},
-            {'module': 'classlab01', 'labid': 'classlab01'},
-            {'module': '21-grouplab-menu'},
+            {'module': '23-proj-pointers', 'challenge': 'p23-level-01'},
+            {'module': '25-proj-mud'}, {'module': '32-proj-mudshop'},
+            {'module': '33-proj-pokemud'},
         ]
         for identity in ('97168', '97169', '12345', '97167', 132329, ''):
             for activity in activities:
-                with self.subTest(identity=identity, activity=activity):
-                    self.assertTrue(allowed(activity, identity))
-                    for exam in (True, '01', 'false', 1):
-                        self.assertFalse(allowed(dict(activity, examLevel=exam), identity))
+                self.assertTrue(allowed(activity, identity))
+                self.assertFalse(allowed(dict(activity, examLevel='exam-30-01'), identity))
+            for module in ('pex20', 'pex30'):
+                self.assertTrue(allowed({'module': module, 'examLevel': 'exam-30-01'}, identity))
         for activity in (
-            {}, {'module': '25-lela-heap', 'challenge': 'lec2513-the-heap'},
-            {'module': 'exam20', 'labid': '20'}, {'module': 'pex23', 'hw': '23'},
-            {'module': 'sandbox', 'labid': '00'},
+            {}, {'module': '25-lela-heap', 'labid': '2516'},
+            {'module': 'classlab01', 'labid': 'classlab01'},
+            {'module': '21-proj-c-intro-vars'}, {'module': 'exam30', 'hw': '30'},
+            {'module': 'pretest'}, {'module': 'sandbox'}, {'module': 'pexploit'},
         ):
             self.assertFalse(allowed(activity, '97168'))
+
+    def test_practice_launcher_preserves_arguments_and_sandbox(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            node = root / 'mock node'
+            node.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            node.chmod(0o755)
+            PILOT['write_launcher'](root, node)
+            result = subprocess.run([str(root / 'ultima-code-server'),
+                                     '--bind-addr=127.0.0.1:4200',
+                                     '--user-data-dir=/home/hacker/.local/share/code-server-exam',
+                                     '/home/hacker/workspace with spaces.code-workspace'],
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout.splitlines(), [str(root / 'out/node/entry.js'),
+                '--bind-addr=127.0.0.1:4200',
+                '--user-data-dir=/home/hacker/.local/share/code-server-exam',
+                '/home/hacker/workspace with spaces.code-workspace'])
+        common = Path(__file__).parent / 'common'
+        script = (common / 'vscode.sh').read_text()
+        self.assertEqual(script, (common / 'bin/vscode.sh').read_text())
+        self.assertIn('--prepare-launcher', script)
+        self.assertIn('-- /run/dojo/bin/dojo-service start code-service/code-server', script)
+        self.assertIn('          $clipboard_code_server', script)
+        self.assertIn('--bind-addr=127.0.0.1:4200', script)
+        self.assertIn('/run/dojo/bin/landrun', script)
 
     def test_patch_and_idempotence_and_changed_version_refusal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -55,6 +80,13 @@ class TerminalClipboardInitTests(unittest.TestCase):
             (destination / '.ultima-patch.json').write_text('old-version')
             with self.assertRaisesRegex(RuntimeError, 'different patch'):
                 PILOT['prepare'](source, destination)
+
+    def test_editor_browser_and_route_without_clipboard_read_permission(self):
+        import json
+        subprocess.run(['node', str(Path(__file__).with_name('test_editor_clipboard.cjs'))],
+                       input=json.dumps({'browser': PILOT['ASSET_CONTENTS']['browser.js'],
+                                         'route': PILOT['ASSET_CONTENTS']['route.js']}),
+                       text=True, check=True)
 
     def test_unsupported_platform_is_not_patched(self):
         with tempfile.TemporaryDirectory() as directory:

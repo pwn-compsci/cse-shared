@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 ASSET_CONTENTS = {
-    'browser.js': r'''/* Ultima terminal clipboard events: event metadata and clipboard text. */
+    'browser.js': r'''/* Ultima editor and terminal clipboard observations; no clipboard reads for monitoring. */
 (() => {
   if (window.__ultimaClipboard) return;
   window.__ultimaClipboard = true;
@@ -18,35 +18,71 @@ ASSET_CONTENTS = {
   const session = crypto.randomUUID();
   let sequence = 0;
   let last = {event: '', time: 0};
-  const terminalFocused = () => !!document.activeElement?.closest('.terminal-instance, .xterm');
-  function record(event, source, text) {
-    const contentAvailable = typeof text === 'string';
-    const originalLength = contentAvailable ? text.length : 0;
-    text = contentAvailable ? text.slice(0, 262144) : null;
-    const now = Date.now();
-    // Clipboard API calls can also generate a DOM clipboard event.
-    if (last.event === event && last.text === text && now - last.time < 80) return;
-    last = {event, text, time: now};
-    fetch(endpoint, {
-      method: 'POST', credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({event, source, session, sequence: ++sequence,
-        clientTime: new Date(now).toISOString(), text, contentAvailable,
-        originalLength, truncated: originalLength > 262144})
-    }).catch(() => {});
+  const activeArea = () => {
+    const element = document.activeElement;
+    if (element?.closest('.terminal-instance, .xterm')) return 'terminal';
+    if (element?.closest('.monaco-editor') &&
+        !element.closest('.find-widget, .rename-box, .suggest-widget')) return 'editor';
+    return null;
+  };
+  // This is a visible tab label, not a verified filesystem path.
+  const fileLabel = () => document.querySelector('.editor-group-container.active .tab.active .label-name')?.textContent?.slice(0, 1024) || null;
+  function record(event, source, text, area = 'terminal', status = 'attempted', textOrigin = 'clipboard-event', label = null) {
+    try {
+      const contentAvailable = typeof text === 'string';
+      const originalLength = contentAvailable ? text.length : 0;
+      const originalLines = contentAvailable ? text.split('\n').length : null;
+      text = contentAvailable ? text.slice(0, 262144) : null;
+      const now = Date.now();
+      // Clipboard API calls can also generate a DOM clipboard event.
+      // Deduplicate only overlapping DOM/API observations, never two same-source copies.
+      if (last.area === area && last.event === event && last.source !== source &&
+          last.text === text && now - last.time < 80 && last.status === status) return;
+      last = {area, event, source, status, text, time: now};
+      fetch(endpoint, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({event, source, area, status, textOrigin, fileLabel: label, originalLines, session, sequence: ++sequence,
+          clientTime: new Date(now).toISOString(), text, contentAvailable,
+          originalLength, truncated: originalLength > 262144})
+      }).catch(() => {});
+    } catch (_) { /* Monitoring must never break the student's clipboard action. */ }
   }
-  for (const event of ['copy', 'paste']) {
+  for (const event of ['copy', 'cut', 'paste']) {
     document.addEventListener(event, e => {
-      if (!e.isTrusted || !terminalFocused()) return;
+      const area = activeArea();
+      if (!e.isTrusted || !area || (area === 'terminal' && event === 'cut') ||
+          (area === 'editor' && event === 'paste')) return;
+      const label = area === 'editor' ? fileLabel() : null;
       if (event === 'paste') {
-        record(event, 'dom', e.clipboardData ? e.clipboardData.getData('text/plain') : null);
+        record(event, 'dom', e.clipboardData ? e.clipboardData.getData('text/plain') : null, area);
       } else {
         const selection = window.getSelection()?.toString() || null;
-        // Let terminal handlers populate clipboardData before reading it.
+        // Monaco supplies its selected code through setData, including multi-cursor and
+        // copy-line operations. Capture that payload without reading the system clipboard.
+        let supplied = null;
+        const data = e.clipboardData;
+        const originalSetData = data?.setData;
+        let wrapped = null;
+        try {
+          if (originalSetData) {
+            wrapped = function(type, value) {
+              const result = originalSetData.call(this, type, value);
+              if (type.toLowerCase() === 'text/plain') supplied = String(value);
+              return result;
+            };
+            data.setData = wrapped;
+          }
+        } catch (_) {}
         queueMicrotask(() => {
-          let text = null;
-          try { text = e.clipboardData?.getData('text/plain') || null; } catch (_) {}
-          record(event, 'dom', text ?? selection);
+          try { if (data?.setData === wrapped) data.setData = originalSetData; } catch (_) {}
+          let text = supplied;
+          if (text === null) {
+            try { text = data?.getData('text/plain') || null; } catch (_) {}
+          }
+          const textOrigin = text !== null ? 'clipboard-event' : selection !== null ? 'dom-selection' : 'unavailable';
+          // DOM copy/cut does not confirm that the OS clipboard write succeeded.
+          record(event, 'dom', text ?? selection, area, 'attempted', textOrigin, label);
         });
       }
     }, true);
@@ -58,10 +94,19 @@ ASSET_CONTENTS = {
     const original = clipboard[method].bind(clipboard);
     try {
       clipboard[method] = async (...args) => {
-        const terminal = terminalFocused();
-        const result = await original(...args);
-        if (terminal) record(event, 'clipboard-api', event === 'copy' ? String(args[0]) : result);
-        return result;
+        const area = activeArea();
+        const label = area === 'editor' ? fileLabel() : null;
+        // readText is used only by the student's existing paste operation.
+        try {
+          const result = await original(...args);
+          if (area && (area === 'terminal' || event === 'copy'))
+            record(event, 'clipboard-api', event === 'copy' ? String(args[0]) : result, area, 'succeeded', 'clipboard-api', label);
+          return result;
+        } catch (error) {
+          if (area === 'editor' && event === 'copy')
+            record(event, 'clipboard-api', String(args[0]), area, 'failed', 'clipboard-api', label);
+          throw error;
+        }
       };
     } catch (_) { /* Native DOM events remain available. */ }
   }
@@ -80,7 +125,9 @@ exports.router.post('/ultima-terminal-event', express.json({limit: '2mb'}), asyn
         if (!await (0, http_1.authenticated)(req)) return res.sendStatus(401);
         if (req.get('Sec-Fetch-Site') === 'cross-site') return res.sendStatus(403);
         const b = req.body;
-        if (!b || !['copy', 'paste'].includes(b.event) ||
+        const area = b?.area || 'terminal';
+        if (!b || !['terminal', 'editor'].includes(area) ||
+            !(area === 'editor' ? ['copy', 'cut'] : ['copy', 'paste']).includes(b.event) ||
             !['dom', 'clipboard-api'].includes(b.source) ||
             typeof b.session !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(b.session) ||
             !Number.isSafeInteger(b.sequence) || b.sequence < 1 ||
@@ -91,6 +138,12 @@ exports.router.post('/ultima-terminal-event', express.json({limit: '2mb'}), asyn
                 b.text.length !== Math.min(b.originalLength, 262144) ||
                 b.truncated !== (b.originalLength > 262144)) :
                 (b.text !== null || b.originalLength !== 0 || b.truncated))) return res.sendStatus(400);
+        if (area === 'editor' && (
+            !['attempted', 'succeeded', 'failed'].includes(b.status) ||
+            !['clipboard-event', 'dom-selection', 'unavailable', 'clipboard-api'].includes(b.textOrigin) ||
+            !(b.fileLabel === null || (typeof b.fileLabel === 'string' && b.fileLabel.length <= 1024)) ||
+            !(b.originalLines === null || (Number.isSafeInteger(b.originalLines) && b.originalLines >= 1))
+        )) return res.sendStatus(400);
         const fs = require('fs');
         let level = {}, levelMetadataAvailable = true;
         try {
@@ -104,7 +157,11 @@ exports.router.post('/ultima-terminal-event', express.json({limit: '2mb'}), asyn
             pwn_college_id: metadataValue('pwn_college_id'), levelMetadataAvailable, time: new Date().toISOString(), event: b.event, source: b.source,
             session: b.session, sequence: b.sequence, clientTime: b.clientTime, text: b.text,
             contentAvailable: b.contentAvailable, originalLength: b.originalLength, truncated: b.truncated};
-        await fs.promises.appendFile(require('path').join(dir, 'terminal-clipboard.jsonl'),
+        if (area === 'editor') Object.assign(row, {area, status: b.status,
+            textOrigin: b.textOrigin, fileLabel: b.fileLabel, originalLines: b.originalLines,
+            capturedSha256: b.contentAvailable ? require('crypto').createHash('sha256').update(b.text).digest('hex') : null});
+        await fs.promises.appendFile(require('path').join(dir,
+            area === 'editor' ? 'editor-clipboard.jsonl' : 'terminal-clipboard.jsonl'),
             JSON.stringify(row) + '\n', {mode: 0o600, flag: fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW});
         res.sendStatus(204);
     } catch (error) { next(error); }
@@ -166,25 +223,31 @@ def prepare(source, destination):
 
 
 def tracking_allowed(level, identity):
-    # All users are eligible. Exam exclusion wins over lab/project metadata,
-    # which may also be present in exam configs.
+    """Enable the requested projects and practice exams for every student."""
+    module = str(level.get('module') or '').lower()
+    if re.fullmatch(r'pex[0-9]+(?:[-_].*)?', module):
+        return True
     exam = level.get('examLevel')
     if exam is not None and exam is not False and str(exam).strip() != '':
         return False
-    module = str(level.get('module') or '').lower()
-    challenge = str(level.get('challenge') or '').lower()
-    if re.search(r'(?:^|[-_])(exam|pex|pretest)(?:[-_0-9]|$)', module):
-        return False
-    return bool(
-        (level.get('labid') and str(level['labid']) not in {'0', '00'}) or level.get('hw') or
-        re.search(r'(?:^|[-_])(?:proj(?:ect)?|grouplab|classlab|lab)(?:[-_0-9]|$)', module) or
-        re.match(r'(?:classlab|grouplab|lab)[-_0-9]', challenge)
-    )
+    return module in {
+        '23-proj-pointers', '25-proj-mud', '32-proj-mudshop', '33-proj-pokemud',
+    }
+
+
+def write_launcher(destination, node):
+    """Preserve the exam launcher's arguments, service and landrun restrictions."""
+    import shlex
+    launcher = destination / 'ultima-code-server'
+    launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(str(node)) + ' ' +
+                        shlex.quote(str(destination / 'out/node/entry.js')) + ' "$@"\n')
+    launcher.chmod(0o755)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--start', action='store_true', help='Start code-service/code-server as hacker')
+    parser.add_argument('--prepare-launcher', action='store_true', help='Prepare a launcher for the existing practice-exam service')
     parser.add_argument('--destination', type=Path, default=DEST)
     parser.add_argument('--pwn-college-id', required=True)
     args = parser.parse_args()
@@ -195,9 +258,13 @@ def main():
         return
     if not isinstance(level, dict) or not tracking_allowed(level, args.pwn_college_id):
         print('Terminal clipboard tracking skipped: activity outside tracking scope', flush=True)
+        if args.prepare_launcher:
+            raise SystemExit(1)
         return
     source, node = discover()
     prepare(source, args.destination)
+    if args.prepare_launcher:
+        write_launcher(args.destination, node)
     print(f'Patched writable copy: {args.destination}', flush=True)
     if args.start:
         if os.geteuid() != 0:
