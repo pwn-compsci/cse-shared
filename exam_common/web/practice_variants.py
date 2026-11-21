@@ -179,7 +179,6 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
         except (OSError, ValueError, KeyError):
             response = make_response("Practice variants are unavailable. Your current attempt is unchanged.", 503)
         response.headers["Cache-Control"] = "no-store"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
         return response
 
 

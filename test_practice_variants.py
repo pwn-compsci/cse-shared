@@ -94,6 +94,8 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertIn("Retry a Previous Variant", text)
         self.assertNotIn("secret-unseen", text)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+        # Course interfaces may embed the workspace from another origin.
+        self.assertNotIn("X-Frame-Options", response.headers)
 
     def test_retry_persists_and_is_consumed_only_at_next_start(self):
         response = self.client.post(self.url, data={"csrf": self.token(), "mode": "retry", "variant": "a"})
