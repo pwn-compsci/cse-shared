@@ -24,6 +24,8 @@ logger.addHandler(handler)
 
 app = Flask(__name__)
 app.secret_key = 'donnowhatyouthinkyouwant'
+from practice_variants import register_routes
+register_routes(app)
 
 def configure_exam_timing_logger(pointer="/tmp/.startup_log_path"):
     try:

@@ -417,6 +417,25 @@ else
     chosen_problem="${dirs[RANDOM % ${#dirs[@]}]}"
     echo "[e] Randomly chosen problem: $chosen_problem" >> $STARTUP_LOG
 
+    practice_mode=$(jq -r '(.practice_exam // false) or (.is_practice_exam // false)' /challenge/.config/level.json)
+    if [ "$practice_mode" = true ]; then
+    # Admin selections take precedence and are recorded as received problems too.
+    exam_problem=""
+    if [ "$admin_access" = true ] && [ -f "$course_home/.examproblems.json" ]; then
+        examLevel=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
+        exam_problem=$(jq -r --arg level "$examLevel" '.[$level] // empty' "$course_home/.examproblems.json")
+        if [ -n "$exam_problem" ] && [ ! -d "/challenge/problems/$exam_problem" ]; then
+            echo "[e] Ignoring unavailable admin problem: $exam_problem" >> "$STARTUP_LOG"
+            exam_problem=""
+        fi
+    fi
+
+        # Select once per startup ID. Do not silently fall back when retry/history fails.
+        chosen_problem=$(python3 /challenge/web/practice_variants.py "$course_home" "$exam_problem" "${dirs[@]}") || {
+            echo "[e] Practice variant selection failed; refusing to stage a different problem" | tee -a "$STARTUP_LOG"
+            exit 1
+        }
+    else
     # Add problem override, when last start of exam was within 15 minutes
     if [ -f "$course_home/.vscode/starts.log" ] && [ ${#dirs[@]} -gt 1 ]; then
         # Get the module and level from the current environment
@@ -473,6 +492,8 @@ else
             chosen_problem="$exam_problem"
             echo "[e] Overriding chosen_problem from .examproblems.json: $chosen_problem" | tee -a $STARTUP_LOG
         fi
+    fi
+
     fi
 
     echo "[e] Setting up problem $chosen_problem in $clevel_work_dir" | tee -a $STARTUP_LOG

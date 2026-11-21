@@ -1,3 +1,21 @@
+// Practice controls use the existing nginx /exam_api route and never replace active files.
+(() => {
+  const script = document.currentScript;
+  if (!script) return;
+  const url = new URL('../exam_api/practice-variants', script.src);
+  fetch(url, {cache: 'no-store'}).then(response => {
+    if (!response.ok) return;
+    const show = () => {
+      const link = document.createElement('a');
+      link.href = url.href;
+      link.textContent = 'Practice variants';
+      link.style.cssText = 'position:fixed;right:12px;top:4px;z-index:10000;background:white;color:#2458b8;padding:6px;border-radius:4px;font:14px system-ui';
+      document.body.appendChild(link);
+    };
+    if (document.body) show();
+    else document.addEventListener('DOMContentLoaded', show, {once: true});
+  }).catch(() => {});
+})();
 
 (function showExamBadge() {
     console.log("CSE240: in showExamBadge");
