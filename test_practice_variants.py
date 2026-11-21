@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -139,6 +140,27 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertEqual(history["unrelated"], ["z"])
         self.assertEqual(history[key], entry["cycle"])
         pv.queue(entry, ["a", "b", "c", "secret"], "retry", "a")
+
+    def test_launchers_preserve_history_owner_and_repair_student_files(self):
+        for name in ("common/vscode.sh", "common/bin/vscode.sh",
+                     "common/bin/dojo-terminal.sh", "common/bin/dojo-desktop.sh"):
+            with self.subTest(launcher=name):
+                source = (ROOT / name).read_text()
+                block = source.split("# BEGIN practice history ownership protection", 1)[1].split(
+                    "# END practice history ownership protection", 1)[0]
+                path = self.home / ".vscode/horse.json"
+                os.chown(path, 0, 0)
+                ordinary = self.home / "answer.cpp"
+                ordinary.write_text("student source")
+                os.chown(ordinary, 0, 0)
+                # The actual shell fragment must leave the history root-owned.
+                # This host has no hacker account; use an unprivileged numeric ID.
+                block = block.replace("hacker", "65534")
+                subprocess.run(["bash", "-c", block], check=True,
+                               env=dict(os.environ, course_home=str(self.home)))
+                self.assertEqual(path.stat().st_uid, 0)
+                self.assertNotEqual(ordinary.stat().st_uid, 0)
+                self.assertEqual(self.client.get(self.url).status_code, 200)
 
     def test_symlink_and_hardlink_history_rejected(self):
         target = self.home / "target"

@@ -37,12 +37,18 @@ prepare_landrun_paths() {
   [[ -p /run/landrun-stdout.fifo ]] || { rm -f /run/landrun-stdout.fifo; mkfifo /run/landrun-stdout.fifo; }
   [[ -p /run/landrun-resp.fifo ]] || { rm -f /run/landrun-resp.fifo; mkfifo /run/landrun-resp.fifo; }
   chmod 666 /run/landrun-cmd.fifo /run/landrun-stdin.fifo /run/landrun-stdout.fifo /run/landrun-resp.fifo /run/landrun-response.txt
+  # BEGIN practice history ownership protection
+  # horse.json is service-owned history, not an editable course file.
+  if [ -d "$course_home" ] && [ ! -L "$course_home" ]; then
+    find "$course_home" -path "$course_home/.vscode/horse.json" -prune -o \
+      ! -type l \( ! -user hacker -o ! -group hacker \) \
+      -exec chown hacker:hacker {} +
+  fi
+  # END practice history ownership protection
   chown -R hacker:hacker \
     /home/hacker/.cache \
     /home/hacker/.config \
     /home/hacker/.local \
-    "$course_home" \
-    "$course_home/.vscode" \
     "$cs_user_data_dir" \
     "$clevel_work_dir" \
     /home/hacker/.profile
