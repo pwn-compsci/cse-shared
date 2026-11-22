@@ -182,25 +182,74 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
         return response
 
 
-PAGE = """<!doctype html><html lang="en"><meta charset="utf-8">
+PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Practice variants</title>
-<style>body{font:18px system-ui;max-width:700px;margin:3em auto;padding:1em}
-button,select{font:inherit;padding:.5em}section{margin:2em 0}a{color:#2458b8}</style>
-<h1>Practice variants</h1><p>Current variant: <strong>{{ current }}</strong></p>
-<p>Choices apply to your next challenge start. Your current problem stays unchanged.
-Save your work before restarting the challenge from the course page.</p>
-{% if message %}<p role="status">{{ message }}</p>{% endif %}
-{% if pending %}<p>Next start: {% if pending.mode == 'retry' %}retry {{ pending.variant }}{% else %}new random variant{% endif %}.</p>{% endif %}
-<section><h2>New Random Variant</h2>
-<p>Practice adapting to a randomly selected problem. A different variant is chosen when available.</p>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#151719;color:#edf0f3;font-size:15px;line-height:1.55}
+*{box-sizing:border-box}
+body{margin:0;background:#151719;color:#edf0f3}
+main{max-width:920px;margin:0 auto;padding:32px 24px}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px}
+.eyebrow{margin:0 0 5px;color:#a8c978;font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}
+h1{margin:0;font-size:28px;font-weight:650;line-height:1.2;letter-spacing:-.035em}
+p{margin:0;color:#b8c1ca}
+.intro{max-width:610px;margin-top:10px}
+.current{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #3a4248;
+  border-radius:9px;color:#c6ced6;font-size:12px;background:#202428}
+.current strong{display:inline-grid;place-items:center;min-width:28px;height:28px;border-radius:6px;
+  background:#344329;color:#d8f4b2;font:700 16px ui-monospace,SFMono-Regular,Consolas,monospace}
+.notice{padding:13px 16px;margin-bottom:22px;border:1px solid #3b454e;border-radius:10px;background:#1c2227}
+.notice p{font-size:13px}.notice strong{color:#edf0f3}
+.status{margin:0 0 14px;padding:12px 16px;border:1px solid #46623c;border-radius:10px;background:#222f20;color:#d3edc9;font-size:13px}
+.pending{margin:0 0 18px;color:#d3edc9;font-size:13px}.pending strong{color:#e8f5df}
+.options{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{display:flex;flex-direction:column;padding:22px;border:1px solid #394149;border-radius:12px;background:#202428}
+.card-number{color:#96a2ad;font-size:11px;font-weight:700;letter-spacing:.1em;margin-bottom:12px}
+h2{margin:0 0 9px;font-size:19px;font-weight:600;letter-spacing:-.02em;line-height:1.3}
+.card p{font-size:14px;margin-bottom:24px}
+form{display:flex;flex-direction:column;gap:10px;margin-top:auto}
+label{font-size:12px;font-weight:600;color:#c5ced7}
+button,select{font:inherit;font-size:14px;border-radius:7px;min-height:44px;width:100%;padding:10px 13px}
+select{margin-top:6px;border:1px solid #56616c;background:#151a1e;color:#f0f3f6;cursor:pointer}
+option{background:#151a1e;color:#f0f3f6}
+button{border:1px solid #586570;background:#2b343c;color:#f0f3f6;cursor:pointer;font-weight:600;transition:background .15s,border-color .15s}
+button:hover{background:#36434d;border-color:#82929f}
+.primary{background:#b4df82;color:#17230d;border-color:#b4df82}.primary:hover{background:#c7ed9c;border-color:#c7ed9c}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #b4df82;outline-offset:4px}
+footer{margin-top:22px;padding-top:16px;border-top:1px solid #30383e}
+a{color:#c8d4df;font-size:13px;text-underline-offset:4px}a:hover{color:#fff}
+@media(max-width:620px){main{padding:24px 16px}header{flex-direction:column;gap:14px}
+  h1{font-size:25px}.options{grid-template-columns:1fr}.card{padding:20px}.card p{margin-bottom:18px}}
+</style>
+</head>
+<body><main>
+<header><div><p class="eyebrow">Practice your way</p><h1>Practice variants</h1>
+<p class="intro">Try unfamiliar requirements, or revisit a problem you have already worked on.</p></div>
+<div class="current">Current variant <strong>{{ current }}</strong></div></header>
+<div class="notice"><p><strong>Changes apply to your next attempt.</strong>
+Save your work, then restart the challenge from the course page. Your current problem stays unchanged.</p></div>
+{% if message %}<p class="status" role="status">{{ message }}</p>{% endif %}
+{% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}retry variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
+<div class="options">
+<section class="card" aria-labelledby="random-title"><div class="card-number">EXPLORE</div>
+<h2 id="random-title">New Random Variant</h2>
+<p>Test your skills on randomly selected requirements. You will get a different variant when one is available.</p>
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
-<button name="mode" value="random">Use a new random variant next start</button></form></section>
-<section><h2>Retry a Previous Variant</h2><p>Only variants you have already received appear here.</p>
+<button class="primary" name="mode" value="random">Choose random variant</button></form></section>
+<section class="card" aria-labelledby="retry-title"><div class="card-number">REVISIT</div>
+<h2 id="retry-title">Retry a Previous Variant</h2><p>Pick up a familiar problem. Only variants you have already received appear here.</p>
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
-<label>Previous variant <select name="variant">{% for variant in encountered %}
-<option value="{{ variant }}">{{ variant }}</option>{% endfor %}</select></label>
-<button name="mode" value="retry">Retry this variant next start</button></form></section>
-<p><a href="../">Return to the editor</a></p></html>"""
+<label for="previous-variant">Previous variant</label><select id="previous-variant" name="variant">{% for variant in encountered %}
+<option value="{{ variant }}">Variant {{ variant }}</option>{% endfor %}</select>
+<button name="mode" value="retry">Retry selected variant</button></form></section>
+</div><footer><a href="../">&larr; Return to the editor</a></footer>
+</main></body></html>"""
 
 
 if __name__ == "__main__":
