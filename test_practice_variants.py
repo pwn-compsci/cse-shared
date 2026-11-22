@@ -352,6 +352,19 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertIn('My task', [t['label'] for t in data['tasks']['tasks']])
         self.assertEqual(data['launch']['configurations'][0]['cwd'], '${workspaceFolder}')
 
+    def test_review_shell_preserves_course_prompt_and_aliases_but_overrides_tester(self):
+        course = self.home / 'course.bashrc'
+        course.write_text("CSE240_PS1='course prompt> '; alias bat='batcat --pager=never'; alias tester=/challenge/bin/exam_tester.sh; tester() { false; }; cd /tmp\n")
+        (self.home / '.bashrc').write_text("alias ll='ls -alF'\n")
+        hook = self.home / 'history.sh'
+        hook.write_text(pv.review_editor.HISTORY_SETUP)
+        startup = self.home / 'startup.sh'
+        startup.write_text(pv.review_editor.SHELL_SETUP.replace('/etc/bash.bashrc', str(course)).replace('/opt/practice-review-bin/history.sh', str(hook)))
+        script = 'shopt -s expand_aliases; source "$1"; test "$PS1" = "course prompt> " && alias bat && alias ll && ! alias tester 2>/dev/null && ! declare -F tester && eval cdhw && test "$PWD" = "$2" && declare -F __cse_log_cmd'
+        result = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script, 'review', str(startup), str(self.home)],
+                                cwd=self.home, env=dict(os.environ, HOME=str(self.home)), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_shell_restores_history_hook_without_exam_aliases(self):
         helper = self.home / 'history.sh'
         helper.write_text(pv.review_editor.HISTORY_SETUP)

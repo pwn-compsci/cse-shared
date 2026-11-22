@@ -10,10 +10,14 @@ fi
 export course_code=${course_code:-$(jq -r '.course_code // "cse240"' /challenge/.config/level.json 2>/dev/null || echo cse240)}
 export course_home=${course_home:-"/home/hacker/$course_code"}
 # Match .init: use an explicit hwdir, otherwise derive it from the course and module.
+if [[ -n "${CSE_PRACTICE_REVIEW_DIR:-}" ]]; then
+    export clevel_work_dir="$CSE_PRACTICE_REVIEW_DIR"
+else
 export clevel_work_dir=$(jq -r --arg course_home "$course_home" '
     ((.hwdir | select(. != null and . != "")) // ($course_home + "/" + .module))
     + "/" + .level
 ' /challenge/.config/level.json)
+fi
 export course_env_file=${course_env_file:-"$course_home/.${course_code}env"}
 export extension_log_file=${extension_log_file:-"$course_home/.vscode/cp.dat"}
 
@@ -30,7 +34,7 @@ if [[ "$course_code" = "cse545" ]] && jq -e '.examLevel // empty' /challenge/.co
 fi
 
 # if template does not contain student test skeletons then log it and re-add
-if grep -q "requiredUserTests"  '/challenge/.config/level.json'; then 
+if [[ -z "${CSE_PRACTICE_REVIEW_DIR:-}" ]] && grep -q "requiredUserTests"  '/challenge/.config/level.json'; then
     jq -r '.requiredUserTests[]' /challenge/.config/level.json | while read -r ut_path; do
         ut_path=${ut_path//<hwdir>/$clevel_work_dir}
         if [[ $ut_path == /home/user_tests* ]]; then
@@ -457,7 +461,7 @@ if [ -d $clevel_work_dir ]; then
     
 fi 
 
-if grep -q "digital god" /.admin_access ; then 
+if [ -r /.admin_access ] && grep -q "digital god" /.admin_access 2>/dev/null; then
     printf "\n\033[38;5;10mADMIN ACCESS is enabled\033[0m\n"
     alias gr='gcc main.c -o main.bin && ./main.bin'
     alias mtests='sqlite3 "$course_home/.vscode/trdb.db" "select * from tests where module like '\''$hw_id-%'\'' order by timestamp"'
@@ -487,7 +491,7 @@ alias gdb-no-gef='echo -e "\n\n" > /home/hacker/.gdbinit'
 
 
 
-if [ -f /challenge/.config/.bashrc.level.sh ]; then 
+if [[ -z "${CSE_PRACTICE_REVIEW_DIR:-}" ]] && [ -f /challenge/.config/.bashrc.level.sh ]; then
 
     source /challenge/.config/.bashrc.level.sh
 

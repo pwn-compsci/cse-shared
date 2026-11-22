@@ -33,6 +33,28 @@ fi
 '''
 
 
+SHELL_SETUP = r'''# This shell is started in the validated saved workspace directory.
+export CSE_PRACTICE_REVIEW_DIR="${CSE_PRACTICE_REVIEW_DIR:-$PWD}"
+source /etc/bash.bashrc
+if [ -r "$HOME/.bashrc" ]; then
+    source "$HOME/.bashrc"
+fi
+source /opt/practice-review-bin/history.sh
+# User/course startup may define the active exam tester. Review always uses -u.
+unalias tester 2>/dev/null || true
+unset -f tester 2>/dev/null || true
+export PATH="/opt/practice-review-bin:$PATH"
+export clevel_work_dir="$CSE_PRACTICE_REVIEW_DIR"
+alias cdhw='cd "$CSE_PRACTICE_REVIEW_DIR"'
+alias reset_mainc='cdhw && cp template/main.c ./'
+alias reset_usertests='cdhw && cp template/user_tests/* ./user_tests/'
+if [ -n "${CSE240_PS1:-}" ]; then
+    PS1="$CSE240_PS1"
+fi
+cd "$CSE_PRACTICE_REVIEW_DIR"
+'''
+
+
 def ready():
     try:
         with socket.create_connection(('127.0.0.1', PORT), timeout=0.2):
@@ -91,8 +113,8 @@ def prepare_profile():
     if bin_dir.is_symlink():
         raise OSError('Unsafe review command directory.')
     scripts = {'tester': '#!/bin/sh\nexec /usr/bin/python3 /challenge/web/practice_review_tester.py "$@"\n',
-               'history.sh': HISTORY_SETUP,
-               'shell': '#!/bin/bash\nsource /opt/practice-review-bin/history.sh\nexport -f __cse_log_cmd\nexec /bin/bash --noprofile --norc "$@"\n'}
+               'history.sh': HISTORY_SETUP, 'startup.sh': SHELL_SETUP,
+               'shell': '#!/bin/bash\nexport CSE_PRACTICE_REVIEW_DIR="$PWD"\nexec /bin/bash --noprofile --rcfile /opt/practice-review-bin/startup.sh "$@"\n'}
     for name, content in scripts.items():
         temporary = bin_dir / ('.' + name + '-' + os.urandom(8).hex())
         try:

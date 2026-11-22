@@ -708,7 +708,7 @@ safe_chown hacker:hacker $cs_user_data_dir
 # mkdir -p $(dirname $coder_workspace_file)
 
 if [ "$course_code" != "cse545" ]; then
-    echo 'echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."' >> /etc/bash.bashrc
+    echo 'if [[ -z "${CSE_PRACTICE_REVIEW_DIR:-}" ]]; then echo "Run tester using \`tester\` do not try to execute it using the full path /challenge/tester, it will not work in the exam environment."; fi' >> /etc/bash.bashrc
 fi
 
 if [ -f /challenge/bin/cserver.py ]; then

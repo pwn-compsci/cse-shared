@@ -239,13 +239,14 @@ require their appropriate debugger extension and configuration. No active-folder
 absolute paths are copied into these generated debugger settings.
 
 
-Saved work uses a clean **Saved practice shell**. Its `tester -u` command goes
+Saved work uses a **Saved practice shell** with the normal course prompt and
+aliases, scoped to the saved directory. It skips active-level initialization and
+starter-test copying, and replaces the exam tester alias after shell startup. Its `tester -u` command goes
 through a practice-only local testing endpoint, which accepts only an indexed
 saved directory and current-directory testing flags. It invokes the existing
 tester with `--use-current-dir` and a directory-bound cwd, outside the editor's
 no-new-privileges sandbox. The normal exam `tester` alias and command server are
-unchanged. The shell loads the existing command-history hook without sourcing
-the exam aliases. Review terminals are not restored across page sessions, so
+unchanged. The shell retains the existing command-history hook. Review terminals are not restored across page sessions, so
 reopening a saved attempt starts a fresh shell. This avoids the exam shell alias discarding `-u` and accidentally
 testing the active source. The bridge cannot select arbitrary directories or
 request flag-awarding normal-mode tests.
