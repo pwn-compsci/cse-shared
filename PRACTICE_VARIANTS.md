@@ -256,3 +256,36 @@ both exam modes, rather than depending on startup DOM timing or static-file
 permissions. It reads the same selected-problem record and actual practice flag.
 Variant history still comes from the student's persisted `horse.json` and launch
 records, not the primary application database.
+
+## Practice Exam 40 prerequisites
+
+`pex40` checks the enrolled course's `exam40` problem's database requirements with
+`attempt_number = 0` before staging starter files. All variants of a problem use
+the same prerequisites. Completion is required on every launch; exam attempts,
+retry consultations, deadlines and manual attempt clearances do not substitute
+for prerequisite flags. Missing enrollment/configuration or an unavailable API
+locks the launch rather than allowing access. Earlier practice modules keep their
+existing access behavior.
+
+The private `/opt/practice_access.json` launch decision controls both web apps,
+including practice review API access. The lock screen lists missing levels and
+explains that newly submitted flags can take a few minutes to sync. Restart the
+challenge after completion; refreshing the editor does not regenerate templates.
+For non-admins, denied startup deletes every challenge `template` directory before
+variant staging and removes any private template stash after hooks. Previously
+saved student work is retained. Admin status comes from startup's existing admin
+identity check, not a request parameter. Admins keep starter files and can click
+the small square at the bottom right of the lock screen to open the editor.
+
+Roll out the class_sync API change first, then deploy `.examsetup`, `.init`, both
+web apps and `practice_access.py` (including its common-web symlink) together via
+the normal course checkout/rebuild process. Existing containers do not acquire
+these protections until rebuilt/restarted. `test_practice_access.py` exercises
+student denial, admin preview, unavailable services and template-link safety;
+`tests/test_practice_prerequisites.py` in class_sync covers database gate mapping.
+
+Denied non-admin launches skip variant selection, archive creation, launch-history
+updates, problem staging and problem initialization hooks. Generic editor setup
+uses an ephemeral `/opt/practice-denied.*` directory, removed at the end of
+initialization. The real level directory and any previous student work remain
+untouched, so denied launches cannot become empty saved attempts on later starts.

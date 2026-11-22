@@ -1390,7 +1390,7 @@ fi
 
 startup_timing_begin "level initialization hooks"
 echo "[i] checking for .prelevelinit" >> "$STARTUP_LOG"
-if [ -f /challenge/.prelevelinit ]; then
+if [ "${practice_access_denied:-false}" != true ] && [ -f /challenge/.prelevelinit ]; then
     level_start_time=$(date +%s)
     if head -n 1 /challenge/.prelevelinit | grep -q "python"; then
         python3 /challenge/.prelevelinit
@@ -1408,7 +1408,7 @@ fi
 unset PRESERVE_PRELEVELINIT_UNTIL_SOURCED
 
 echo "[i] checking for .moduleinit" >> "$STARTUP_LOG"
-if [ -f /challenge/.moduleinit ]; then
+if [ "${practice_access_denied:-false}" != true ] && [ -f /challenge/.moduleinit ]; then
     mod_start_time=$(date +%s)
     source /challenge/.moduleinit >> "$STARTUP_LOG" 2>&1
     moduleinit_exit_code=$?
@@ -1420,7 +1420,7 @@ if [ -f /challenge/.moduleinit ]; then
     echo "[i] Completed .moduleinit in .init in $execution_time seconds" >> "$STARTUP_LOG"
 fi
 
-if [ -f /challenge/.levelinit ]; then
+if [ "${practice_access_denied:-false}" != true ] && [ -f /challenge/.levelinit ]; then
     if [[ "$module" = "33-proj-pokemud" && "$challenge" = "p33-level-01" ]]; then
         level_start_time=$(date +%s)
         # PokeMUD owns prerequisite checks, including a missing main.cpp.
@@ -1459,7 +1459,10 @@ if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/RE
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
 fi
 # Restore requested practice source only after starter files and hooks are done.
-if [ -f /opt/practice_variant_attempt.json ]; then
+if [ -f /opt/practice_access.json ]; then
+    python3 /challenge/web/practice_access.py --cleanup || exit 1
+fi
+if [ -f /opt/practice_variant_attempt.json ] && { [ ! -f /opt/practice_access.json ] || python3 -c 'import json; s=json.load(open("/opt/practice_access.json")); exit(0 if s.get("allowed") or s.get("admin") else 1)'; }; then
     python3 /challenge/web/practice_variants.py --restore || {
         echo "[i] Requested practice work could not be restored; stopping startup" >> "$STARTUP_LOG"
         exit 1
@@ -1943,3 +1946,12 @@ fi
 startup_timing_end "final setup"
 early_startup_log "END remaining initialization"
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 
+
+# A refused launch has no persistent attempt directory to archive next time.
+# This path is created by mktemp above; existing student work is never removed.
+if [ "${practice_access_denied:-false}" = true ] && [ -n "${practice_denied_work_dir:-}" ]; then
+    case "$practice_denied_work_dir" in
+        /opt/practice-denied.*) rm -rf -- "$practice_denied_work_dir" ;;
+        *) echo "[i] Refusing unexpected blocked workspace cleanup path" >> "$STARTUP_LOG" ;;
+    esac
+fi

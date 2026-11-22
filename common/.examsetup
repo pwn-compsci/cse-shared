@@ -135,6 +135,9 @@ copy_challenge_template_to_workdir() {
     local dest=""
     local old_nullglob=""
 
+    if [ -f /opt/practice_access.json ] && ! python3 -c 'import json; s=json.load(open("/opt/practice_access.json")); exit(0 if s.get("allowed") or s.get("admin") else 1)'; then
+        return 0
+    fi
     [ -d /challenge/template ] || return 0
     [ -d "$clevel_work_dir" ] || return 0
 
@@ -351,6 +354,17 @@ chmod 0644 "$STARTUP_ID_FILE"
 echo "[e] startup id is $STARTUP_ID_FILE" | tee -a $STARTUP_LOG
 echo "[e] pwn.college id is $pwn_college_id" | tee -a $STARTUP_LOG
 
+# Check before selecting/generating variants or copying any starter source.
+if [ "$(jq -r '.module' /challenge/.config/level.json)" = pex40 ]; then
+    python3 /challenge/web/practice_access.py --startup "$pwn_college_id" "$admin_access" || exit 1
+    if ! python3 -c 'import json; s=json.load(open("/opt/practice_access.json")); exit(0 if s.get("allowed") or s.get("admin") else 1)'; then
+        practice_access_denied=true
+        # Never touch the persistent level directory or variant history on denial.
+        clevel_work_dir=$(mktemp -d /opt/practice-denied.XXXXXXXX) || exit 1
+        practice_denied_work_dir="$clevel_work_dir"
+    fi
+fi
+
 current_module=$(jq -r '.module // empty' /challenge/.config/level.json)
 
 if [ -z "$pwn_college_id" ]; then
@@ -394,8 +408,8 @@ PY
 
 fi
 
-if [ -d /home/me ]; then
-    echo "[e] Running as_user, not configuring problem" | tee -a $STARTUP_LOG
+if [ -d /home/me ] || [ "${practice_access_denied:-false}" = true ]; then
+    echo "[e] Preview or denied practice launch: not configuring or recording a problem" | tee -a $STARTUP_LOG
 else
 
     echo "[e] Using clevel_work_dir = $clevel_work_dir for exam base directory" | tee -a $STARTUP_LOG
@@ -589,7 +603,7 @@ else
     ls -la "$clevel_work_dir" | tee -a "$STARTUP_LOG"
 fi
 
-if [ -f /challenge/.testprobleminit ]; then
+if [ "${practice_access_denied:-false}" != true ] && [ -f /challenge/.testprobleminit ]; then
     source /challenge/.testprobleminit
     echo "[e] Completed .testprobleminit" >> "$STARTUP_LOG"
     # rm /challenge/.testprobleminit
@@ -871,7 +885,7 @@ EOF
 
 # Create password-protected tarball of clevel_work_dir
 echo "[e] Creating password-protected tarball of $clevel_work_dir" | tee -a $STARTUP_LOG
-if [ -d "$clevel_work_dir" ]; then
+if [ "${practice_access_denied:-false}" != true ] && [ -d "$clevel_work_dir" ]; then
     tarball_path="/tmp/encrypted_clevel_work.tar.gz.enc"
     tarball_password="mosquito unicorn salad of goodness nibor"
 
