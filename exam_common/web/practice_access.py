@@ -77,6 +77,8 @@ def register_routes(app):
             status = dict(allowed=False, message='Practice access has not been verified. Please restart this challenge.')
         if status.get('allowed') is True or bypassed:
             return None
+        # Toolbar discovery must see a denial, not a successful lock-page response.
+        response_status = 403 if request.path.startswith('/exam_api/') else 200
         admin = status.get('admin') is True
         if admin and request.method == 'POST' and secrets.compare_digest(request.form.get('practice_admin_bypass', ''), bypass_token):
             bypassed = True
@@ -92,7 +94,7 @@ def register_routes(app):
                 'h1{color:#71baff}li{margin:12px 0}.admin{position:fixed;bottom:8px;right:8px}.admin button{background:none;border:0;color:#888;cursor:pointer}</style></head><body>'
                 '<h1>Complete these prerequisites first</h1><p>This practice problem is locked until you complete its associated coursework.</p><ul>' + ''.join(items) + '</ul><p>' + html.escape(str(status.get('message') or '')) + '</p>'
                 '<p>If you just submitted a needed flag, wait a few minutes for it to sync, then restart this challenge from the course page.</p>'
-                '<p>Your starter code will be created on an eligible restart.</p>' + control + '</body></html>'), 200, {'Cache-Control': 'no-store'}
+                '<p>Your starter code will be created on an eligible restart.</p>' + control + '</body></html>'), response_status, {'Cache-Control': 'no-store'}
 
 
 if __name__ == '__main__':

@@ -58,6 +58,16 @@ class PracticeAccessTests(unittest.TestCase):
         self.state.unlink()
         self.assertIn(b'not been verified', client.get('/').data)
 
+    def test_locked_toolbar_discovery_is_forbidden(self):
+        for admin in (False, True):
+            client = self.client(admin=admin)
+            response = client.get('/exam_api/practice-variants/available')
+            self.assertEqual(response.status_code, 403)
+            self.assertIn(b'Complete these prerequisites first', response.data)
+            self.assertEqual(response.headers['Cache-Control'], 'no-store')
+            self.state.unlink()
+            self.assertEqual(client.get('/exam_api/practice-variants/available').status_code, 403)
+
     def test_startup_removes_templates_only_for_denied_students(self):
         response = Mock()
         response.json.return_value = dict(status='success', allowed=False)
