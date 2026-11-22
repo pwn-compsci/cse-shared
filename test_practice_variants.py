@@ -238,6 +238,50 @@ class PersistenceAndUITests(unittest.TestCase):
         pv.restore_current(self.runtime)
         self.assertEqual((active / "main.cpp").read_text(), 'continued work')
 
+    def test_open_saved_attempt_redirects_to_editable_workspace_without_restart(self):
+        from urllib.parse import parse_qs, urlparse, urljoin
+        active, saved = self.saved_attempt()
+        active.mkdir(parents=True)
+        (active / 'main.cpp').write_text('current code stays here')
+        state_before = self.runtime.read_text()
+        response = self.client.get(self.url + '/open', query_string={'attempt': saved['id']})
+        self.assertEqual(response.status_code, 302)
+        redirect = urljoin('https://example.test/proxy/8080' + self.url + '/open', response.location)
+        self.assertEqual(urlparse(redirect).path, '/proxy/8080/')
+        workspace = Path(parse_qs(urlparse(redirect).query)['workspace'][0])
+        self.assertEqual(workspace.parent, active.parent / saved['directory'])
+        data = json.loads(workspace.read_text())
+        self.assertEqual(data['folders'][0]['path'], '.')
+        task = data['tasks']['tasks'][0]
+        self.assertEqual(task['args'], ['--use-current-dir'])
+        self.assertEqual(task['options']['cwd'], '${workspaceFolder}')
+        self.assertEqual(self.runtime.read_text(), state_before)
+        self.assertEqual((active / 'main.cpp').read_text(), 'current code stays here')
+        self.assertIn('old_answer', (workspace.parent / 'main.cpp').read_text())
+
+    def test_saved_list_defaults_to_current_variant_and_opens_in_new_tab(self):
+        active, saved = self.saved_attempt()
+        # saved variant a differs from the current second variant.
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertNotIn(saved['id'], text)
+        text = self.client.get(self.url, query_string={'show': 'all'}).get_data(as_text=True)
+        self.assertIn('Open saved attempt', text)
+        self.assertIn(saved['id'], text)
+        self.assertIn('target="_blank" rel="noopener"', text)
+        self.assertIn('Show only current variant', text)
+        # Re-selecting a makes that same entry visible by default.
+        pv.launch(self.config, self.home, ['a', 'secret-unseen'], 'third', 'a', self.runtime)
+        self.assertIn(saved['id'], self.client.get(self.url).get_data(as_text=True))
+
+    def test_open_saved_attempt_rejects_paths_and_symlink_directories(self):
+        active, saved = self.saved_attempt()
+        endpoint = self.url + '/open'
+        self.assertEqual(self.client.get(endpoint, query_string={'attempt': '../escape'}).status_code, 404)
+        directory = active.parent / saved['directory']
+        directory.rename(active.parent / 'moved')
+        directory.symlink_to(active.parent / 'moved', target_is_directory=True)
+        self.assertEqual(self.client.get(endpoint, query_string={'attempt': saved['id']}).status_code, 404)
+
     def test_review_excludes_hidden_tests_symlinks_and_hardlinks(self):
         active, saved = self.saved_attempt()
         directory = active.parent / saved['directory']
@@ -257,7 +301,7 @@ class PersistenceAndUITests(unittest.TestCase):
         old = active.parent / (active.name + '_2026-11-21_2153')
         old.mkdir(parents=True)
         (old / 'main.cpp').write_text('earlier code')
-        text = self.client.get(self.url).get_data(as_text=True)
+        text = self.client.get(self.url, query_string={'show': 'all'}).get_data(as_text=True)
         self.assertIn('Nov 21, 2026 at 2:53:00 PM MST', text)
         self.assertIn('variant unknown', text)
         response = self.client.post(self.url, data={'csrf': self.token(), 'mode': 'resume', 'attempt': old.name})

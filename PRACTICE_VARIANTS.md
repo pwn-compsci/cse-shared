@@ -175,14 +175,53 @@ Deploy `.init`, `.examsetup`, the web helper modules and badge scripts together.
 
 ## Practice toolbar
 
-Practice identity uses the same green pill styling as the review control and a
-compact label such as `pex30 - 01a`. Account/name details and the separate verbose
-variant suffix remain part of regular exam presentation, not practice identity.
-The practice reload control is labelled "Reload" rather than a circular arrow.
+The information bar retains account information and the circular reload control,
+with an uppercase practice variant in its identity, for example
+`pex30 - 01F - <account ID> - <student name>`. It uses VS Code blue (`#007acc`).
+The dark **Practice & review** control keeps its green border and text. Both are
+28px tall; information starts at the top left and review at the top right, with
+136px reserved for editor controls. Practice review is hidden on single-variant
+levels, while the information bar remains visible.
 
-The text-only **Practice & review** control starts near the left of the editor
-toolbar (below the badge on narrow windows). Drag it to move it; a drag does not
-activate its link. Its position is remembered in browser storage for that workspace
-URL and kept inside the viewport. With the link focused, Alt + arrow keys move it
-in 20-pixel increments. A normal click or Enter still opens practice history.
-This changes presentation only; existing selection and restart behavior remains.
+Both controls can be dragged. Dragging the information bar's text/background
+leaves its utility buttons clickable. Dragging the review control does not open
+its link and does not change its size. Positions are remembered per browser and
+workspace URL; Alt + arrow keys also move the focused review control.
+
+Default positioning uses CSS right/left anchors rather than initial iframe size
+measurements. ResizeObserver, IntersectionObserver, page visibility and resize
+signals schedule position recovery after two animation frames, supporting the
+collapsed pwn.college panel on full refresh. Preferred manual positions are kept
+separate from temporary viewport clamping. No polling timer repositions controls.
+Toolbar scripts use no-store caching so a stale copy cannot overwrite the UI.
+
+
+## Two-click saved-attempt editor
+
+The default flow is **Practice & review → Open saved attempt**. Saved attempts are
+listed before the new-attempt controls and initially filtered to the active
+variant. **View other encountered variants and older attempts** expands the list;
+**Show only current variant** returns to the default. Legacy unlabelled backups
+remain accessible in the expanded list without inventing variant assignments.
+
+Opening an indexed attempt creates a small `.practice-review.code-workspace`
+inside that saved directory and opens it in a new browser tab using the running
+code-server's workspace query support. It does not restart the container, move or
+restore source into the active directory, change the selected variant, or require
+the sandbox module. The source is editable in place; edits change the saved work.
+The hidden workspace file is excluded by existing source-copy/restore rules.
+
+Use **Tasks → Run Test Task → Test saved attempt** in that editor to run
+`/challenge/tester --use-current-dir` with the saved directory as its working
+directory. This selects that directory's archived `system_tests`, rather than the
+active variant's tests. It requires those archived tests to exist and deliberately
+uses the tester's no-flag review mode. **Start this variant fresh** remains a
+separate next-start action. The old read-only file-preview URLs and deferred
+resume endpoint remain compatible with old links, but they are no longer the
+main saved-attempt entry point.
+
+The generated workspace is scoped to the validated saved directory and is written
+by replacing a generated file, not by following symlinks or truncating existing
+hard-linked files. Requests cannot supply arbitrary workspace paths. Close/return
+links on the practice page explicitly reopen the active work folder so the
+code-server's last-opened-folder preference does not choose a review folder there.

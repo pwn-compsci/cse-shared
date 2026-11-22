@@ -9,6 +9,7 @@ import re
 import secrets
 import stat
 import sys
+from urllib.parse import urlencode
 import practice_attempts as attempts
 
 ATTEMPT = Path("/opt/practice_variant_attempt.json")
@@ -175,7 +176,7 @@ def restore_current(runtime=ATTEMPT):
 
 
 def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
-    from flask import abort, make_response, render_template_string, request
+    from flask import abort, make_response, render_template_string, request, redirect
     csrf_token = secrets.token_urlsafe(32)
 
     def context():
@@ -206,6 +207,28 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
         except (OSError, ValueError, KeyError):
             return "", 503, {"Cache-Control": "no-store"}
 
+    @app.route("/exam_api/practice-variants/open")
+    def open_saved_attempt():
+        try:
+            config, state = context()
+            with history_file(state["history"]) as history:
+                entry = history[METADATA][state["key"]]
+                active = Path(state.get("workdir") or attempts.workdir(config, Path(state["history"]).parent.parent))
+                attempts.discover(entry, active)
+                try:
+                    record, saved_path = attempts.find_attempt(entry, request.args.get("attempt"), active)
+                except (ValueError, OSError):
+                    abort(404)
+                if record.get("variant") and record["variant"] not in entry["encountered"]:
+                    abort(404)
+                workspace = attempts.editor_workspace(saved_path)
+            # Relative redirect preserves pwn.college's surrounding proxy prefix.
+            response = redirect("../../?" + urlencode({"workspace": workspace}))
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        except (OSError, ValueError, KeyError):
+            return "This saved attempt cannot be opened. Your current work is unchanged.", 503
+
     @app.route("/exam_api/practice-variants", methods=["GET", "POST"])
     def practice_variants():
         message = ""
@@ -232,6 +255,10 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                 encountered = [v for v in entry["encountered"] if v in state["variants"]]
                 pending = entry.get("pending", {})
                 saved_attempts = sorted(entry.get("attempts", []), key=lambda a: a["saved_at"], reverse=True)
+                all_attempts = request.args.get("show") == "all"
+                saved_attempts = [a for a in saved_attempts if (
+                    (a.get("variant") in encountered or a.get("variant") is None) if all_attempts
+                    else a.get("variant") == state["current"])]
                 saved_attempts = [dict(a, label=attempts.display_time(a["saved_at"])) for a in saved_attempts]
                 requested = request.args.get("attempt")
                 record = saved_path = None
@@ -254,11 +281,13 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                 response = make_response(render_template_string(REVIEW, record=record,
                     label=attempts.display_time(record["saved_at"]), names=names, selected=selected,
                     content=content, feedback=feedback, csrf=csrf_token,
+                    editor_href="../?" + urlencode({"folder": str(active)}),
                     resumable=record.get("variant") in encountered))
             else:
                 response = make_response(render_template_string(PAGE, current=state["current"],
                     encountered=encountered, pending=pending, message=message, csrf=csrf_token,
-                    saved_attempts=saved_attempts))
+                    saved_attempts=saved_attempts, all_attempts=all_attempts,
+                    editor_href="../?" + urlencode({"folder": str(active)})))
         except (OSError, ValueError, KeyError):
             response = make_response("Practice choices are unavailable. Your current attempt is unchanged.", 503)
         response.headers["Cache-Control"] = "no-store"
@@ -313,6 +342,7 @@ button:hover{background:#36434d;border-color:#82929f}
 button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #b4df82;outline-offset:4px}
 footer{margin-top:22px;padding-top:16px;border-top:1px solid #30383e}
 a{color:#c8d4df;font-size:13px;text-underline-offset:4px}a:hover{color:#fff}
+.history-filter{margin:12px 0}.history-filter a{color:#c7ed9c}.history-help{font-size:12px!important}
 .history{margin-top:28px}.history>p,.empty{font-size:13px;margin:8px 0 16px}
 .attempt-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid #394149}
 .attempt-row p{font-size:12px;margin-top:4px}.review-link{color:#c7ed9c;white-space:nowrap}
@@ -324,14 +354,25 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101416;border:1px so
 </style>
 </head>
 <body><main>
-<div class="page-tools"><a class="close-page" href="../" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
+<div class="page-tools"><a class="close-page" href="{{ editor_href }}" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
 <header><div><p class="eyebrow">Practice your way</p><h1>Practice &amp; review</h1>
 <p class="intro">Try unfamiliar requirements, or revisit a problem you have already worked on.</p></div>
 <div class="current">Current variant <strong>{{ current }}</strong></div></header>
-<div class="notice"><p><strong>Changes apply to your next attempt.</strong>
-Save your work, then restart the challenge from the course page. Your current problem stays unchanged.</p></div>
+<div class="notice"><p><strong>Random and fresh-start choices apply to your next attempt.</strong>
+Save your work, then restart the challenge from the course page. Opening a saved attempt needs no restart.</p></div>
 {% if message %}<p class="status" role="status">{{ message }}</p>{% endif %}
 {% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}{% if pending.attempt %}resume saved work for{% else %}retry{% endif %} variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
+<section class="history"><h2>Saved attempts</h2>
+<p>{% if all_attempts %}Showing encountered variants and older unlabelled attempts.{% else %}Showing saved attempts for your current variant, {{ current|upper }}.{% endif %}
+Open a saved folder in a new editable VS Code tab. Your current attempt stays open.</p>
+<p class="history-filter">{% if all_attempts %}<a href="?">Show only current variant {{ current|upper }}</a>{% else %}<a href="?show=all">View other encountered variants and older attempts</a>{% endif %}</p>
+<p class="history-help">Edits update the saved attempt. Use <strong>Tasks → Run Test Task → Test saved attempt</strong> to test that folder's code against its archived tests. This review mode does not award a flag. Times are Arizona time (MST).</p>
+{% for attempt in saved_attempts %}<article class="attempt-row">
+<div><strong>{% if attempt.variant %}Variant {{ attempt.variant }}{% else %}Older attempt · variant unknown{% endif %}</strong>
+<p><time datetime="{{ attempt.saved_at }}">Saved {{ attempt.label }}</time></p></div>
+<a class="review-link" href="practice-variants/open?attempt={{ attempt.id|urlencode }}" target="_blank" rel="noopener">Open saved attempt &nearr;</a></article>
+{% else %}<p class="empty">{% if all_attempts %}No saved attempts were found.{% else %}No saved attempts for variant {{ current|upper }} yet. View other variants above, or start another attempt to save this one.{% endif %}</p>{% endfor %}
+</section>
 {% set random_next = pending.get('mode', 'random') == 'random' %}
 {% set fresh_next = pending.get('mode') == 'retry' and not pending.get('attempt') %}
 <div class="options">
@@ -350,14 +391,7 @@ Save your work, then restart the challenge from the course page. Your current pr
 {% if fresh_next %}<span class="choice-status">Selected for next start · clean starter files</span>{% elif pending.get('attempt') %}<span class="choice-status">Saved work will resume · starting fresh replaces that choice</span>{% endif %}
 <button id="fresh-choice" class="{% if fresh_next %}primary{% endif %}" name="mode" value="retry" aria-pressed="{{ 'true' if fresh_next else 'false' }}"{% if random_next %} disabled{% endif %}>Start this variant fresh</button></form></section>
 </div>
-<section class="history"><h2>Saved attempts</h2>
-<p>Review your code and available test feedback, or resume an earlier attempt. Times are shown in Arizona time (MST).</p>
-{% for attempt in saved_attempts %}<article class="attempt-row">
-<div><strong>{% if attempt.variant %}Variant {{ attempt.variant }}{% else %}Older attempt · variant unknown{% endif %}</strong>
-<p><time datetime="{{ attempt.saved_at }}">Saved {{ attempt.label }}</time></p></div>
-<a class="review-link" href="?attempt={{ attempt.id|urlencode }}">Review attempt &rarr;</a></article>
-{% else %}<p class="empty">Your saved work will appear here after you start another attempt.</p>{% endfor %}
-</section><footer><a href="../">&larr; Return to the editor</a></footer>
+<footer><a href="{{ editor_href }}">&larr; Return to the editor</a></footer>
 </main><script>
 const previousVariant = document.getElementById('previous-variant');
 if (previousVariant) previousVariant.addEventListener('change', () => {
@@ -367,7 +401,7 @@ if (previousVariant) previousVariant.addEventListener('change', () => {
 
 
 REVIEW = PAGE.split("</head>")[0] + """</head><body><main>
-<div class="page-tools"><a class="close-page" href="../" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
+<div class="page-tools"><a class="close-page" href="{{ editor_href }}" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
 <p class="eyebrow">Saved practice attempt</p><h1>{% if record.variant %}Variant {{ record.variant }}{% else %}Older attempt{% endif %}</h1>
 <p class="intro">Saved {{ label }} · Arizona time</p>
 <div class="notice"><p>This is a read-only review. Your active work is unchanged.

@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import os
+import json
 import pwd
 import re
 import sqlite3
@@ -182,3 +183,36 @@ def feedback(home, config, attempt):
             os.close(fd)
     except (OSError, sqlite3.Error, ValueError):
         return []
+
+
+def editor_workspace(path):
+    """Open the actual saved directory with a tester task scoped to its tests."""
+    workspace = {
+        'folders': [{'path': '.', 'name': 'Saved practice attempt · ' + Path(path).name}],
+        'settings': {'window.title': 'Saved attempt · ${rootName}${separator}${appName}'},
+        'tasks': {'version': '2.0.0', 'tasks': [{
+            'label': 'Test saved attempt', 'type': 'process',
+            'command': '/challenge/tester', 'args': ['--use-current-dir'],
+            'options': {'cwd': '${workspaceFolder}'},
+            'group': {'kind': 'test', 'isDefault': True},
+            'presentation': {'reveal': 'always', 'panel': 'dedicated'},
+            'problemMatcher': ['$gcc'],
+        }]},
+    }
+    name = '.practice-review.code-workspace'
+    temporary = '.practice-review-' + os.urandom(8).hex()
+    with directory(path) as parent:
+        owner = os.fstat(parent)
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(workspace, stream, indent=2)
+                os.fchown(stream.fileno(), owner.st_uid, owner.st_gid)
+            # Replacing the directory entry avoids writes through existing links.
+            os.rename(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass
+    return str(Path(path) / name)

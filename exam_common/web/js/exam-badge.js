@@ -1,3 +1,40 @@
+// Reposition only when this iframe is shown or changes size, never on a timer.
+function observePracticeToolbarLayout(restorePosition) {
+  let pendingFrame = 0;
+  const schedule = () => {
+    if (pendingFrame) cancelAnimationFrame(pendingFrame);
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = 0;
+        const root = document.documentElement.getBoundingClientRect();
+        if (document.hidden || root.width <= 0 || root.height <= 0) return;
+        restorePosition();
+      });
+    });
+  };
+  window.addEventListener('resize', schedule);
+  window.addEventListener('pageshow', schedule);
+  document.addEventListener('visibilitychange', schedule);
+  if (typeof ResizeObserver === 'function') {
+    let previousSize = '';
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0].contentRect;
+      const size = rect.width + ':' + rect.height;
+      if (size === previousSize) return;
+      previousSize = size;
+      schedule();
+    });
+    observer.observe(document.documentElement);
+  }
+  if (typeof IntersectionObserver === 'function') {
+    const visibility = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) schedule();
+    });
+    visibility.observe(document.documentElement);
+  }
+  schedule();
+}
+
 // Practice controls use the existing nginx /exam_api route and never replace active files.
 (() => {
   const script = document.currentScript;
@@ -6,40 +43,58 @@
   fetch(new URL(url.href + '/available'), {cache: 'no-store'}).then(response => {
     if (!response.ok) return;
     const show = () => {
+      if (document.querySelector('.practice-review-control')) return;
       const link = document.createElement('a');
       link.href = url.href;
       link.textContent = 'Practice & review';
       link.setAttribute('aria-label', 'Practice choices and saved attempts');
-      link.style.cssText = 'position:fixed;left:300px;top:4px;z-index:10000;background:#26351f;color:#d4efbb;border:1px solid #66894e;padding:8px 13px;border-radius:999px;font:600 13px system-ui;text-decoration:none;box-shadow:0 2px 8px #0004';
+      link.style.cssText = 'position:fixed;left:auto;right:136px;top:4px;width:max-content;min-width:0;max-width:calc(100vw - 16px);height:28px;box-sizing:border-box;display:inline-flex;align-items:center;white-space:nowrap;line-height:1;z-index:10000;background:#161616;color:#bcf77d;border:1px solid #7ebc50;padding:3px 10px;border-radius:6px;font:600 12px/1 system-ui;text-decoration:none;box-shadow:0 2px 8px #0004';
+      link.className = 'practice-review-control';
+      if (!document.getElementById('practice-review-default-position')) {
+        const style = document.createElement('style');
+        style.id = 'practice-review-default-position';
+        // CSS follows the iframe viewport as it opens; do not measure it during boot.
+        style.textContent = '.practice-review-control:not([data-positioned]){left:auto!important;right:136px!important;top:4px!important}@media(max-width:619px){.practice-review-control:not([data-positioned]){right:8px!important;top:40px!important}}';
+        document.head.appendChild(style);
+      }
       document.body.appendChild(link);
       link.draggable = false;
       link.style.userSelect = 'none';
       link.style.touchAction = 'none';
       link.title = 'Open practice history. Drag to move, or hold Alt and use arrow keys.';
-      const positionKey = 'practice-review-position:' + url.origin + url.pathname;
+      const positionKey = 'practice-review-position-v2:' + url.origin + url.pathname;
       let savedPosition = null;
       try { savedPosition = JSON.parse(localStorage.getItem(positionKey)); } catch (_) {}
       const place = (left, top) => {
         const rect = link.getBoundingClientRect();
         const x = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
         const y = Math.max(4, Math.min(top, window.innerHeight - rect.height - 8));
+        link.setAttribute('data-positioned', 'true');
+        link.style.right = 'auto';
         link.style.left = x + 'px';
         link.style.top = y + 'px';
       };
       const save = () => {
         const rect = link.getBoundingClientRect();
-        try { localStorage.setItem(positionKey, JSON.stringify({left: rect.left, top: rect.top})); } catch (_) {}
+        savedPosition = {left: rect.left, top: rect.top};
+        try { localStorage.setItem(positionKey, JSON.stringify(savedPosition)); } catch (_) {}
       };
       if (savedPosition && Number.isFinite(savedPosition.left) && Number.isFinite(savedPosition.top)) {
         place(savedPosition.left, savedPosition.top);
       } else {
-        place(window.innerWidth < 620 ? 12 : 300, window.innerWidth < 620 ? 48 : 4);
+        savedPosition = null;
+        // Leave the default CSS right anchor intact, including across resize.
       }
       let gesture = null;
       let suppressClick = false;
       link.addEventListener('pointerdown', event => {
         if (event.button !== 0 || event.isPrimary === false) return;
         const rect = link.getBoundingClientRect();
+        // Keep the rendered size fixed throughout the drag.
+        link.style.width = rect.width + 'px';
+        link.style.minWidth = rect.width + 'px';
+        link.style.height = rect.height + 'px';
+        link.style.flex = 'none';
         gesture = {id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top};
         suppressClick = false;
         link.setPointerCapture(event.pointerId);
@@ -74,9 +129,8 @@
         place(rect.left + direction[0], rect.top + direction[1]);
         save();
       });
-      window.addEventListener('resize', () => {
-        const rect = link.getBoundingClientRect();
-        place(rect.left, rect.top);
+      observePracticeToolbarLayout(() => {
+        if (savedPosition) place(savedPosition.left, savedPosition.top);
       });
     };
     if (document.body) show();
@@ -517,30 +571,8 @@ async function pollExamMonitorStatus() {
   }
 }
 
-// Practice uses a compact identity without the exam account details.
-async function updatePracticeBadge() {
-  if (!monitorStatusUrl) return false;
-  try {
-    const response = await fetch(new URL('exam_api/practice-variants/badge', monitorStatusUrl), {cache: 'no-store'});
-    if (!response.ok) return false;
-    const data = await response.json();
-    if (typeof data.label !== 'string') return false;
-    const badge = document.querySelector('.exam-badge');
-    const label = document.querySelector('.exam-badge-label');
-    if (!badge || !label) return false;
-    label.textContent = data.label;
-    badge.style.cssText = 'position:fixed;left:12px;top:4px;z-index:9999;display:flex;align-items:center;gap:8px;background:#26351f;color:#d4efbb;border:1px solid #66894e;padding:8px 13px;border-radius:999px;font:600 13px system-ui;box-shadow:0 2px 8px #0004;pointer-events:none';
-    const variantLabel = document.querySelector('.exam-assigned-variant');
-    if (variantLabel) variantLabel.hidden = true;
-    const reload = badge.querySelector('.exam-reload-btn:not(.exam-monitor-status-btn)');
-    if (reload) reload.textContent = 'Reload';
-    return true;
-  } catch (_) { return false; }
-}
-
 // Read the selected problem without changing setup or practice selection.
 async function updateAssignedVariant() {
-  if (await updatePracticeBadge()) return;
   if (!monitorStatusUrl) return;
   const label = document.querySelector(".exam-assigned-variant");
   if (!label) return;
@@ -550,11 +582,70 @@ async function updateAssignedVariant() {
     const matches = [...(await response.text()).matchAll(/^chosen_problem=([A-Za-z0-9_-]+)\s*$/gm)];
     if (!matches.length) return;
     const variant = matches[matches.length - 1][1];
-    label.textContent = " - variant " + variant;
-    label.title = "Assigned problem variant: " + variant;
+    const identity = document.querySelector('.exam-badge-label');
+    const parts = identity && identity.textContent.match(/^(pex\S*)\s+(?:-\s*)?(\d+)(?:[A-Za-z]+)?(\s+-.*)?$/);
+    if (parts) {
+      identity.textContent = parts[1] + ' - ' + parts[2] + variant.toUpperCase() + (parts[3] || '');
+      label.textContent = '';
+      label.hidden = true;
+    } else {
+      label.textContent = " - variant " + variant.toUpperCase();
+    }
+    label.title = "Assigned problem variant: " + variant.toUpperCase();
   } catch (error) {
     // Older containers and non-exam levels may not publish a variant.
   }
+}
+
+
+function installInformationBarDrag(badge) {
+  const key = 'exam-info-position-v2:' + monitorStatusUrl;
+  badge.style.cssText = 'position:fixed;left:10px;right:auto;top:4px;width:max-content;min-width:0;height:28px;box-sizing:border-box;z-index:9999;display:flex;align-items:center;gap:6px;background:#007acc;color:#fff;border:1px solid #55a6d9;padding:2px 8px;border-radius:6px;font:600 12px/1 system-ui;box-shadow:0 2px 6px #0004;pointer-events:auto;cursor:grab;user-select:none;touch-action:none;max-width:calc(100vw - 16px)';
+  badge.title = 'Drag the information bar to move it.';
+  badge.querySelectorAll('.exam-reload-btn').forEach(button => {
+    button.style.cssText = 'height:20px;min-height:20px;box-sizing:border-box;padding:1px 5px;font:12px/1 system-ui';
+  });
+  const place = (left, top) => {
+    const rect = badge.getBoundingClientRect();
+    badge.style.right = 'auto';
+    badge.style.left = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)) + 'px';
+    badge.style.top = Math.max(4, Math.min(top, window.innerHeight - rect.height - 8)) + 'px';
+  };
+  let preferredPosition = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+      preferredPosition = saved;
+      place(saved.left, saved.top);
+    }
+  } catch (_) {}
+  let drag = null;
+  badge.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || event.isPrimary === false || event.target.closest('button,a,input,select,textarea')) return;
+    const rect = badge.getBoundingClientRect();
+    drag = {id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top};
+    badge.setPointerCapture(event.pointerId);
+    badge.style.cursor = 'grabbing';
+    event.preventDefault();
+  });
+  badge.addEventListener('pointermove', event => {
+    if (!drag || drag.id !== event.pointerId) return;
+    place(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y);
+  });
+  const finish = event => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const rect = badge.getBoundingClientRect();
+    preferredPosition = {left: rect.left, top: rect.top};
+    try { localStorage.setItem(key, JSON.stringify(preferredPosition)); } catch (_) {}
+    drag = null;
+    badge.style.cursor = 'grab';
+  };
+  badge.addEventListener('pointerup', finish);
+  badge.addEventListener('pointercancel', finish);
+  badge.addEventListener('lostpointercapture', finish);
+  observePracticeToolbarLayout(() => {
+    if (preferredPosition) place(preferredPosition.left, preferredPosition.top);
+  });
 }
 
 function insertBadge() {
@@ -689,6 +780,7 @@ function insertBadge() {
   
   badge.appendChild(pasteBtn);
   document.body.appendChild(badge);
+  installInformationBarDrag(badge);
   ensureMonitorHint();
   if (lastMonitorStatus) applyMonitorStatus(lastMonitorStatus);
 }
