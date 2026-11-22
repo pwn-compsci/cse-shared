@@ -185,30 +185,76 @@ def feedback(home, config, attempt):
         return []
 
 
-def editor_workspace(path):
-    """Open the actual saved directory with a tester task scoped to its tests."""
-    workspace = {
-        'folders': [{'path': '.', 'name': 'Saved practice attempt · ' + Path(path).name}],
-        'settings': {'window.title': 'Saved attempt · ${rootName}${separator}${appName}'},
-        'tasks': {'version': '2.0.0', 'tasks': [{
-            'label': 'Test saved attempt', 'type': 'process',
-            'command': '/challenge/tester', 'args': ['--use-current-dir'],
-            'options': {'cwd': '${workspaceFolder}'},
-            'group': {'kind': 'test', 'isDefault': True},
-            'presentation': {'reveal': 'always', 'panel': 'dedicated'},
-            'problemMatcher': ['$gcc'],
-        }]},
-    }
+def saved_workspace(path):
+    """A native workspace opens the saved folder, without the 'Open Workspace' prompt."""
     name = '.practice-review.code-workspace'
-    temporary = '.practice-review-' + os.urandom(8).hex()
     with directory(path) as parent:
         owner = os.fstat(parent)
+        data = {}
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            with os.fdopen(fd, 'r') as stream:
+                info = os.fstat(stream.fileno())
+                if stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= 512 * 1024:
+                    try:
+                        data = json.load(stream)
+                    except (ValueError, UnicodeError):
+                        pass
+        except FileNotFoundError:
+            pass
+        if not isinstance(data, dict):
+            data = {}
+        data['folders'] = [{'path': '.', 'name': 'Saved attempt · ' + Path(path).name}]
+        if not isinstance(data.get('settings'), dict):
+            data['settings'] = {}
+        data['settings'].setdefault('window.title', 'Saved attempt · ${rootName}${separator}${appName}')
+        # A clean review shell avoids the exam alias that discards tester arguments.
+        if not isinstance(data['settings'].get('terminal.integrated.profiles.linux'), dict):
+            data['settings']['terminal.integrated.profiles.linux'] = {}
+        data['settings']['terminal.integrated.profiles.linux']['Saved practice shell'] = {
+            'path': '/opt/practice-review-bin/shell', 'args': []}
+        # Reopening an archive must not reconnect to a pre-fix shell.
+        data['settings']['terminal.integrated.enablePersistentSessions'] = False
+        data['settings']['terminal.integrated.defaultProfile.linux'] = 'Saved practice shell'
+        if not isinstance(data['settings'].get('terminal.integrated.env.linux'), dict):
+            data['settings']['terminal.integrated.env.linux'] = {}
+        environment = data['settings']['terminal.integrated.env.linux']
+        environment['PATH'] = '/opt/practice-review-bin:/challenge:/challenge/bin:/run/dojo/bin:${env:PATH}'
+        environment['PROMPT_COMMAND'] = 'source /opt/practice-review-bin/history.sh; __cse_log_cmd'
+
+        if not isinstance(data.get('tasks'), dict):
+            data['tasks'] = {'version': '2.0.0'}
+        if not isinstance(data['tasks'].get('tasks'), list):
+            data['tasks']['tasks'] = []
+        data['tasks'].setdefault('version', '2.0.0')
+        tasks = data['tasks']['tasks']
+        if not any(isinstance(task, dict) and task.get('label') == 'Test saved attempt' for task in tasks):
+            tasks.append({'label': 'Test saved attempt', 'type': 'process', 'command': '/opt/practice-review-bin/tester',
+                          'args': ['-u'], 'options': {'cwd': '${workspaceFolder}'}, 'problemMatcher': []})
+        for task in tasks:
+            if isinstance(task, dict) and task.get('label') == 'Test saved attempt' and task.get('command') == '/challenge/tester':
+                task['command'] = '/opt/practice-review-bin/tester'
+        names = set(os.listdir(parent))
+        source = 'main.cpp' if 'main.cpp' in names else 'main.c' if 'main.c' in names else None
+        if source:
+            build = 'Build saved attempt for debugging'
+            if not any(isinstance(task, dict) and task.get('label') == build for task in tasks) and 'Makefile' not in names:
+                tasks.append({'label': build, 'type': 'process', 'command': 'g++' if source.endswith('.cpp') else 'gcc',
+                              'args': ['-g', '-O0', source, '-o', 'main.bin'],
+                              'options': {'cwd': '${workspaceFolder}'}, 'problemMatcher': ['$gcc']})
+            config = {'name': 'Debug saved attempt', 'type': 'cppdbg', 'request': 'launch',
+                      'program': '${workspaceFolder}/main.bin', 'cwd': '${workspaceFolder}',
+                      'args': [], 'stopAtEntry': True, 'externalConsole': False,
+                      'MIMode': 'gdb', 'miDebuggerPath': '/usr/bin/gdb'}
+            if 'Makefile' not in names:
+                config['preLaunchTask'] = build
+            data.setdefault('launch', {'version': '0.2.0', 'configurations': [config]})
+        temporary = '.practice-workspace-' + os.urandom(8).hex()
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
         try:
             with os.fdopen(fd, 'w') as stream:
-                json.dump(workspace, stream, indent=2)
+                json.dump(data, stream, indent=2)
                 os.fchown(stream.fileno(), owner.st_uid, owner.st_gid)
-            # Replacing the directory entry avoids writes through existing links.
             os.rename(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
         finally:
             try:
@@ -216,3 +262,19 @@ def editor_workspace(path):
             except FileNotFoundError:
                 pass
     return str(Path(path) / name)
+
+
+def active_editor_target(config, home, active):
+    """Return to the original project workspace, retaining its tasks and debugger."""
+    module = str(config.get('module', ''))
+    hw = str(config.get('hw') or '')
+    if not hw:
+        match = re.search(r'(\d+)', module)
+        hw = match[1] if match else ''
+    if config.get('course_code') == 'cse545' and not hw:
+        workspace = Path(home) / module / ('lab--' + str(config['level']) + '.code-workspace')
+    elif hw:
+        workspace = active.parent / ('proj-' + hw + '-' + str(config['level']) + '.code-workspace')
+    else:
+        workspace = Path(home) / module / 'exam.code-workspace'
+    return {'workspace': str(workspace)} if workspace.is_file() else {'folder': str(active)}

@@ -96,15 +96,23 @@ async function mount(file, {ok = true, ready = true, saved = null, width = 1340,
     assert.equal(manual.link.style.top, '80px');
 
     const source = fs.readFileSync(path.join(__dirname, file), 'utf8');
-    const identity = {textContent: 'pex30 01 - 123 - Student'}, assigned = {};
+    const identity = {textContent: 'pex30 01 - 123 - Student'}, assigned = {}, bar = {style:{}};
     const ctx = vm.createContext({URL, monitorStatusUrl: 'https://example.edu/workspace/proxy/8080/exam-monitor-status.json',
-      document: {querySelector: selector => selector === '.exam-badge-label' ? identity : assigned},
-      fetch: async () => ({ok: true, text: async () => 'chosen_problem=f\n'})});
+      document: {querySelector: selector => selector === '.exam-badge-label' ? identity : selector === '.exam-badge' ? bar : assigned},
+      fetch: async () => ({ok: true, json: async () => ({variant:'f',practice:true})})});
     vm.runInContext(source.slice(source.indexOf('async function updateAssignedVariant'), source.indexOf('function installInformationBarDrag')), ctx);
     await ctx.updateAssignedVariant(); await ctx.updateAssignedVariant();
     assert.equal(identity.textContent, 'pex30 - 01F - 123 - Student');
     assert.equal(assigned.hidden, true);
+    assert.equal(bar.style.backgroundColor, '#007acc');
+    identity.textContent = 'exam30 01 - 123 - Student';
+    ctx.fetch = async () => ({ok:true,json:async()=>({variant:'f',practice:false})});
+    await ctx.updateAssignedVariant();
+    assert.equal(identity.textContent, 'exam30 - 01F - 123 - Student');
+    assert.equal(bar.style.backgroundColor, 'rgba(63,81,181,0.9)');
+    assert.equal(assigned.textContent, '');
     assert.match(source, /reloadBtn.textContent = "↻"/);
+
   }
   console.log('Practice controls passed: compact sizes, icons, identity, click/drag, saved positions, keyboard movement, and collapsed iframe startup.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

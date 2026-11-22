@@ -177,7 +177,7 @@ Deploy `.init`, `.examsetup`, the web helper modules and badge scripts together.
 
 The information bar retains account information and the circular reload control,
 with an uppercase practice variant in its identity, for example
-`pex30 - 01F - <account ID> - <student name>`. It uses VS Code blue (`#007acc`).
+`pex30 - 01F - <account ID> - <student name>`. Real exams retain the original purple; only confirmed practice environments use VS Code blue (`#007acc`). Both use an uppercase variant immediately after the level number, without a separate "variant" suffix.
 The dark **Practice & review** control keeps its green border and text. Both are
 28px tall; information starts at the top left and review at the top right, with
 136px reserved for editor controls. Practice review is hidden on single-variant
@@ -198,30 +198,60 @@ Toolbar scripts use no-store caching so a stale copy cannot overwrite the UI.
 
 ## Two-click saved-attempt editor
 
-The default flow is **Practice & review → Open saved attempt**. Saved attempts are
-listed before the new-attempt controls and initially filtered to the active
-variant. **View other encountered variants and older attempts** expands the list;
-**Show only current variant** returns to the default. Legacy unlabelled backups
-remain accessible in the expanded list without inventing variant assignments.
+The main practice page lists previous attempts of the **current variant** at the
+bottom, below the new-attempt controls. **View other variants and older attempts**
+opens a separate page whose saved-attempt list and testing instructions are at
+the top. That page excludes the current variant. Legacy unlabelled backups remain
+available there without inventing variant assignments.
 
-Opening an indexed attempt creates a small `.practice-review.code-workspace`
-inside that saved directory and opens it in a new browser tab using the running
-code-server's workspace query support. It does not restart the container, move or
-restore source into the active directory, change the selected variant, or require
-the sandbox module. The source is editable in place; edits change the saved work.
-The hidden workspace file is excluded by existing source-copy/restore rules.
+**Open saved attempt** opens the selected saved **directory** in another editable
+VS Code workspace tab whose folder is that saved directory. It does not open a single file, copy the active
+`main.cpp`, switch the active workspace, or restart the active editor. Its small `.practice-review.code-workspace` metadata file is opened automatically, avoiding the folder's "Open Workspace" notification. Valid existing settings and tasks are retained; the folder reference always points to the selected saved directory.
 
-Use **Tasks → Run Test Task → Test saved attempt** in that editor to run
-`/challenge/tester --use-current-dir` with the saved directory as its working
-directory. This selects that directory's archived `system_tests`, rather than the
-active variant's tests. It requires those archived tests to exist and deliberately
-uses the tester's no-flag review mode. **Start this variant fresh** remains a
-separate next-start action. The old read-only file-preview URLs and deferred
-resume endpoint remain compatible with old links, but they are no longer the
-main saved-attempt entry point.
+The active editor's Landlock sandbox only permits its working directory, so it
+cannot serve archive folders. A separate review code-server starts on demand on
+loopback port 4300 and is proxied through nginx at `/practice-editor/`, behind the
+existing editor-authentication cookie. It runs as `hacker` with its own profile
+and access to validated saved directories for this level, not the active working
+directory. The active editor's sandbox is unchanged. Review process bookkeeping
+is private and ephemeral under `/opt`; variant history remains in `horse.json`.
 
-The generated workspace is scoped to the validated saved directory and is written
-by replacing a generated file, not by following symlinks or truncating existing
-hard-linked files. Requests cannot supply arbitrary workspace paths. Close/return
-links on the practice page explicitly reopen the active work folder so the
-code-server's last-opened-folder preference does not choose a review folder there.
+From the opened directory's terminal, run **`tester -u`**. This tests that saved
+code against its archived `system_tests` and does not award a flag. The regular
+system-test action follows the active challenge's configuration and should not
+be used to test a different loaded variant. The other-variants page prominently
+explains this; the same directory-mode command is also shown for current-variant
+archives. Archived tests must exist. Edits update the saved directory directly.
+
+No sandbox-module visit or container restart is required to review a saved folder.
+**Start this variant fresh** remains a separate next-start action. The old read-only
+preview URLs and deferred resume endpoint remain compatible with old links, but
+are not the primary saved-attempt entry point.
+
+
+The review editor uses a separate user-data profile and process, so opening its
+workspace does not replace the active attempt's workspace or debugger session.
+For C/C++ `main.c`/`main.cpp` attempts, the saved workspace includes **Debug saved
+attempt**, targeting `${workspaceFolder}/main.bin` with GDB and that saved folder
+as cwd. Single-file exercises get a `-g -O0` build task; Makefile exercises retain
+their own build workflow and must be built with debug symbols. Other languages
+require their appropriate debugger extension and configuration. No active-folder
+absolute paths are copied into these generated debugger settings.
+
+
+Saved work uses a clean **Saved practice shell**. Its `tester -u` command goes
+through a practice-only local testing endpoint, which accepts only an indexed
+saved directory and current-directory testing flags. It invokes the existing
+tester with `--use-current-dir` and a directory-bound cwd, outside the editor's
+no-new-privileges sandbox. The normal exam `tester` alias and command server are
+unchanged. The shell loads the existing command-history hook without sourcing
+the exam aliases. Review terminals are not restored across page sessions, so
+reopening a saved attempt starts a fresh shell. This avoids the exam shell alias discarding `-u` and accidentally
+testing the active source. The bridge cannot select arbitrary directories or
+request flag-awarding normal-mode tests.
+
+The assigned-variant toolbar data comes from a small local Flask endpoint for
+both exam modes, rather than depending on startup DOM timing or static-file
+permissions. It reads the same selected-problem record and actual practice flag.
+Variant history still comes from the student's persisted `horse.json` and launch
+records, not the primary application database.

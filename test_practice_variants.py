@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from flask import Flask
 
@@ -186,6 +186,15 @@ class PersistenceAndUITests(unittest.TestCase):
         saved = history[pv.METADATA][state["key"]]["attempts"][-1]
         return active, saved
 
+    def test_assigned_variant_metadata_supports_real_and_practice_exams(self):
+        chosen = self.config_path.with_name('chosen_problem.dat')
+        chosen.write_text('chosen_problem=a\nchosen_problem=f\n')
+        self.assertEqual(self.client.get('/exam_api/assigned-variant').json, {'variant': 'f', 'practice': True})
+        self.config_path.write_text(json.dumps({'examLevel': 'exam-30-01'}))
+        self.assertEqual(self.client.get('/exam_api/assigned-variant').json, {'variant': 'f', 'practice': False})
+        self.config_path.write_text('{}')
+        self.assertEqual(self.client.get('/exam_api/assigned-variant').status_code, 404)
+
     def test_practice_badge_is_compact_for_single_and_multiple_variants(self):
         response = self.client.get(self.url + '/badge')
         self.assertEqual(response.status_code, 200)
@@ -238,26 +247,34 @@ class PersistenceAndUITests(unittest.TestCase):
         pv.restore_current(self.runtime)
         self.assertEqual((active / "main.cpp").read_text(), 'continued work')
 
-    def test_open_saved_attempt_redirects_to_editable_workspace_without_restart(self):
+    def test_open_saved_attempt_redirects_to_its_directory_without_restart(self):
         from urllib.parse import parse_qs, urlparse, urljoin
         active, saved = self.saved_attempt()
         active.mkdir(parents=True)
         (active / 'main.cpp').write_text('current code stays here')
         state_before = self.runtime.read_text()
-        response = self.client.get(self.url + '/open', query_string={'attempt': saved['id']})
+        with patch.object(pv.review_editor, 'ensure_running') as ensure:
+            response = self.client.get(self.url + '/open', query_string={'attempt': saved['id']})
+        ensure.assert_called_once()
+        self.assertNotIn(str(active), ensure.call_args.args[1])
         self.assertEqual(response.status_code, 302)
         redirect = urljoin('https://example.test/proxy/8080' + self.url + '/open', response.location)
-        self.assertEqual(urlparse(redirect).path, '/proxy/8080/')
-        workspace = Path(parse_qs(urlparse(redirect).query)['workspace'][0])
-        self.assertEqual(workspace.parent, active.parent / saved['directory'])
+        self.assertEqual(urlparse(redirect).path, '/proxy/8080/practice-editor/')
+        query = parse_qs(urlparse(redirect).query)
+        self.assertNotIn('file', query)
+        workspace = Path(query['workspace'][0])
+        folder = workspace.parent
         data = json.loads(workspace.read_text())
         self.assertEqual(data['folders'][0]['path'], '.')
-        task = data['tasks']['tasks'][0]
-        self.assertEqual(task['args'], ['--use-current-dir'])
-        self.assertEqual(task['options']['cwd'], '${workspaceFolder}')
+        self.assertEqual(data['launch']['configurations'][0]['program'], '${workspaceFolder}/main.bin')
+        self.assertIn('-g', data['tasks']['tasks'][-1]['args'])
+        self.assertEqual(folder, active.parent / saved['directory'])
+        self.assertNotEqual(folder, active)
+        self.assertTrue(folder.is_dir())
+        self.assertTrue(workspace.is_file())
         self.assertEqual(self.runtime.read_text(), state_before)
         self.assertEqual((active / 'main.cpp').read_text(), 'current code stays here')
-        self.assertIn('old_answer', (workspace.parent / 'main.cpp').read_text())
+        self.assertIn('old_answer', (folder / 'main.cpp').read_text())
 
     def test_saved_list_defaults_to_current_variant_and_opens_in_new_tab(self):
         active, saved = self.saved_attempt()
@@ -268,10 +285,108 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertIn('Open saved attempt', text)
         self.assertIn(saved['id'], text)
         self.assertIn('target="_blank" rel="noopener"', text)
-        self.assertIn('Show only current variant', text)
+        self.assertIn('Back to current variant', text)
         # Re-selecting a makes that same entry visible by default.
         pv.launch(self.config, self.home, ['a', 'secret-unseen'], 'third', 'a', self.runtime)
         self.assertIn(saved['id'], self.client.get(self.url).get_data(as_text=True))
+
+    def test_current_history_at_bottom_and_other_variants_on_separate_page(self):
+        active, saved = self.saved_attempt()
+        current = self.client.get(self.url).get_data(as_text=True)
+        self.assertGreater(current.index('<section class="history">'), current.index('id="fresh-choice"'))
+        self.assertIn('href="practice-variants/other"', current)
+        other = self.client.get(self.url + '/other').get_data(as_text=True)
+        self.assertIn('Other saved variants', other)
+        self.assertIn(saved['id'], other)
+        self.assertIn('tester -u', other)
+        self.assertNotIn('id="random-title"', other)
+        self.assertIn('href="open?attempt=', other)
+        self.assertIn('href="../practice-variants"', other)
+        pv.launch(self.config, self.home, ['a', 'secret-unseen'], 'third', 'a', self.runtime)
+        self.assertNotIn(saved['id'], self.client.get(self.url + '/other').get_data(as_text=True))
+
+    def test_review_tester_is_scoped_and_keeps_current_attempt_untouched(self):
+        active, saved = self.saved_attempt()
+        token = self.client.get(self.url + '/review-test').json['token']
+        directory = str(active.parent / saved['directory'])
+        def execute(command, **kwargs):
+            self.assertEqual(command, ['/challenge/tester', '--use-current-dir'])
+            self.assertEqual(os.path.realpath(kwargs['cwd']), directory)
+            return SimpleNamespace(stdout='archived result', returncode=0)
+        with patch.object(pv.subprocess, 'run', side_effect=execute) as run:
+            response = self.client.post(self.url + '/review-test', json={'token': token, 'directory': directory, 'args': ['-u']})
+            self.assertEqual(response.json, {'output': 'archived result', 'returncode': 0})
+            run.assert_called_once()
+        for path, arguments in ((str(active), ['-u']), (directory, ['--source-dir', '/etc']), (directory, [])):
+            with patch.object(pv.subprocess, 'run') as run:
+                self.assertEqual(self.client.post(self.url + '/review-test', json={'token': token, 'directory': path, 'args': arguments}).status_code, 400)
+                run.assert_not_called()
+        self.config_path.write_text('{}')
+        self.assertEqual(self.client.get(self.url + '/review-test').status_code, 404)
+
+    def test_exit_preserves_the_active_project_workspace(self):
+        active = Path(json.loads(self.runtime.read_text())['workdir'])
+        active.parent.mkdir(parents=True, exist_ok=True)
+        project = active.parent / 'proj-23-01.code-workspace'
+        project.write_text('{}')
+        target = pv.attempts.active_editor_target(self.config, self.home, active)
+        self.assertEqual(target, {'workspace': str(project)})
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('proj-23-01.code-workspace', text)
+
+    def test_saved_workspace_preserves_custom_settings_and_targets_saved_folder(self):
+        active, saved = self.saved_attempt()
+        folder = active.parent / saved['directory']
+        workspace = folder / '.practice-review.code-workspace'
+        workspace.write_text(json.dumps({'folders': [{'path': str(active)}],
+            'settings': {'editor.fontSize': 18}, 'tasks': {'tasks': [{'label': 'My task'}]}}))
+        pv.attempts.saved_workspace(folder)
+        data = json.loads(workspace.read_text())
+        self.assertEqual(data['folders'][0]['path'], '.')
+        self.assertEqual(data['settings']['editor.fontSize'], 18)
+        self.assertFalse(data['settings']['terminal.integrated.enablePersistentSessions'])
+        self.assertEqual(data['settings']['terminal.integrated.profiles.linux']['Saved practice shell']['args'],
+                         [])
+        self.assertEqual(data['settings']['terminal.integrated.profiles.linux']['Saved practice shell']['path'],
+                         '/opt/practice-review-bin/shell')
+        self.assertIn('My task', [t['label'] for t in data['tasks']['tasks']])
+        self.assertEqual(data['launch']['configurations'][0]['cwd'], '${workspaceFolder}')
+
+    def test_review_shell_restores_history_hook_without_exam_aliases(self):
+        helper = self.home / 'history.sh'
+        helper.write_text(pv.review_editor.HISTORY_SETUP)
+        script = 'PROMPT_COMMAND=__cse_log_cmd; source "$1"; source "$1"; declare -F __cse_log_cmd; test "$PROMPT_COMMAND" = __cse_log_cmd; ! alias tester 2>/dev/null'
+        result = subprocess.run(['/bin/bash', '--noprofile', '--init-file', str(helper), '-i', '-c', script, 'review', str(helper)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('__cse_log_cmd', result.stdout)
+
+    def test_review_server_uses_separate_profile_and_only_saved_folder_grants(self):
+        student_home = self.home / 'student'
+        student_home.mkdir()
+        saved = self.home / 'saved'
+        saved.mkdir()
+        process = Mock(pid=123456789, poll=Mock(return_value=None))
+        student = SimpleNamespace(pw_dir=str(student_home), pw_uid=65534, pw_gid=65534)
+        state = self.home / 'review-server.json'
+        editor = pv.review_editor
+        with patch.object(editor, 'STATE', str(state)), patch.object(editor, 'BIN', str(self.home / 'review-bin')), patch.object(editor, 'LOG', str(self.home / 'review.log')), patch.object(editor.pwd, 'getpwnam', return_value=student), \
+             patch.object(editor.os, 'getgrouplist', return_value=[65534]), patch.object(editor.os, 'access', return_value=True), \
+             patch.object(editor.subprocess, 'Popen', return_value=process) as launch, patch.object(editor, 'ready', side_effect=[False, True]):
+            editor.ensure_running(self.home, [str(saved)], pv.history_file)
+        args, kwargs = launch.call_args
+        command = args[0]
+        self.assertIn(str(saved), command)
+        self.assertIn('--bind-addr=127.0.0.1:4300', command)
+        self.assertIn('--user-data-dir=' + str(student_home / '.local/share/code-server-practice-review'), command)
+        self.assertNotIn(str(student_home), command)
+        self.assertNotIn(str(self.home), command)
+        self.assertEqual(kwargs['user'], 65534)
+        self.assertEqual(kwargs['extra_groups'], [65534])
+        self.assertTrue(kwargs['env']['PATH'].startswith('/challenge:'))
+        with patch.object(editor, 'STATE', str(state)), patch.object(editor, 'BIN', str(self.home / 'review-bin')), patch.object(editor.pwd, 'getpwnam', return_value=student), patch.object(editor.os, 'kill'), \
+             patch.object(editor, 'ready', return_value=True), patch.object(editor.subprocess, 'Popen') as launch:
+            editor.ensure_running(self.home, [str(saved)], pv.history_file)
+            launch.assert_not_called()
 
     def test_open_saved_attempt_rejects_paths_and_symlink_directories(self):
         active, saved = self.saved_attempt()

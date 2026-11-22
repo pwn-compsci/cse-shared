@@ -577,19 +577,24 @@ async function updateAssignedVariant() {
   const label = document.querySelector(".exam-assigned-variant");
   if (!label) return;
   try {
-    const response = await fetch(new URL('exam-variant.txt', monitorStatusUrl), {cache: 'no-store'});
+    const response = await fetch(new URL('exam_api/assigned-variant', monitorStatusUrl), {cache: 'no-store'});
     if (!response.ok) return;
-    const matches = [...(await response.text()).matchAll(/^chosen_problem=([A-Za-z0-9_-]+)\s*$/gm)];
-    if (!matches.length) return;
-    const variant = matches[matches.length - 1][1];
+    const data = await response.json();
+    if (typeof data.variant !== 'string') return;
+    const variant = data.variant;
+    const bar = document.querySelector('.exam-badge');
+    if (bar) {
+      bar.style.backgroundColor = data.practice ? '#007acc' : 'rgba(63,81,181,0.9)';
+      bar.style.borderColor = data.practice ? '#55a6d9' : '#7c87d1';
+    }
     const identity = document.querySelector('.exam-badge-label');
-    const parts = identity && identity.textContent.match(/^(pex\S*)\s+(?:-\s*)?(\d+)(?:[A-Za-z]+)?(\s+-.*)?$/);
+    const parts = identity && identity.textContent.match(/^(\S+)\s+(?:-\s*)?(\d+)(?:[A-Za-z]+)?(\s+-.*)?$/);
     if (parts) {
       identity.textContent = parts[1] + ' - ' + parts[2] + variant.toUpperCase() + (parts[3] || '');
       label.textContent = '';
       label.hidden = true;
     } else {
-      label.textContent = " - variant " + variant.toUpperCase();
+      label.textContent = variant.toUpperCase();
     }
     label.title = "Assigned problem variant: " + variant.toUpperCase();
   } catch (error) {
@@ -600,11 +605,8 @@ async function updateAssignedVariant() {
 
 function installInformationBarDrag(badge) {
   const key = 'exam-info-position-v2:' + monitorStatusUrl;
-  badge.style.cssText = 'position:fixed;left:10px;right:auto;top:4px;width:max-content;min-width:0;height:28px;box-sizing:border-box;z-index:9999;display:flex;align-items:center;gap:6px;background:#007acc;color:#fff;border:1px solid #55a6d9;padding:2px 8px;border-radius:6px;font:600 12px/1 system-ui;box-shadow:0 2px 6px #0004;pointer-events:auto;cursor:grab;user-select:none;touch-action:none;max-width:calc(100vw - 16px)';
+  badge.style.cssText = 'position:fixed;left:10px;right:auto;top:4px;width:max-content;min-width:0;height:28px;box-sizing:border-box;z-index:9999;display:flex;align-items:center;gap:6px;background:rgba(63,81,181,0.9);color:#fff;border:1px solid #7c87d1;padding:2px 8px;border-radius:6px;font:600 12px/1 system-ui;box-shadow:0 2px 6px #0004;pointer-events:auto;cursor:grab;user-select:none;touch-action:none;max-width:calc(100vw - 16px)';
   badge.title = 'Drag the information bar to move it.';
-  badge.querySelectorAll('.exam-reload-btn').forEach(button => {
-    button.style.cssText = 'height:20px;min-height:20px;box-sizing:border-box;padding:1px 5px;font:12px/1 system-ui';
-  });
   const place = (left, top) => {
     const rect = badge.getBoundingClientRect();
     badge.style.right = 'auto';
@@ -781,12 +783,12 @@ function insertBadge() {
   badge.appendChild(pasteBtn);
   document.body.appendChild(badge);
   installInformationBarDrag(badge);
+  updateAssignedVariant();
   ensureMonitorHint();
   if (lastMonitorStatus) applyMonitorStatus(lastMonitorStatus);
 }
 
 insertBadge();
-updateAssignedVariant();
 setInterval(updateAssignedVariant, monitorPollIntervalMs);
 pollExamMonitorStatus();
 setInterval(pollExamMonitorStatus, monitorPollIntervalMs);

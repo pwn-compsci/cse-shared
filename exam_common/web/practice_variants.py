@@ -9,8 +9,10 @@ import re
 import secrets
 import stat
 import sys
+import subprocess
 from urllib.parse import urlencode
 import practice_attempts as attempts
+import practice_review_editor as review_editor
 
 ATTEMPT = Path("/opt/practice_variant_attempt.json")
 CONFIG = Path("/challenge/.config/level.json")
@@ -188,6 +190,21 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
             state = json.load(stream)
         return config, state
 
+    @app.route("/exam_api/assigned-variant")
+    def assigned_variant():
+        try:
+            with open(config_path) as stream:
+                config = json.load(stream)
+            if not config.get('examLevel') and not is_practice(config):
+                abort(404)
+            payload = Path(config_path).with_name('chosen_problem.dat').read_text()
+            matches = re.findall(r'^chosen_problem=([A-Za-z0-9_-]+)\s*$', payload, re.MULTILINE)
+            if not matches:
+                return '', 503
+            return {'variant': matches[-1], 'practice': is_practice(config)}, 200, {'Cache-Control': 'no-store'}
+        except (OSError, ValueError):
+            return '', 503
+
     @app.route("/exam_api/practice-variants/badge")
     def practice_badge():
         try:
@@ -207,6 +224,46 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
         except (OSError, ValueError, KeyError):
             return "", 503, {"Cache-Control": "no-store"}
 
+    @app.route("/exam_api/practice-variants/review-test", methods=["GET", "POST"])
+    def test_saved_attempt():
+        try:
+            config, state = context()
+            if request.method == "GET":
+                return {"token": csrf_token}, 200, {"Cache-Control": "no-store"}
+            data = request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return {'error': 'Invalid saved-attempt test request.'}, 400
+            if not secrets.compare_digest(str(data.get("token", "")), csrf_token):
+                abort(403)
+            arguments = data.get("args", [])
+            if not isinstance(arguments, list) or not arguments or not all(
+                isinstance(arg, str) and arg in ('-u', '--use-current-dir', '--help', '-h') for arg in arguments
+            ) or not any(arg in ('-u', '--use-current-dir') for arg in arguments):
+                return {"error": "Use tester -u from the opened saved directory."}, 400
+            with history_file(state["history"]) as history:
+                entry = history[METADATA][state["key"]]
+                active = Path(state["workdir"])
+                record = next((a for a in entry.get("attempts", []) if str(active.parent / a['directory']) == data.get('directory')), None)
+                if not record:
+                    return {"error": "Only indexed saved practice directories can be tested here."}, 400
+                try:
+                    record, saved = attempts.find_attempt(entry, record['id'], active)
+                except (ValueError, OSError):
+                    abort(404)
+            command = ['/challenge/tester', '--use-current-dir']
+            if '--help' in arguments or '-h' in arguments:
+                command.append('--help')
+            # Keep cwd bound to the validated directory inode through process creation.
+            with attempts.directory(saved) as folder_fd:
+                try:
+                    result = subprocess.run(command, cwd=f'/proc/self/fd/{folder_fd}', pass_fds=(folder_fd,),
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+                except subprocess.TimeoutExpired:
+                    return {"output": "Saved-attempt testing timed out.\n", "returncode": 124}
+            return {"output": result.stdout, "returncode": result.returncode}
+        except (OSError, ValueError, KeyError):
+            return {"error": "Saved-attempt testing is unavailable; active work is unchanged."}, 503
+
     @app.route("/exam_api/practice-variants/open")
     def open_saved_attempt():
         try:
@@ -221,14 +278,24 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                     abort(404)
                 if record.get("variant") and record["variant"] not in entry["encountered"]:
                     abort(404)
-                workspace = attempts.editor_workspace(saved_path)
+                saved_workspace = attempts.saved_workspace(saved_path)
+                folders = []
+                for saved_record in entry.get("attempts", []):
+                    try:
+                        candidate, candidate_path = attempts.find_attempt(entry, saved_record["id"], active)
+                        folders.append(str(candidate_path))
+                    except (ValueError, OSError):
+                        continue
+                home = state.get("home") or str(Path(state["history"]).parent.parent)
+            review_editor.ensure_running(home, folders, history_file)
             # Relative redirect preserves pwn.college's surrounding proxy prefix.
-            response = redirect("../../?" + urlencode({"workspace": workspace}))
+            response = redirect("../../practice-editor/?" + urlencode({"workspace": saved_workspace}))
             response.headers["Cache-Control"] = "no-store"
             return response
         except (OSError, ValueError, KeyError):
             return "This saved attempt cannot be opened. Your current work is unchanged.", 503
 
+    @app.route("/exam_api/practice-variants/other", methods=["GET", "POST"])
     @app.route("/exam_api/practice-variants", methods=["GET", "POST"])
     def practice_variants():
         message = ""
@@ -255,9 +322,10 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                 encountered = [v for v in entry["encountered"] if v in state["variants"]]
                 pending = entry.get("pending", {})
                 saved_attempts = sorted(entry.get("attempts", []), key=lambda a: a["saved_at"], reverse=True)
-                all_attempts = request.args.get("show") == "all"
+                other_page = request.path.endswith("/other")
+                all_attempts = other_page or request.args.get("show") == "all"
                 saved_attempts = [a for a in saved_attempts if (
-                    (a.get("variant") in encountered or a.get("variant") is None) if all_attempts
+                    (a.get("variant") != state["current"] and (a.get("variant") in encountered or a.get("variant") is None)) if all_attempts
                     else a.get("variant") == state["current"])]
                 saved_attempts = [dict(a, label=attempts.display_time(a["saved_at"])) for a in saved_attempts]
                 requested = request.args.get("attempt")
@@ -281,13 +349,16 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                 response = make_response(render_template_string(REVIEW, record=record,
                     label=attempts.display_time(record["saved_at"]), names=names, selected=selected,
                     content=content, feedback=feedback, csrf=csrf_token,
-                    editor_href="../?" + urlencode({"folder": str(active)}),
+                    editor_href=("../../?" if other_page else "../?") + urlencode(attempts.active_editor_target(config, state.get("home") or Path(state["history"]).parent.parent, active)),
                     resumable=record.get("variant") in encountered))
             else:
                 response = make_response(render_template_string(PAGE, current=state["current"],
                     encountered=encountered, pending=pending, message=message, csrf=csrf_token,
                     saved_attempts=saved_attempts, all_attempts=all_attempts,
-                    editor_href="../?" + urlencode({"folder": str(active)})))
+                    other_href="practice-variants/other",
+                    choices_href="../practice-variants" if other_page else "?",
+                    open_href="open" if other_page else "practice-variants/open",
+                    editor_href=("../../?" if other_page else "../?") + urlencode(attempts.active_editor_target(config, state.get("home") or Path(state["history"]).parent.parent, active))))
         except (OSError, ValueError, KeyError):
             response = make_response("Practice choices are unavailable. Your current attempt is unchanged.", 503)
         response.headers["Cache-Control"] = "no-store"
@@ -362,17 +433,20 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101416;border:1px so
 Save your work, then restart the challenge from the course page. Opening a saved attempt needs no restart.</p></div>
 {% if message %}<p class="status" role="status">{{ message }}</p>{% endif %}
 {% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}{% if pending.attempt %}resume saved work for{% else %}retry{% endif %} variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
-<section class="history"><h2>Saved attempts</h2>
-<p>{% if all_attempts %}Showing encountered variants and older unlabelled attempts.{% else %}Showing saved attempts for your current variant, {{ current|upper }}.{% endif %}
+{% macro attempt_history() %}<section class="history"><h2>{% if all_attempts %}Other saved variants{% else %}Saved attempts · current variant {{ current|upper }}{% endif %}</h2>
+<p>{% if all_attempts %}Showing other encountered variants and older unlabelled attempts.{% else %}Showing saved attempts for your current variant, {{ current|upper }}.{% endif %}
 Open a saved folder in a new editable VS Code tab. Your current attempt stays open.</p>
-<p class="history-filter">{% if all_attempts %}<a href="?">Show only current variant {{ current|upper }}</a>{% else %}<a href="?show=all">View other encountered variants and older attempts</a>{% endif %}</p>
-<p class="history-help">Edits update the saved attempt. Use <strong>Tasks → Run Test Task → Test saved attempt</strong> to test that folder's code against its archived tests. This review mode does not award a flag. Times are Arizona time (MST).</p>
+<p class="history-filter">{% if all_attempts %}<a href="{{ choices_href }}">&larr; Back to current variant {{ current|upper }}</a>{% else %}<a href="{{ other_href }}">View other variants and older attempts</a>{% endif %}</p>
+{% if all_attempts %}<div class="notice"><p><strong>Testing a different variant? Run <code>tester -u</code> from that saved directory.</strong>
+The regular test action uses the active variant's tests. <code>tester -u</code> uses the opened folder's archived <code>system_tests</code> instead and does not award a flag.</p></div>{% endif %}
+<p class="history-help">The whole saved directory opens in a new editable VS Code tab. Edits update that saved work. Use <code>tester -u</code> in its terminal to run the archived tests. Times are Arizona time (MST).</p>
 {% for attempt in saved_attempts %}<article class="attempt-row">
 <div><strong>{% if attempt.variant %}Variant {{ attempt.variant }}{% else %}Older attempt · variant unknown{% endif %}</strong>
 <p><time datetime="{{ attempt.saved_at }}">Saved {{ attempt.label }}</time></p></div>
-<a class="review-link" href="practice-variants/open?attempt={{ attempt.id|urlencode }}" target="_blank" rel="noopener">Open saved attempt &nearr;</a></article>
+<a class="review-link" href="{{ open_href }}?attempt={{ attempt.id|urlencode }}" target="_blank" rel="noopener">Open saved attempt &nearr;</a></article>
 {% else %}<p class="empty">{% if all_attempts %}No saved attempts were found.{% else %}No saved attempts for variant {{ current|upper }} yet. View other variants above, or start another attempt to save this one.{% endif %}</p>{% endfor %}
-</section>
+</section>{% endmacro %}
+{% if all_attempts %}{{ attempt_history() }}{% else %}
 {% set random_next = pending.get('mode', 'random') == 'random' %}
 {% set fresh_next = pending.get('mode') == 'retry' and not pending.get('attempt') %}
 <div class="options">
@@ -391,6 +465,8 @@ Open a saved folder in a new editable VS Code tab. Your current attempt stays op
 {% if fresh_next %}<span class="choice-status">Selected for next start · clean starter files</span>{% elif pending.get('attempt') %}<span class="choice-status">Saved work will resume · starting fresh replaces that choice</span>{% endif %}
 <button id="fresh-choice" class="{% if fresh_next %}primary{% endif %}" name="mode" value="retry" aria-pressed="{{ 'true' if fresh_next else 'false' }}"{% if random_next %} disabled{% endif %}>Start this variant fresh</button></form></section>
 </div>
+{{ attempt_history() }}
+{% endif %}
 <footer><a href="{{ editor_href }}">&larr; Return to the editor</a></footer>
 </main><script>
 const previousVariant = document.getElementById('previous-variant');
