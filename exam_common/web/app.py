@@ -1184,13 +1184,35 @@ def reset():
 #         logger.error(f"Error extracting backup files: {e}")
 
 
+def render_exam_checkin_required(detail="", admin_preview=False):
+    """Explain why an attendance-controlled exam has not released its files."""
+    return render_template_string("""
+        <!doctype html><html><head><title>Exam check-in required</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>body{background:#111;color:#eee;font:16px/1.6 system-ui;
+        max-width:640px;margin:60px auto;padding:24px}a{color:#9fd}
+        .notice{border:1px solid #f90;padding:18px;border-radius:8px}</style>
+        </head><body><h1>Exam check-in required</h1>
+        <div class="notice" role="alert">
+        <p>Your current exam check-in could not be confirmed. The exam files
+        remain locked, so the editor may have no starter source file.</p>
+        <p>Check in with your proctor, then retry. For Honorlock, launch the exam
+        through the Honorlock page in Canvas.</p>
+        {% if detail %}<p>{{ detail }}</p>{% endif %}
+        {% if admin_preview %}<p>This account has administrator access to the
+        editor, but that access does not check you into an exam session or
+        unlock its files. Attempt registration still requires check-in.</p>{% endif %}
+        </div><p><a href="./">Retry check-in</a></p>
+        {% if admin_preview %}<p><a href="?admin_preview=1">Continue to administrator
+        editor preview (exam files remain locked)</a></p>{% endif %}
+        </body></html>
+    """, detail=detail, admin_preview=admin_preview), 403
+
+
 def process_login(exam_password, ip_addr):
     
     logger.info(f"=== process_login called === exam_admin_type: '{exam_admin_type}', exam_password: {exam_password is not None}, is_practice_exam: {is_practice_exam}, pwn_college_id: {pwn_college_id}")
 
-    if request.method == "GET" and not exam_password and can_resume_started_code_server():
-        logger.info("Existing started.dat and live code-server found; renewing auth cookie without rechecking gates")
-        return build_authenticated_redirect()
     
     # Check if this is an admin/bypass user (convert to int for comparison)
     is_admin = is_admin_bypass_user(pwn_college_id)
@@ -1205,7 +1227,16 @@ def process_login(exam_password, ip_addr):
         logger.error(f"Blocking login because exam admin type lookup failed: {exam_admin_type_lookup_error}")
         return render_exam_config_error()
 
-    if not protections_bypassed:
+    # Resuming an existing attempt must not consume or reapply retry gates.
+    # Attendance is still checked below before any cookie is renewed.
+    resuming = request.method == "GET" and not exam_password and can_resume_started_code_server()
+
+    if is_admin and not is_practice_exam and (requires_attendance_monitoring() or is_honorlock_exam()):
+        preview_attendance = check_session_attendance(pwn_college_id)
+        if not (preview_attendance and preview_attendance[0]) and request.args.get("admin_preview") != "1":
+            return render_exam_checkin_required(last_session_attendance_error, admin_preview=True)
+
+    if not protections_bypassed and not resuming:
         gate_status = check_exam_gate_status(pwn_college_id, exam_module, exam_challenge)
         if not gate_status.get("allowed", False):
             logger.info(f"Exam gate blocked access: {gate_status}")
@@ -1231,15 +1262,13 @@ def process_login(exam_password, ip_addr):
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
             logger.error(f"No active session found for exam type '{exam_admin_type}'")
-            return loginpage(message=last_session_attendance_error or "No active exam session found. Start this exam from the Honorlock page in Canvas.")
+            return render_exam_checkin_required(last_session_attendance_error)
         attending, session_password = session_result
         if attending:
             logger.info(f"Student is attending session, using session password: {session_password}")
-        elif is_honorlock_exam():
-            logger.info("Honorlock exam access blocked because no cse240.com exam attendance marker is active")
-            return loginpage(message=last_session_attendance_error or "Honorlock exams must be started from the Honorlock page in Canvas after Honorlock enters the exam password.")
         else:
-            logger.info(f"Student is not attending session yet - will require password")
+            logger.info("Exam access blocked because current attendance is not confirmed")
+            return render_exam_checkin_required(last_session_attendance_error)
     elif lockdown_session_password_bypass:
         session_result = check_session_attendance(pwn_college_id)
         if session_result is None:
@@ -1259,6 +1288,10 @@ def process_login(exam_password, ip_addr):
         logger.info(f"Proctor session validated for '{exam_admin_type}' - allowing login with password")
     else:
         logger.info(f"Session attendance check SKIPPED - exam type is '{exam_admin_type}' or admin/practice bypass")
+
+    if resuming:
+        logger.info("Renewing existing attempt login after checking current attendance")
+        return build_authenticated_redirect()
 
     logger.info(f"exam_password: {exam_password}, pwn_college_id: {pwn_college_id}, ip_addr: {ip_addr}")
     

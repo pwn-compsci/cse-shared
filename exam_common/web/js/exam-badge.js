@@ -451,6 +451,24 @@ async function pollExamMonitorStatus() {
   }
 }
 
+// Read the selected problem without changing setup or practice selection.
+async function updateAssignedVariant() {
+  if (!monitorStatusUrl) return;
+  const label = document.querySelector(".exam-assigned-variant");
+  if (!label) return;
+  try {
+    const response = await fetch(new URL('exam-variant.txt', monitorStatusUrl), {cache: 'no-store'});
+    if (!response.ok) return;
+    const matches = [...(await response.text()).matchAll(/^chosen_problem=([A-Za-z0-9_-]+)\s*$/gm)];
+    if (!matches.length) return;
+    const variant = matches[matches.length - 1][1];
+    label.textContent = " - variant " + variant;
+    label.title = "Assigned problem variant: " + variant;
+  } catch (error) {
+    // Older containers and non-exam levels may not publish a variant.
+  }
+}
+
 function insertBadge() {
   if (document.querySelector(".exam-badge")) return;
   if (!document.body) return setTimeout(insertBadge, 100);
@@ -463,6 +481,9 @@ function insertBadge() {
   const badgeText = document.createElement("span");
   badgeText.textContent = "LEVEL_ID";
   badge.appendChild(badgeText);
+  const variantLabel = document.createElement("span");
+  variantLabel.className = "exam-assigned-variant";
+  badge.appendChild(variantLabel);
 
   const monitorStatusBtn = document.createElement("button");
   monitorStatusBtn.className = "exam-reload-btn exam-monitor-status-btn";
@@ -584,6 +605,8 @@ function insertBadge() {
 }
 
 insertBadge();
+updateAssignedVariant();
+setInterval(updateAssignedVariant, monitorPollIntervalMs);
 pollExamMonitorStatus();
 setInterval(pollExamMonitorStatus, monitorPollIntervalMs);
 setInterval(updateMonitorCountdown, 1000);
