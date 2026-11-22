@@ -187,6 +187,15 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
             state = json.load(stream)
         return config, state
 
+    @app.route("/exam_api/practice-variants/badge")
+    def practice_badge():
+        try:
+            config, state = context()
+            label = f"{config['module']} - {config['level']}{state['current']}"
+            return {"label": label}, 200, {"Cache-Control": "no-store"}
+        except (OSError, ValueError, KeyError):
+            return "", 503, {"Cache-Control": "no-store"}
+
     @app.route("/exam_api/practice-variants/available")
     def practice_choices_available():
         try:

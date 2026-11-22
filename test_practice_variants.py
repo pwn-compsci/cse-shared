@@ -158,6 +158,15 @@ class PersistenceAndUITests(unittest.TestCase):
         saved = history[pv.METADATA][state["key"]]["attempts"][-1]
         return active, saved
 
+    def test_practice_badge_is_compact_for_single_and_multiple_variants(self):
+        response = self.client.get(self.url + '/badge')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {'label': 'pex23 - 01a'})
+        pv.launch(self.config, self.home, ['a'], 'second', runtime=self.runtime)
+        self.assertEqual(self.client.get(self.url + '/badge').json, {'label': 'pex23 - 01a'})
+        self.config_path.write_text('{}')
+        self.assertEqual(self.client.get(self.url + '/badge').status_code, 404)
+
     def test_single_variant_hides_button_availability(self):
         self.assertEqual(self.client.get(self.url + "/available").status_code, 204)
         pv.launch(self.config, self.home, ["a"], "second", runtime=self.runtime)

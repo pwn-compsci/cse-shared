@@ -171,3 +171,18 @@ excluded. Requests can select only indexed attempts for the current level;
 clients cannot supply arbitrary filesystem paths. Source restores replace files
 rather than truncating them, preventing writes through pre-existing hard links.
 Deploy `.init`, `.examsetup`, the web helper modules and badge scripts together.
+
+
+## Practice toolbar
+
+Practice identity uses the same green pill styling as the review control and a
+compact label such as `pex30 - 01a`. Account/name details and the separate verbose
+variant suffix remain part of regular exam presentation, not practice identity.
+The practice reload control is labelled "Reload" rather than a circular arrow.
+
+The text-only **Practice & review** control starts near the left of the editor
+toolbar (below the badge on narrow windows). Drag it to move it; a drag does not
+activate its link. Its position is remembered in browser storage for that workspace
+URL and kept inside the viewport. With the link focused, Alt + arrow keys move it
+in 20-pixel increments. A normal click or Enter still opens practice history.
+This changes presentation only; existing selection and restart behavior remains.

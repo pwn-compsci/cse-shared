@@ -8,10 +8,76 @@
     const show = () => {
       const link = document.createElement('a');
       link.href = url.href;
-      link.textContent = '↺  Practice & review';
+      link.textContent = 'Practice & review';
       link.setAttribute('aria-label', 'Practice choices and saved attempts');
-      link.style.cssText = 'position:fixed;right:12px;top:4px;z-index:10000;background:#26351f;color:#d4efbb;border:1px solid #66894e;padding:8px 13px;border-radius:999px;font:600 13px system-ui;text-decoration:none;box-shadow:0 2px 8px #0004';
+      link.style.cssText = 'position:fixed;left:300px;top:4px;z-index:10000;background:#26351f;color:#d4efbb;border:1px solid #66894e;padding:8px 13px;border-radius:999px;font:600 13px system-ui;text-decoration:none;box-shadow:0 2px 8px #0004';
       document.body.appendChild(link);
+      link.draggable = false;
+      link.style.userSelect = 'none';
+      link.style.touchAction = 'none';
+      link.title = 'Open practice history. Drag to move, or hold Alt and use arrow keys.';
+      const positionKey = 'practice-review-position:' + url.origin + url.pathname;
+      let savedPosition = null;
+      try { savedPosition = JSON.parse(localStorage.getItem(positionKey)); } catch (_) {}
+      const place = (left, top) => {
+        const rect = link.getBoundingClientRect();
+        const x = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+        const y = Math.max(4, Math.min(top, window.innerHeight - rect.height - 8));
+        link.style.left = x + 'px';
+        link.style.top = y + 'px';
+      };
+      const save = () => {
+        const rect = link.getBoundingClientRect();
+        try { localStorage.setItem(positionKey, JSON.stringify({left: rect.left, top: rect.top})); } catch (_) {}
+      };
+      if (savedPosition && Number.isFinite(savedPosition.left) && Number.isFinite(savedPosition.top)) {
+        place(savedPosition.left, savedPosition.top);
+      } else {
+        place(window.innerWidth < 620 ? 12 : 300, window.innerWidth < 620 ? 48 : 4);
+      }
+      let gesture = null;
+      let suppressClick = false;
+      link.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || event.isPrimary === false) return;
+        const rect = link.getBoundingClientRect();
+        gesture = {id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top};
+        suppressClick = false;
+        link.setPointerCapture(event.pointerId);
+      });
+      link.addEventListener('pointermove', event => {
+        if (!gesture || event.pointerId !== gesture.id) return;
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        if (Math.hypot(dx, dy) < 6 && !suppressClick) return;
+        suppressClick = true;
+        place(gesture.left + dx, gesture.top + dy);
+      });
+      const finish = event => {
+        if (!gesture || event.pointerId !== gesture.id) return;
+        if (suppressClick) save();
+        gesture = null;
+      };
+      link.addEventListener('pointerup', finish);
+      link.addEventListener('pointercancel', finish);
+      link.addEventListener('lostpointercapture', finish);
+      link.addEventListener('click', event => {
+        if (suppressClick && event.detail !== 0) {
+          event.preventDefault();
+          suppressClick = false;
+        }
+      });
+      link.addEventListener('keydown', event => {
+        const direction = {ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20]}[event.key];
+        if (!event.altKey || !direction) return;
+        event.preventDefault();
+        const rect = link.getBoundingClientRect();
+        place(rect.left + direction[0], rect.top + direction[1]);
+        save();
+      });
+      window.addEventListener('resize', () => {
+        const rect = link.getBoundingClientRect();
+        place(rect.left, rect.top);
+      });
     };
     if (document.body) show();
     else document.addEventListener('DOMContentLoaded', show, {once: true});
@@ -451,8 +517,30 @@ async function pollExamMonitorStatus() {
   }
 }
 
+// Practice uses a compact identity without the exam account details.
+async function updatePracticeBadge() {
+  if (!monitorStatusUrl) return false;
+  try {
+    const response = await fetch(new URL('exam_api/practice-variants/badge', monitorStatusUrl), {cache: 'no-store'});
+    if (!response.ok) return false;
+    const data = await response.json();
+    if (typeof data.label !== 'string') return false;
+    const badge = document.querySelector('.exam-badge');
+    const label = document.querySelector('.exam-badge-label');
+    if (!badge || !label) return false;
+    label.textContent = data.label;
+    badge.style.cssText = 'position:fixed;left:12px;top:4px;z-index:9999;display:flex;align-items:center;gap:8px;background:#26351f;color:#d4efbb;border:1px solid #66894e;padding:8px 13px;border-radius:999px;font:600 13px system-ui;box-shadow:0 2px 8px #0004;pointer-events:none';
+    const variantLabel = document.querySelector('.exam-assigned-variant');
+    if (variantLabel) variantLabel.hidden = true;
+    const reload = badge.querySelector('.exam-reload-btn:not(.exam-monitor-status-btn)');
+    if (reload) reload.textContent = 'Reload';
+    return true;
+  } catch (_) { return false; }
+}
+
 // Read the selected problem without changing setup or practice selection.
 async function updateAssignedVariant() {
+  if (await updatePracticeBadge()) return;
   if (!monitorStatusUrl) return;
   const label = document.querySelector(".exam-assigned-variant");
   if (!label) return;
@@ -479,6 +567,7 @@ function insertBadge() {
   
   // Create badge text
   const badgeText = document.createElement("span");
+  badgeText.className = "exam-badge-label";
   badgeText.textContent = "LEVEL_ID";
   badge.appendChild(badgeText);
   const variantLabel = document.createElement("span");
