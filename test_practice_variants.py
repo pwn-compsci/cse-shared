@@ -109,6 +109,34 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertEqual(pv.launch(self.config, self.home, ["a", "secret-unseen"], "second", runtime=self.runtime), "a")
         self.assertEqual(pv.launch(self.config, self.home, ["a", "secret-unseen"], "third", runtime=self.runtime), "secret-unseen")
 
+    def test_next_start_choice_highlight_and_dropdown_persist(self):
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('aria-label="Close practice and return to editor"', text)
+        self.assertRegex(text, r'<button class="primary" name="mode" value="random" aria-pressed="true">')
+        self.assertIn('<option value="" disabled selected>', text)
+        self.assertIn('aria-pressed="false" disabled>Start this variant fresh', text)
+        self.client.post(self.url, data={'csrf': self.token(), 'mode': 'retry', 'variant': 'a'})
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('<option value="a" selected>', text)
+        self.assertIn('id="fresh-choice" class="primary"', text)
+        self.assertIn('value="random" aria-pressed="false"', text)
+        self.client.post(self.url, data={'csrf': self.token(), 'mode': 'random'})
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('<option value="" disabled selected>', text)
+        self.assertNotIn('<option value="a" selected>', text)
+        self.assertIn('value="random" aria-pressed="true"', text)
+
+    def test_resume_is_not_highlighted_as_start_fresh(self):
+        active, saved = self.saved_attempt()
+        self.client.post(self.url, data={'csrf': self.token(), 'mode': 'resume', 'attempt': saved['id']})
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('<option value="a" selected>', text)
+        self.assertIn('Saved work will resume', text)
+        self.assertIn('id="fresh-choice" class=""', text)
+        self.assertIn('value="random" aria-pressed="false"', text)
+        review = self.client.get(self.url, query_string={'attempt': saved['id']}).get_data(as_text=True)
+        self.assertIn('aria-label="Close practice and return to editor"', review)
+
     def test_csrf_and_forged_retry(self):
         self.assertEqual(self.client.post(self.url, data={"mode": "random"}).status_code, 403)
         self.assertEqual(self.client.post(self.url, data={"csrf": self.token(), "mode": "retry", "variant": "secret-unseen"}).status_code, 400)

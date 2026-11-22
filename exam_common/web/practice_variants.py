@@ -277,6 +277,12 @@ PAGE = """<!doctype html>
   background:#151719;color:#edf0f3;font-size:15px;line-height:1.55}
 *{box-sizing:border-box}
 body{margin:0;background:#151719;color:#edf0f3}
+.page-tools{display:flex;justify-content:flex-end;margin:-12px 0 18px}
+.close-page{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:2px 12px;border:1px solid #56616c;border-radius:8px;text-decoration:none;color:#edf0f3;font-size:13px;font-weight:600}
+.close-page span:first-child{font-size:34px;line-height:1}.close-page:hover{background:#344329;border-color:#b4df82}
+.card.chosen{border:2px solid #b4df82;padding:21px;background:#263021}
+.choice-status{display:block;color:#c7ed9c;font-size:12px;font-weight:600;margin-bottom:12px}
+button:disabled{opacity:.45;cursor:not-allowed;background:#2b343c;color:#aab4bd;border-color:#586570}
 main{max-width:920px;margin:0 auto;padding:32px 24px}
 header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px}
 .eyebrow{margin:0 0 5px;color:#a8c978;font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}
@@ -318,6 +324,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101416;border:1px so
 </style>
 </head>
 <body><main>
+<div class="page-tools"><a class="close-page" href="../" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
 <header><div><p class="eyebrow">Practice your way</p><h1>Practice &amp; review</h1>
 <p class="intro">Try unfamiliar requirements, or revisit a problem you have already worked on.</p></div>
 <div class="current">Current variant <strong>{{ current }}</strong></div></header>
@@ -325,18 +332,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101416;border:1px so
 Save your work, then restart the challenge from the course page. Your current problem stays unchanged.</p></div>
 {% if message %}<p class="status" role="status">{{ message }}</p>{% endif %}
 {% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}{% if pending.attempt %}resume saved work for{% else %}retry{% endif %} variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
+{% set random_next = pending.get('mode', 'random') == 'random' %}
+{% set fresh_next = pending.get('mode') == 'retry' and not pending.get('attempt') %}
 <div class="options">
-<section class="card" aria-labelledby="random-title"><div class="card-number">EXPLORE</div>
+<section class="card{% if random_next %} chosen{% endif %}" aria-labelledby="random-title"><div class="card-number">EXPLORE</div>
 <h2 id="random-title">New Random Variant</h2>
 <p>Test your skills on randomly selected requirements. You will get a different variant when one is available.</p>
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
-<button class="primary" name="mode" value="random">Choose random variant</button></form></section>
-<section class="card" aria-labelledby="retry-title"><div class="card-number">REVISIT</div>
+{% if random_next %}<span class="choice-status">Selected for next start</span>{% endif %}
+<button class="{% if random_next %}primary{% endif %}" name="mode" value="random" aria-pressed="{{ 'true' if random_next else 'false' }}">Choose random variant</button></form></section>
+<section class="card{% if fresh_next %} chosen{% endif %}" aria-labelledby="retry-title"><div class="card-number">REVISIT</div>
 <h2 id="retry-title">Retry a Previous Variant</h2><p>Pick up a familiar problem. Only variants you have already received appear here.</p>
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
-<label for="previous-variant">Previous variant</label><select id="previous-variant" name="variant">{% for variant in encountered %}
-<option value="{{ variant }}">Variant {{ variant }}</option>{% endfor %}</select>
-<button name="mode" value="retry">Start this variant fresh</button></form></section>
+<label for="previous-variant">Previous variant</label><select id="previous-variant" name="variant" required>
+<option value="" disabled{% if random_next %} selected{% endif %}>Choose a previous variant</option>{% for variant in encountered %}
+<option value="{{ variant }}"{% if not random_next and pending.get('variant') == variant %} selected{% endif %}>Variant {{ variant }}</option>{% endfor %}</select>
+{% if fresh_next %}<span class="choice-status">Selected for next start · clean starter files</span>{% elif pending.get('attempt') %}<span class="choice-status">Saved work will resume · starting fresh replaces that choice</span>{% endif %}
+<button id="fresh-choice" class="{% if fresh_next %}primary{% endif %}" name="mode" value="retry" aria-pressed="{{ 'true' if fresh_next else 'false' }}"{% if random_next %} disabled{% endif %}>Start this variant fresh</button></form></section>
 </div>
 <section class="history"><h2>Saved attempts</h2>
 <p>Review your code and available test feedback, or resume an earlier attempt. Times are shown in Arizona time (MST).</p>
@@ -346,10 +358,16 @@ Save your work, then restart the challenge from the course page. Your current pr
 <a class="review-link" href="?attempt={{ attempt.id|urlencode }}">Review attempt &rarr;</a></article>
 {% else %}<p class="empty">Your saved work will appear here after you start another attempt.</p>{% endfor %}
 </section><footer><a href="../">&larr; Return to the editor</a></footer>
-</main></body></html>"""
+</main><script>
+const previousVariant = document.getElementById('previous-variant');
+if (previousVariant) previousVariant.addEventListener('change', () => {
+  document.getElementById('fresh-choice').disabled = !previousVariant.value;
+});
+</script></body></html>"""
 
 
 REVIEW = PAGE.split("</head>")[0] + """</head><body><main>
+<div class="page-tools"><a class="close-page" href="../" aria-label="Close practice and return to editor"><span aria-hidden="true">&times;</span><span>Back to editor</span></a></div>
 <p class="eyebrow">Saved practice attempt</p><h1>{% if record.variant %}Variant {{ record.variant }}{% else %}Older attempt{% endif %}</h1>
 <p class="intro">Saved {{ label }} · Arizona time</p>
 <div class="notice"><p>This is a read-only review. Your active work is unchanged.
