@@ -11,13 +11,13 @@ async function check(file, ok, ready) {
   const document = {
     currentScript: {src: 'https://example.edu/workspace/proxy/8080/js/exam-badge.js?v=1'},
     body: ready ? body : null,
-    createElement: () => ({style: {}}),
+    createElement: () => ({style: {}, setAttribute: () => {}}),
     addEventListener: (event, fn) => {assert.equal(event, 'DOMContentLoaded'); onReady = fn;}
   };
   vm.runInNewContext(source, {
     document, URL,
     fetch: async (url, options) => {
-      assert.equal(url.href, 'https://example.edu/workspace/proxy/8080/exam_api/practice-variants');
+      assert.equal(url.href, 'https://example.edu/workspace/proxy/8080/exam_api/practice-variants/available');
       assert.equal(options.cache, 'no-store');
       return {ok};
     }
@@ -26,7 +26,7 @@ async function check(file, ok, ready) {
   if (onReady) { document.body = body; onReady(); }
   assert.equal(links.length, ok ? 1 : 0);
   if (ok) {
-    assert.equal(links[0].textContent, 'Practice variants');
+    assert.equal(links[0].textContent, '↺  Practice & review');
     assert.equal(links[0].href, 'https://example.edu/workspace/proxy/8080/exam_api/practice-variants');
   }
 }

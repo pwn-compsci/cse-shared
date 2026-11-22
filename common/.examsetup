@@ -399,7 +399,8 @@ if [ -d /home/me ]; then
 else
 
     echo "[e] Using clevel_work_dir = $clevel_work_dir for exam base directory" | tee -a $STARTUP_LOG
-    if [ "$course_code" != "cse545" ] && { [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; }; then
+    practice_mode=$(jq -r '(.practice_exam // false) or (.is_practice_exam // false)' /challenge/.config/level.json)
+    if [ "$practice_mode" != true ] && [ "$course_code" != "cse545" ] && { [[ -f $clevel_work_dir/main.c ]] || [[ -f $clevel_work_dir/main.cpp ]] || [[ -f $clevel_work_dir/main.rkt ]] || [[ -f $clevel_work_dir/main.pl ]]; }; then
         mv "$clevel_work_dir" "${clevel_work_dir}_$timestamp"
         echo "[e] created backup of old answer attempt" | tee -a $STARTUP_LOG
     fi

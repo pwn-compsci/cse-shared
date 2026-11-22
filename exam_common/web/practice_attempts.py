@@ -1,0 +1,184 @@
+"""Indexed practice backups and bounded, symlink-safe access to student work."""
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+import os
+import pwd
+import re
+import sqlite3
+import stat
+from zoneinfo import ZoneInfo
+
+SKIP = {'system_tests', 'model', 'template', 'Desktop', '__pycache__'}
+TEXT = {'.c', '.cpp', '.cc', '.h', '.hpp', '.py', '.rkt', '.pl', '.java', '.md', '.txt', '.json', '.log', '.dat', '.csv', '.in', '.out', '.sh', '.html', '.css', '.js', '.yml', '.yaml'}
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def display_time(value):
+    instant = datetime.fromisoformat(value).astimezone(ZoneInfo('America/Phoenix'))
+    return instant.strftime('%b %d, %Y at %-I:%M:%S %p MST')
+
+
+@contextmanager
+def directory(path):
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in Path(path).absolute().parts[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def allowed(relative):
+    parts = PurePosixPath(relative).parts
+    return bool(parts) and not PurePosixPath(relative).is_absolute() and all(
+        p not in ('.', '..') and not p.startswith('.') and p not in SKIP for p in parts
+    ) and (Path(parts[-1]).suffix.lower() in TEXT or parts[-1] in ('Makefile', 'makefile'))
+
+
+def read_work(path, relative, limit=512 * 1024):
+    if not allowed(relative):
+        raise ValueError('This file is not available for review.')
+    parts = PurePosixPath(relative).parts
+    with directory(Path(path).joinpath(*parts[:-1])) as parent:
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError('Only ordinary saved files can be reviewed.')
+            data = stream.read(limit + 1)
+            if len(data) > limit or b'\0' in data:
+                raise ValueError('This file is binary or too large to preview.')
+            return data
+
+
+def files(path):
+    found = []
+    # Walk using directory descriptors so swapped student symlinks are not followed.
+    def visit(fd, prefix=''):
+        for name in sorted(os.listdir(fd)):
+            if len(found) >= 300:
+                return
+            if name.startswith('.') or name in SKIP:
+                continue
+            info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            relative = prefix + name
+            if stat.S_ISDIR(info.st_mode):
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                try:
+                    visit(child, relative + '/')
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and allowed(relative):
+                found.append(relative)
+    with directory(path) as fd:
+        visit(fd)
+    return found
+
+
+def workdir(config, home):
+    return Path(config.get('hwdir') or Path(home) / str(config['module'])) / str(config['level'])
+
+
+def discover(entry, active):
+    """Keep old timestamped folders reviewable without guessing their variant."""
+    known = {a['directory'] for a in entry.setdefault('attempts', [])}
+    if not active.parent.exists():
+        return
+    with directory(active.parent) as parent:
+        for name in os.listdir(parent):
+            match = re.fullmatch(re.escape(active.name) + r'_(\d{4}-\d{2}-\d{2}_\d{4})(?:.*)?', name)
+            if not match or name in known:
+                continue
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                continue
+            saved = datetime.strptime(match[1], '%Y-%m-%d_%H%M').replace(tzinfo=timezone.utc).isoformat()
+            entry['attempts'].append({'id': name, 'directory': name, 'variant': None, 'saved_at': saved})
+
+
+def archive(entry, active):
+    if not active.exists() and not active.is_symlink():
+        return
+    saved = now()
+    suffix = datetime.fromisoformat(saved).strftime('%Y-%m-%d_%H%M%S_%f')
+    name = active.name + '_' + suffix
+    with directory(active.parent) as parent:
+        info = os.stat(active.name, dir_fd=parent, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError('Unsafe active practice directory.')
+        os.rename(active.name, name, src_dir_fd=parent, dst_dir_fd=parent)
+    entry.setdefault('attempts', []).append({
+        'id': name, 'directory': name, 'variant': entry.get('current'),
+        'started_at': entry.get('started_at'), 'saved_at': saved,
+    })
+
+
+def find_attempt(entry, attempt_id, active):
+    attempt = next((a for a in entry.get('attempts', []) if a['id'] == attempt_id), None)
+    if not attempt or Path(attempt['directory']).name != attempt['directory']:
+        raise ValueError('Saved attempt not found.')
+    path = active.parent / attempt['directory']
+    with directory(path):
+        pass
+    return attempt, path
+
+
+def restore(source, target):
+    # Copy source/data files only; fresh framework, binaries and hidden tests stay intact.
+    owner = pwd.getpwnam('hacker')
+    for relative in files(source):
+        data = read_work(source, relative, limit=2 * 1024 * 1024)
+        parts = PurePosixPath(relative).parts
+        with directory(target) as base:
+            parent = os.dup(base)
+            try:
+                for name in parts[:-1]:
+                    try:
+                        os.mkdir(name, 0o755, dir_fd=parent)
+                    except FileExistsError:
+                        pass
+                    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    os.fchown(child, owner.pw_uid, owner.pw_gid)
+                    os.close(parent)
+                    parent = child
+                # Replace rather than truncate: no writes through attacker hard links.
+                temp = '.practice-restore-' + os.urandom(8).hex()
+                fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=parent)
+                with os.fdopen(fd, 'wb') as output:
+                    output.write(data)
+                    os.fchown(output.fileno(), owner.pw_uid, owner.pw_gid)
+                os.rename(temp, parts[-1], src_dir_fd=parent, dst_dir_fd=parent)
+            finally:
+                os.close(parent)
+
+
+def feedback(home, config, attempt):
+    if not attempt.get('started_at'):
+        return []
+    path = Path(home) / '.vscode/trdb.db'
+    try:
+        with directory(path.parent) as parent:
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                return []
+            with sqlite3.connect(f'file:/proc/self/fd/{fd}?mode=ro', uri=True, timeout=1) as connection:
+                connection.row_factory = sqlite3.Row
+                start = datetime.fromisoformat(attempt['started_at']).strftime('%Y-%m-%d %H:%M:%S')
+                end = datetime.fromisoformat(attempt['saved_at']).strftime('%Y-%m-%d %H:%M:%S')
+                rows = connection.execute('SELECT timestamp, passed, failed, error_message FROM tests '
+                    'WHERE module = ? AND level = ? AND timestamp >= ? AND timestamp < ? '
+                    'ORDER BY timestamp DESC LIMIT 30', (str(config['module']), str(config['level']), start, end))
+                return [dict(row) for row in rows]
+        finally:
+            os.close(fd)
+    except (OSError, sqlite3.Error, ValueError):
+        return []

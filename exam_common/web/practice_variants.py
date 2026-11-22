@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import secrets
 import stat
+import sys
+import practice_attempts as attempts
 
 ATTEMPT = Path("/opt/practice_variant_attempt.json")
 CONFIG = Path("/challenge/.config/level.json")
@@ -139,45 +141,117 @@ def launch(config, home, variants, attempt_id, override="", runtime=ATTEMPT):
                 entry["last"] = cycle[-1]
             metadata[key] = entry
         entry = metadata[key]
+        active = attempts.workdir(config, home)
+        attempts.discover(entry, active)
+        same_attempt = entry.get("attempt_id") == attempt_id
+        pending_resume = entry.get("pending", {}).get("attempt") if not override else None
+        resume = None
+        if not same_attempt:
+            if pending_resume:
+                record, resume_path = attempts.find_attempt(entry, pending_resume, active)
+                if record.get("variant") not in variants or record.get("variant") != entry["pending"].get("variant"):
+                    raise ValueError("Saved attempt does not match the requested variant.")
+                resume = str(resume_path)
+            attempts.archive(entry, active)
         chosen = select(entry, variants, attempt_id, override)
+        if not same_attempt:
+            entry["started_at"] = attempts.now()
         # Keep the legacy cycle representation usable by existing exam setup.
         history[key] = entry["cycle"]
     # This catalogue is private to the service; HTTP responses expose encountered IDs only.
     with history_file(runtime) as state:
+        old_resume = state.get("resume") if same_attempt else resume
         state.clear()
-        state.update(history=path, key=key, variants=variants, current=chosen)
+        state.update(history=path, key=key, variants=variants, current=chosen,
+                     home=str(home), workdir=str(active), resume=old_resume)
     return chosen
+
+
+def restore_current(runtime=ATTEMPT):
+    with history_file(runtime) as state:
+        if state.get("resume"):
+            attempts.restore(state["resume"], state["workdir"])
+            state["resume"] = None
 
 
 def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
     from flask import abort, make_response, render_template_string, request
     csrf_token = secrets.token_urlsafe(32)
 
+    def context():
+        with open(config_path) as stream:
+            config = json.load(stream)
+        if not is_practice(config):
+            abort(404)
+        with open(runtime) as stream:
+            state = json.load(stream)
+        return config, state
+
+    @app.route("/exam_api/practice-variants/available")
+    def practice_choices_available():
+        try:
+            config, state = context()
+            if len(state["variants"]) <= 1:
+                abort(404)
+            return "", 204, {"Cache-Control": "no-store"}
+        except (OSError, ValueError, KeyError):
+            return "", 503, {"Cache-Control": "no-store"}
+
     @app.route("/exam_api/practice-variants", methods=["GET", "POST"])
     def practice_variants():
-        with open(config_path) as stream:
-            if not is_practice(json.load(stream)):
-                abort(404)
         message = ""
         try:
-            with open(runtime) as stream:
-                state = json.load(stream)
+            config, state = context()
             with history_file(state["history"]) as history:
                 entry = history[METADATA][state["key"]]
+                active = Path(state.get("workdir") or attempts.workdir(config, Path(state["history"]).parent.parent))
+                attempts.discover(entry, active)
                 if request.method == "POST":
                     if not secrets.compare_digest(request.form.get("csrf", ""), csrf_token):
                         abort(403)
                     try:
-                        queue(entry, state["variants"], request.form.get("mode"), request.form.get("variant"))
-                    except ValueError as error:
+                        mode = request.form.get("mode")
+                        if mode == "resume":
+                            record, saved = attempts.find_attempt(entry, request.form.get("attempt"), active)
+                            queue(entry, state["variants"], "retry", record.get("variant"))
+                            entry["pending"]["attempt"] = record["id"]
+                        else:
+                            queue(entry, state["variants"], mode, request.form.get("variant"))
+                    except (ValueError, OSError) as error:
                         abort(400, str(error))
                     message = "Selection saved for your next challenge start. Save your work, then restart this challenge from the course page."
                 encountered = [v for v in entry["encountered"] if v in state["variants"]]
                 pending = entry.get("pending", {})
-            response = make_response(render_template_string(PAGE, current=state["current"],
-                encountered=encountered, pending=pending, message=message, csrf=csrf_token))
+                saved_attempts = sorted(entry.get("attempts", []), key=lambda a: a["saved_at"], reverse=True)
+                saved_attempts = [dict(a, label=attempts.display_time(a["saved_at"])) for a in saved_attempts]
+                requested = request.args.get("attempt")
+                record = saved_path = None
+                if requested:
+                    try:
+                        record, saved_path = attempts.find_attempt(entry, requested, active)
+                    except (ValueError, OSError):
+                        abort(404)
+            if record:
+                try:
+                    names = attempts.files(saved_path)
+                    selected = request.args.get("file")
+                    content = attempts.read_work(saved_path, selected).decode("utf-8", errors="replace") if selected else None
+                except (ValueError, OSError):
+                    abort(400, "This saved file cannot be reviewed.")
+                home = state.get("home") or str(Path(state["history"]).parent.parent)
+                feedback = attempts.feedback(home, config, record)
+                for result in feedback:
+                    result["label"] = attempts.display_time(result["timestamp"].replace(" ", "T") + "+00:00")
+                response = make_response(render_template_string(REVIEW, record=record,
+                    label=attempts.display_time(record["saved_at"]), names=names, selected=selected,
+                    content=content, feedback=feedback, csrf=csrf_token,
+                    resumable=record.get("variant") in encountered))
+            else:
+                response = make_response(render_template_string(PAGE, current=state["current"],
+                    encountered=encountered, pending=pending, message=message, csrf=csrf_token,
+                    saved_attempts=saved_attempts))
         except (OSError, ValueError, KeyError):
-            response = make_response("Practice variants are unavailable. Your current attempt is unchanged.", 503)
+            response = make_response("Practice choices are unavailable. Your current attempt is unchanged.", 503)
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -224,18 +298,24 @@ button:hover{background:#36434d;border-color:#82929f}
 button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #b4df82;outline-offset:4px}
 footer{margin-top:22px;padding-top:16px;border-top:1px solid #30383e}
 a{color:#c8d4df;font-size:13px;text-underline-offset:4px}a:hover{color:#fff}
+.history{margin-top:28px}.history>p,.empty{font-size:13px;margin:8px 0 16px}
+.attempt-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid #394149}
+.attempt-row p{font-size:12px;margin-top:4px}.review-link{color:#c7ed9c;white-space:nowrap}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101416;border:1px solid #394149;border-radius:8px;padding:18px;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;color:#e6edf3}
+.file-list{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}.file-list a{color:#c7ed9c}
+.feedback{margin-top:26px}.feedback li{margin:10px 0;color:#c5ced7;font-size:13px}
 @media(max-width:620px){main{padding:24px 16px}header{flex-direction:column;gap:14px}
   h1{font-size:25px}.options{grid-template-columns:1fr}.card{padding:20px}.card p{margin-bottom:18px}}
 </style>
 </head>
 <body><main>
-<header><div><p class="eyebrow">Practice your way</p><h1>Practice variants</h1>
+<header><div><p class="eyebrow">Practice your way</p><h1>Practice &amp; review</h1>
 <p class="intro">Try unfamiliar requirements, or revisit a problem you have already worked on.</p></div>
 <div class="current">Current variant <strong>{{ current }}</strong></div></header>
 <div class="notice"><p><strong>Changes apply to your next attempt.</strong>
 Save your work, then restart the challenge from the course page. Your current problem stays unchanged.</p></div>
 {% if message %}<p class="status" role="status">{{ message }}</p>{% endif %}
-{% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}retry variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
+{% if pending %}<p class="pending">Next start: <strong>{% if pending.mode == 'retry' %}{% if pending.attempt %}resume saved work for{% else %}retry{% endif %} variant {{ pending.variant }}{% else %}new random variant{% endif %}</strong>.</p>{% endif %}
 <div class="options">
 <section class="card" aria-labelledby="random-title"><div class="card-number">EXPLORE</div>
 <h2 id="random-title">New Random Variant</h2>
@@ -247,12 +327,42 @@ Save your work, then restart the challenge from the course page. Your current pr
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
 <label for="previous-variant">Previous variant</label><select id="previous-variant" name="variant">{% for variant in encountered %}
 <option value="{{ variant }}">Variant {{ variant }}</option>{% endfor %}</select>
-<button name="mode" value="retry">Retry selected variant</button></form></section>
-</div><footer><a href="../">&larr; Return to the editor</a></footer>
+<button name="mode" value="retry">Start this variant fresh</button></form></section>
+</div>
+<section class="history"><h2>Saved attempts</h2>
+<p>Review your code and available test feedback, or resume an earlier attempt. Times are shown in Arizona time (MST).</p>
+{% for attempt in saved_attempts %}<article class="attempt-row">
+<div><strong>{% if attempt.variant %}Variant {{ attempt.variant }}{% else %}Older attempt · variant unknown{% endif %}</strong>
+<p><time datetime="{{ attempt.saved_at }}">Saved {{ attempt.label }}</time></p></div>
+<a class="review-link" href="?attempt={{ attempt.id|urlencode }}">Review attempt &rarr;</a></article>
+{% else %}<p class="empty">Your saved work will appear here after you start another attempt.</p>{% endfor %}
+</section><footer><a href="../">&larr; Return to the editor</a></footer>
 </main></body></html>"""
 
 
+REVIEW = PAGE.split("</head>")[0] + """</head><body><main>
+<p class="eyebrow">Saved practice attempt</p><h1>{% if record.variant %}Variant {{ record.variant }}{% else %}Older attempt{% endif %}</h1>
+<p class="intro">Saved {{ label }} · Arizona time</p>
+<div class="notice"><p>This is a read-only review. Your active work is unchanged.
+Resume copies saved source and data files into your next attempt; it does not restore compiled binaries or hidden tests.</p></div>
+{% if resumable %}<form method="post" action="?">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="attempt" value="{{ record.id }}">
+<button class="primary" name="mode" value="resume">Resume this saved attempt next start</button></form>
+{% else %}<p>The variant for this older folder is not reliably recorded, so it can be reviewed but not resumed automatically.</p>{% endif %}
+<nav class="file-list" aria-label="Saved files">{% for name in names %}
+<a href="?attempt={{ record.id|urlencode }}&amp;file={{ name|urlencode }}">{{ name }}</a>
+{% else %}<p>No previewable source or text files were found.</p>{% endfor %}</nav>
+{% if selected %}<h2>{{ selected }}</h2><pre>{{ content }}</pre>{% else %}<p>Select a file above to review it.</p>{% endif %}
+<section class="feedback"><h2>Test feedback</h2><ul>{% for result in feedback %}
+<li>{{ result.label }}: {% if result.passed >= 0 and result.failed >= 0 %}{{ result.passed }} passed, {{ result.failed }} failed{% else %}No completed test run{% endif %}{% if result.error_message %}<pre>{{ result.error_message }}</pre>{% endif %}</li>
+{% else %}<li>No recorded test summary can be reliably linked to this attempt. Saved text logs, if present, are listed above.</li>{% endfor %}</ul></section>
+<footer><a href="?">&larr; Back to practice choices</a></footer></main></body></html>"""
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--restore"]:
+        restore_current()
+        sys.exit(0)
     parser = argparse.ArgumentParser()
     parser.add_argument("home")
     parser.add_argument("override")

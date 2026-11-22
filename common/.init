@@ -1458,6 +1458,14 @@ if [[ -n "${isExam:-}" && "$course_code" = "cse240" && -f /challenge/template/RE
     safe_install_file -o hacker -g hacker -m 0644 /challenge/template/README.md "$clevel_work_dir/README.md"
     echo "[i] Restored exam README.md in $clevel_work_dir after .levelinit" | tee -a "$STARTUP_LOG"
 fi
+# Restore requested practice source only after starter files and hooks are done.
+if [ -f /opt/practice_variant_attempt.json ]; then
+    python3 /challenge/web/practice_variants.py --restore || {
+        echo "[i] Requested practice work could not be restored; stopping startup" >> "$STARTUP_LOG"
+        exit 1
+    }
+fi
+
 # Select the build task before exam cleanup removes /challenge/template.
 # Student exams have already removed /challenge/model, and session_monitor may
 # not have restored the workdir yet, so use the selected problem's template too.

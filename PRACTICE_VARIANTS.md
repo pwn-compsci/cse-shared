@@ -47,7 +47,7 @@ recent version whenever another version is available, including when a cycle
 resets. It is possible to receive an older version again after completing a
 cycle; "new random" does not promise a never-before-seen version.
 
-The editor's **Practice variants** link opens a page with two distinct actions:
+The editor's **Practice & review** button opens a page with two distinct actions:
 
 - **New Random Variant** queues random selection for the next challenge start.
 - **Retry a Previous Variant** lists only previously encountered, still available
@@ -55,9 +55,9 @@ The editor's **Practice variants** link opens a page with two distinct actions:
 
 Students save their work and restart the challenge from its course page after
 choosing. The page explicitly explains this. No separate module is necessary.
-The existing launch backup behavior still applies. This retries the same problem
-requirements, not a restoration of the student's previous source files or the
-same generated random values. Closing/reopening the editor, resetting its login,
+Starting a variant fresh uses starter files. Saved attempts can also be reviewed
+or resumed as described below. Resuming restores source/data files, rather than
+compiled binaries, hidden tests, or a prior generator seed. Closing/reopening the editor, resetting its login,
 or reloading the page does not choose another problem.
 
 ## Persistence and compatibility
@@ -106,7 +106,7 @@ Changes live in `/cse/cse-shared`. Course repositories, including
 `/cse/cse240-fc26/cse-shared`, have separate checkouts. Update those checkouts using
 the normal course deployment process and rebuild/restart affected challenges to
 include the shared `.examsetup`, both web apps, the new `practice_variants.py`
-module (including the common-web symlink target), and badge scripts together.
+module (including the common-web symlink target), the new `practice_attempts.py` helper, and badge scripts together.
 Updating only the web app will not create the launch catalogue. This change does
 not update course checkouts or restart live student containers automatically.
 
@@ -124,3 +124,50 @@ bash -n common/.examsetup
 Root is needed for persistence tests because production history must be owned by
 root; the tests create and remove only temporary files. Pure selection tests also
 run unprivileged. No live student history or services are used by these tests.
+
+
+## Reviewing and resuming saved work
+
+The **Practice & review** button is a green pill in the editor. It appears only
+for practice levels with more than one available variant. The server-side
+`/exam_api/practice-variants/available` check returns 404 for single-variant
+practice levels and for ordinary levels/exams. Direct access to the history page
+still works for a single-variant practice level.
+
+The page lists **Saved attempts**, with a variant and a date such as
+"Nov 21, 2026 at 2:53:00 PM MST". Display times use America/Phoenix explicitly;
+new archive timestamps are recorded in UTC and include microseconds to prevent
+same-minute backup collisions. Legacy directory timestamps are interpreted as
+UTC, matching the exam container's server clock.
+
+**Review attempt** opens a read-only file browser and previews source/text files
+with HTML escaping. It does not alter the current attempt. Test summaries (passed,
+failed and recorded error messages) are read from the existing `trdb.db` when a
+known attempt interval can be matched by module, level and time. Missing database
+records or unknown intervals are stated explicitly; terminal output that was
+never saved cannot be reconstructed.
+
+**Resume this saved attempt next start** queues its known variant and saved work.
+On the next start, the active working directory is backed up first. After starter
+files and level hooks finish, the selected source/data files are copied into the
+new workspace. The old saved directory remains intact. Restore is applied once,
+so editor reloads do not overwrite subsequent edits. The **Start this variant
+fresh** action instead chooses clean starter files without restoring old code.
+Binary executables, editor metadata, hidden files, framework/model directories
+and system tests are neither previewed nor copied from old attempts. The current
+variant's generated tests/framework remain in place; for generator-based variants,
+this restores source work, not the original random seed or complete environment.
+
+New backup directory references and attempt intervals live in the existing
+`horse.json` metadata. Old timestamped directories are discovered alongside the
+active level directory. Their folder timestamps alone do not prove which variant
+they contained, so they are labelled **variant unknown** unless an indexed record
+exists. Such folders can be reviewed but cannot automatically choose a variant
+for resume. This avoids attaching old source to the wrong problem.
+
+Backup moves, review reads and restore writes refuse symlink path components.
+Previews also reject hard-linked, binary and oversized files. Hidden tests are
+excluded. Requests can select only indexed attempts for the current level;
+clients cannot supply arbitrary filesystem paths. Source restores replace files
+rather than truncating them, preventing writes through pre-existing hard links.
+Deploy `.init`, `.examsetup`, the web helper modules and badge scripts together.

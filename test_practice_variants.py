@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sqlite3
+from types import SimpleNamespace
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,6 +14,7 @@ from unittest.mock import patch
 from flask import Flask
 
 ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT / "exam_common/web"))
 spec = importlib.util.spec_from_file_location("practice_variants", ROOT / "exam_common/web/practice_variants.py")
 pv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pv)
@@ -142,6 +146,98 @@ class PersistenceAndUITests(unittest.TestCase):
         self.assertEqual(history["unrelated"], ["z"])
         self.assertEqual(history[key], entry["cycle"])
         pv.queue(entry, ["a", "b", "c", "secret"], "retry", "a")
+
+    def saved_attempt(self):
+        active = Path(json.loads(self.runtime.read_text())["workdir"])
+        active.mkdir(parents=True, exist_ok=True)
+        (active / "main.cpp").write_text('int old_answer = 7; // <script>bad()</script>')
+        (active / "notes.txt").write_text("Review my loop boundary.")
+        pv.launch(self.config, self.home, ["a", "secret-unseen"], "second", runtime=self.runtime)
+        state = json.loads(self.runtime.read_text())
+        history = json.loads(Path(state["history"]).read_text())
+        saved = history[pv.METADATA][state["key"]]["attempts"][-1]
+        return active, saved
+
+    def test_single_variant_hides_button_availability(self):
+        self.assertEqual(self.client.get(self.url + "/available").status_code, 204)
+        pv.launch(self.config, self.home, ["a"], "second", runtime=self.runtime)
+        response = self.client.get(self.url + "/available")
+        self.assertEqual(response.status_code, 404)
+        self.config_path.write_text('{}')
+        self.assertEqual(self.client.get(self.url + "/available").status_code, 404)
+
+    def test_review_files_dates_and_read_only_escaping(self):
+        active, saved = self.saved_attempt()
+        active.mkdir(parents=True)
+        (active / "main.cpp").write_text('new active work')
+        response = self.client.get(self.url, query_string={"attempt": saved["id"], "file": "main.cpp"})
+        self.assertEqual(response.status_code, 200)
+        text = response.get_data(as_text=True)
+        self.assertIn('old_answer', text)
+        self.assertIn('&lt;script&gt;', text)
+        self.assertNotIn('<script>bad()', text)
+        self.assertIn('MST', text)
+        self.assertEqual((active / "main.cpp").read_text(), 'new active work')
+        self.assertEqual(self.client.get(self.url, query_string={"attempt": "../other"}).status_code, 404)
+        self.assertEqual(self.client.get(self.url, query_string={"attempt": saved["id"], "file": "../../secret"}).status_code, 400)
+
+    def test_resume_is_deferred_preserves_current_work_and_restores_source(self):
+        active, saved = self.saved_attempt()
+        active.mkdir(parents=True)
+        (active / "main.cpp").write_text('new active work')
+        token = self.token()
+        response = self.client.post(self.url, data={"csrf": token, "mode": "resume", "attempt": saved["id"]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((active / "main.cpp").read_text(), 'new active work')
+        self.assertEqual(pv.launch(self.config, self.home, ["a", "secret-unseen"], "third", runtime=self.runtime), 'a')
+        self.assertFalse(active.exists())
+        active.mkdir()
+        (active / "main.cpp").write_text('starter')
+        with patch.object(pv.attempts.pwd, "getpwnam", return_value=SimpleNamespace(pw_uid=65534, pw_gid=65534)):
+            pv.restore_current(self.runtime)
+        self.assertIn('old_answer', (active / "main.cpp").read_text())
+        self.assertTrue(any(p.read_text() == 'new active work' for p in active.parent.glob(active.name + '_*/main.cpp')))
+        (active / "main.cpp").write_text('continued work')
+        pv.restore_current(self.runtime)
+        self.assertEqual((active / "main.cpp").read_text(), 'continued work')
+
+    def test_review_excludes_hidden_tests_symlinks_and_hardlinks(self):
+        active, saved = self.saved_attempt()
+        directory = active.parent / saved['directory']
+        (directory / 'system_tests').mkdir()
+        (directory / 'system_tests/hidden.json').write_text('secret')
+        (directory / 'escape.txt').symlink_to('/etc/passwd')
+        os.link(directory / 'main.cpp', directory / 'linked.cpp')
+        response = self.client.get(self.url, query_string={"attempt": saved['id']})
+        text = response.get_data(as_text=True)
+        self.assertNotIn('escape.txt', text)
+        self.assertNotIn('hidden.json', text)
+        self.assertNotIn('linked.cpp', text)
+        self.assertEqual(self.client.get(self.url, query_string={"attempt": saved['id'], "file": 'escape.txt'}).status_code, 400)
+
+    def test_legacy_folder_has_readable_date_and_no_guessed_variant(self):
+        active = Path(json.loads(self.runtime.read_text())['workdir'])
+        old = active.parent / (active.name + '_2026-11-21_2153')
+        old.mkdir(parents=True)
+        (old / 'main.cpp').write_text('earlier code')
+        text = self.client.get(self.url).get_data(as_text=True)
+        self.assertIn('Nov 21, 2026 at 2:53:00 PM MST', text)
+        self.assertIn('variant unknown', text)
+        response = self.client.post(self.url, data={'csrf': self.token(), 'mode': 'resume', 'attempt': old.name})
+        self.assertEqual(response.status_code, 400)
+
+    def test_feedback_uses_attempt_window_and_correct_level(self):
+        active, saved = self.saved_attempt()
+        path = self.home / '.vscode/trdb.db'
+        with sqlite3.connect(path) as conn:
+            conn.execute('CREATE TABLE tests (timestamp TEXT, module TEXT, level TEXT, passed INTEGER, failed INTEGER, error_message TEXT)')
+            conn.execute('INSERT INTO tests VALUES (?, ?, ?, ?, ?, ?)', ('2026-11-21 21:30:00', 'pex23', '01', 2, 1, 'compile error'))
+            conn.execute('INSERT INTO tests VALUES (?, ?, ?, ?, ?, ?)', ('2026-11-21 21:30:00', 'pex23', '02', 99, 0, 'wrong level'))
+        saved.update(started_at='2026-11-21T21:00:00+00:00', saved_at='2026-11-21T22:00:00+00:00')
+        feedback = pv.attempts.feedback(self.home, self.config, saved)
+        self.assertEqual(len(feedback), 1)
+        self.assertEqual(feedback[0]['failed'], 1)
+        self.assertEqual(feedback[0]['error_message'], 'compile error')
 
     def test_launchers_preserve_history_owner_and_repair_student_files(self):
         for name in ("common/vscode.sh", "common/bin/vscode.sh",
