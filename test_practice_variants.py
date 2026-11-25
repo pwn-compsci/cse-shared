@@ -484,6 +484,36 @@ class PersistenceAndUITests(unittest.TestCase):
                 pass
         self.assertEqual(target.read_text(), '{}')
 
+    def test_student_owned_history_migrates_with_backup_and_preserves_attempts(self):
+        path = self.home / '.vscode/horse.json'
+        original = path.read_text()
+        old_inode = path.stat().st_ino
+        os.chown(path, 65534, 65534)
+        os.chmod(path, 0o664)
+        chosen = pv.launch(self.config, self.home, ['a', 'secret-unseen'], 'second', runtime=self.runtime)
+        self.assertEqual(chosen, 'secret-unseen')
+        self.assertEqual(path.stat().st_uid, 0)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertNotEqual(path.stat().st_ino, old_inode)
+        backups = list(path.parent.glob('horse.json.legacy-*.json'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+        entry = json.loads(path.read_text())[pv.METADATA]
+        self.assertIn('a', next(iter(entry.values()))['encountered'])
+
+    def test_unsafe_legacy_path_is_not_adopted(self):
+        path = self.home / '.vscode/horse.json'
+        data = json.loads(path.read_text())
+        entry = next(iter(data[pv.METADATA].values()))
+        entry['attempts'] = [{'id': 'escape', 'directory': '../../escape'}]
+        original = json.dumps(data)
+        path.write_text(original)
+        os.chown(path, 65534, 65534)
+        with self.assertRaises(ValueError):
+            pv.launch(self.config, self.home, ['a'], 'next', runtime=self.runtime)
+        self.assertEqual(path.read_text(), original)
+        self.assertEqual(path.stat().st_uid, 65534)
+
     def test_malformed_history_fails_without_overwriting(self):
         path = self.home / ".vscode/horse.json"
         path.write_text('broken')

@@ -23,13 +23,45 @@ def is_practice(config):
     return bool(config.get("practice_exam") or config.get("is_practice_exam"))
 
 
+def validate_legacy_history(data):
+    """Migrate practice preferences, never arbitrary saved-work paths."""
+    if not isinstance(data, dict):
+        raise ValueError("invalid practice history")
+    metadata = data.get(METADATA, {})
+    if not isinstance(metadata, dict):
+        raise ValueError("invalid practice metadata")
+    for key, entry in metadata.items():
+        identity = json.loads(key)
+        if not isinstance(identity, list) or len(identity) != 2 or not isinstance(entry, dict):
+            raise ValueError("invalid practice history identity")
+        level = str(identity[1])
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", level):
+            raise ValueError("invalid practice history level")
+        for field in ('encountered', 'cycle'):
+            values = entry.get(field, [])
+            if not isinstance(values, list) or any(not isinstance(v, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", v) for v in values):
+                raise ValueError("invalid practice variant history")
+        for attempt in entry.get('attempts', []):
+            name = attempt.get('directory', '')
+            if (not isinstance(name, str) or not re.fullmatch(re.escape(level) + r'_[A-Za-z0-9_-]+', name)
+                    or attempt.get('id') != name):
+                raise ValueError("unsafe legacy saved attempt")
+    return data
+
+
 @contextmanager
-def history_file(path):
-    """Lock a root-owned file, refusing symlink components and hard links."""
+def history_file(path, migrate_legacy=False):
+    """Lock service state; startup can adopt validated legacy student-owned JSON.
+
+    Adoption preserves a byte-for-byte backup and atomically replaces the inode,
+    so a previously opened student descriptor cannot keep modifying service state.
+    Symlinks, hard links, malformed JSON and unsafe saved-work paths still fail.
+    """
     if os.geteuid() != 0:
         raise PermissionError("practice history requires root")
     path = Path(path)
     parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    stream = None
     try:
         for component in path.absolute().parent.parts[1:]:
             try:
@@ -39,29 +71,63 @@ def history_file(path):
                 child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
             os.close(parent)
             parent = child
-        fd = os.open(path.name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                     0o600, dir_fd=parent)
-    finally:
-        os.close(parent)
-    with os.fdopen(fd, "r+", encoding="utf-8") as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX)
-        info = os.fstat(stream.fileno())
+        while True:
+            fd = os.open(path.name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=parent)
+            stream = os.fdopen(fd, "r+", encoding="utf-8")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            info = os.fstat(fd)
+            current = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            if (info.st_dev, info.st_ino) == (current.st_dev, current.st_ino):
+                break
+            stream.close()
+            stream = None
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise ValueError("unsafe practice history")
+        if info.st_size > 4 * 1024 * 1024:
+            raise ValueError("practice history exceeds size limit")
         trusted = info.st_uid == 0 and not info.st_mode & 0o022
-        if not trusted and info.st_size:
+        if not trusted and info.st_size and not migrate_legacy:
             raise ValueError("untrusted practice history")
-        os.fchown(stream.fileno(), 0, 0)
-        os.fchmod(stream.fileno(), 0o600)
-        data = json.load(stream) if info.st_size else {}
+        original = stream.read()
+        data = json.loads(original) if original else {}
         if not isinstance(data, dict):
             raise ValueError("invalid practice history")
+        if not trusted and info.st_size:
+            validate_legacy_history(data)
+            backup = path.name + '.legacy-' + secrets.token_hex(8) + '.json'
+            backup_fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+            with os.fdopen(backup_fd, 'w') as copy:
+                copy.write(original)
+                copy.flush()
+                os.fsync(copy.fileno())
+            temporary = '.practice-history-' + secrets.token_hex(8)
+            new_fd = os.open(temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+            new_stream = os.fdopen(new_fd, 'r+', encoding='utf-8')
+            try:
+                fcntl.flock(new_fd, fcntl.LOCK_EX)
+                json.dump(data, new_stream, sort_keys=True)
+                new_stream.flush()
+                os.fsync(new_fd)
+                os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+            except BaseException:
+                new_stream.close()
+                os.unlink(temporary, dir_fd=parent)
+                raise
+            stream.close()
+            stream = new_stream
+            print('[practice] Migrated legacy history; original saved as ' + backup, file=sys.stderr)
+        os.fchown(stream.fileno(), 0, 0)
+        os.fchmod(stream.fileno(), 0o600)
         yield data
         stream.seek(0)
         json.dump(data, stream, sort_keys=True)
         stream.truncate()
         stream.flush()
         os.fsync(stream.fileno())
+    finally:
+        if stream is not None:
+            stream.close()
+        os.close(parent)
 
 
 def select(entry, variants, attempt_id, override=""):
@@ -116,7 +182,7 @@ def launch(config, home, variants, attempt_id, override="", runtime=ATTEMPT):
         raise ValueError("variant directory IDs must contain letters, digits, underscores or hyphens")
     key = json.dumps([config.get("module"), config.get("level")], separators=(",", ":"))
     path = str(Path(home) / ".vscode/horse.json")
-    with history_file(path) as history:
+    with history_file(path, migrate_legacy=True) as history:
         metadata = history.setdefault(METADATA, {})
         if key not in metadata:
             # Preserve the existing horse.json cycle and recover earlier
