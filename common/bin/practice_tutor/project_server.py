@@ -1,4 +1,4 @@
-"""Container-local MUD tutor, behind the workspace's authenticated code proxy."""
+"""Container-local lab/project tutor, behind the workspace's authenticated code proxy."""
 from pathlib import Path
 import re
 from flask import Flask

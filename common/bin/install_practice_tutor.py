@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the opt-in practice tutor before the exam web service starts."""
+"""Install the enrollment-gated lab/project tutor; reject assessment contexts."""
 import argparse
 import json
 import os
@@ -17,21 +17,19 @@ RUNTIME = Path('/opt/practice-tutor')
 SETTINGS = Path('/opt/practice_tutor.json')
 API = 'https://api.cse545.com/api/chatbot/session'
 ASSETS = {'bridge.py': 'practice_tutor.py', 'context.py': 'tutor_context.py',
-          'widget.js': 'practice_tutor.js', 'chat.html': 'practice_tutor.html'}
-SCRIPT = '<script defer src="./exam_api/tutor/widget.js"></script>'
+          'widget.js': 'practice_tutor.js', 'chat.html': 'practice_tutor.html',
+          'eligibility.py':'eligibility.py', 'targets.json':'targets.json'}
 
 
 def opted_in(config):
-    if config.get('module') == '25-proj-mud':
-        return (config.get('course_code') == 'cse240'
-                and config.get('challenge') in {f'p25-level-{n:02}' for n in range(1,9)}
-                and config.get('practice_tutor', {}).get('enabled') is True
-                and config['practice_tutor'].get('course_dir') == '/cse/intro-to-programming-languages')
-    return (config.get('course_code') == 'cse240' and config.get('module') == 'pex20'
-            and config.get('challenge') == 'level-20-03'
-            and bool(config.get('is_practice_exam') or config.get('practice_exam'))
-            and config.get('practice_tutor', {}).get('enabled') is True
-            and config['practice_tutor'].get('course_dir') == '/cse/cse240-fc26')
+    import importlib.util
+    policy = Path(__file__).with_name('practice_tutor') / 'eligibility.py'
+    try:
+        spec = importlib.util.spec_from_file_location('aita_scope', policy)
+        scope = importlib.util.module_from_spec(spec); spec.loader.exec_module(scope)
+        return scope.enabled(config)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def trusted_directory(path):
@@ -59,20 +57,6 @@ def write_file(path, content, mode=0o644):
         if os.path.exists(temporary):
             os.unlink(temporary)
 
-
-def install_assets(challenge=Path('/challenge'), bundle=None):
-    bundle = bundle or Path(__file__).with_name('practice_tutor')
-    web = challenge / 'web'
-    for source, destination in ASSETS.items():
-        write_file(web / destination, (bundle / source).read_text())
-    write_file(RUNTIME / 'install.py', Path(__file__).read_text())
-    nginx = web / 'nginx.conf'
-    content = nginx.read_text()
-    if SCRIPT not in content:
-        if '<!--CSE240_EXAM-->' not in content:
-            raise ValueError('Exam web overlay marker missing')
-        content = content.replace('<!--CSE240_EXAM-->', '<!--CSE240_EXAM-->\n' + SCRIPT, 1)
-        write_file(nginx, content)
 
 
 def provision(config):
@@ -115,7 +99,7 @@ def snapshot(challenge=Path('/challenge')):
 
 
 def install_project_assets(config, challenge=Path('/challenge'), bundle=None):
-    """Only called after the backend confirms current course enrollment."""
+    """Only called after the backend confirms student/admin eligibility."""
     bundle = bundle or Path(__file__).with_name('practice_tutor')
     web = challenge / 'web'
     for source, destination in ASSETS.items():
@@ -127,9 +111,23 @@ def install_project_assets(config, challenge=Path('/challenge'), bundle=None):
     helper = Path('/usr/local/lib/cse240/terminal_clipboard.py')
     if not helper.is_file():
         helper = challenge / 'bin/terminal_clipboard.py'
-    subprocess.run([sys.executable, str(helper), '--prepare-launcher',
-                    '--pwn-college-id', container_identity()], check=True, capture_output=True)
-    patch_project_editor(Path('/run/ultima-code-server'), bundle)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('aita_editor_helper', helper)
+    editor_helper = importlib.util.module_from_spec(spec); spec.loader.exec_module(editor_helper)
+    identity = container_identity()
+    source, node = editor_helper.discover()
+    tracked = editor_helper.tracking_allowed(config, identity)
+    editor = Path('/run/ultima-code-server') if tracked else Path('/run/aita-code-server')
+    if tracked:
+        editor_helper.prepare(source, editor)
+    elif not editor.exists():
+        import shutil
+        shutil.copytree(source, editor, symlinks=True)
+    patch_project_editor(editor, bundle)
+    # Keep refresh/start helpers and their policy independent of challenge cleanup.
+    for name in ('eligibility.py', 'targets.json'):
+        write_file(RUNTIME / 'practice_tutor' / name, (bundle / name).read_text())
+    write_file(RUNTIME / 'editor.json', json.dumps(dict(editor=str(editor), node=node, helper=str(helper), tracked=tracked)), 0o600)
     pidfile = RUNTIME / 'bridge.pid'
     alive = False
     try:
@@ -167,33 +165,71 @@ def patch_project_editor(editor, bundle):
         write_file(html, markup.replace('</head>', script + '\n</head>', 1))
 
 
+
+def start_project_editor():
+    """Called late in .init; the editor inherits the completed workspace setup."""
+    details = json.loads((RUNTIME / 'editor.json').read_text())
+    if details['tracked']:
+        subprocess.run([sys.executable, details['helper'], '--start',
+                        '--pwn-college-id', container_identity()], check=True, capture_output=True)
+        return
+    # Non-tracked labs get Aita without enabling clipboard collection.
+    import pwd
+    user = pwd.getpwnam('hacker')
+    pidfile = Path('/run/dojo/var/code-service/code-server.pid')
+    if pidfile.exists():
+        try:
+            pid = int(pidfile.read_text()); os.kill(pid, 0)
+            if details['editor'].encode() not in Path(f'/proc/{pid}/cmdline').read_bytes():
+                raise ValueError('A different editor is already running')
+            return
+        except (ProcessLookupError, FileNotFoundError):
+            pass
+    extensions = '/run/challenge/share/code/extensions'
+    if not Path(extensions).is_dir():
+        matches = list(Path('/nix/store').glob('*-vscode-extensions/share/vscode/extensions'))
+        if len(matches) != 1:
+            raise ValueError('Editor extensions unavailable')
+        extensions = str(matches[0])
+    def demote():
+        os.initgroups(user.pw_name, user.pw_gid); os.setgid(user.pw_gid); os.setuid(user.pw_uid)
+    command = ['/run/dojo/bin/dojo-service', 'start', 'code-service/code-server',
+               details['node'], str(Path(details['editor']) / 'out/node/entry.js'),
+               '--auth=none', '--bind-addr=0.0.0.0:8080', '--trusted-origins=*',
+               '--disable-telemetry', '--disable-update-check',
+               '--disable-getting-started-override', '--extensions-dir=' + extensions, '--config=/dev/null']
+    subprocess.run(command, check=True, cwd=user.pw_dir, preexec_fn=demote,
+                   env=dict(os.environ, HOME=user.pw_dir, USER='hacker', LOGNAME='hacker'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshot', action='store_true')
     parser.add_argument('--credentials', action='store_true')
+    parser.add_argument('--start-editor', action='store_true')
     args = parser.parse_args()
     config = json.loads(CONFIG.read_text())
     if not opted_in(config):
         return
     if os.geteuid() != 0:
         raise SystemExit('Tutor installation requires root')
+    if args.start_editor:
+        if SETTINGS.exists():
+            start_project_editor()
+        return
     if args.snapshot:
         snapshot()
         return
-    mud = config.get('module') == '25-proj-mud'
-    if not args.credentials and not mud:
-        install_assets()
     try:
         provision(config)
     except Exception as error:
-        if mud:
-            SETTINGS.unlink(missing_ok=True)
+        SETTINGS.unlink(missing_ok=True)
         # Do not put HTTP bodies or credentials into the student's startup log.
         print('[tutor] Credential provisioning unavailable (' + type(error).__name__ + '); will retry when opened')
         if args.credentials:
             raise SystemExit(1)
         return
-    if mud and not args.credentials:
+    if not args.credentials:
         install_project_assets(config)
     print('[tutor] Scoped tutor session installed')
 

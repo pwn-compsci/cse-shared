@@ -28,7 +28,7 @@ def collect():
     # Depth and count limits prevent scanning archived attempts and editor histories.
     candidates = list(islice(chain(work.glob('*'), work.glob('*/*')), 200))
     for path in sorted(candidates)[:200]:
-        if path.suffix in ('.c', '.cpp', '.h') or path.name == 'Makefile':
+        if path.suffix in ('.c', '.cpp', '.h', '.hpp', '.cc', '.cxx', '.hh', '.rkt', '.scm', '.pl', '.sh', '.py', '.txt') or path.name == 'Makefile':
             text = read(path, min(budget, 16000))
             if text is not None:
                 files[str(path.relative_to(work))] = text
@@ -54,7 +54,7 @@ def collect():
         try:
             cursor = conn.execute('''SELECT timestamp,passed,failed,substr(error_message,1,2000) FROM tests
                 WHERE module=? AND (level=? OR level=?) ORDER BY id DESC LIMIT 5''',
-                (config['module'], str(config['level']), str(int(config['level']))))
+                (config['module'], str(config['level']), str(int(config['level'])) if str(config['level']).isdigit() else str(config['level'])))
             tests = [dict(zip(('timestamp','passed','failed','error'), row)) for row in cursor]
         finally:
             conn.close()

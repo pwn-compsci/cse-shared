@@ -1,0 +1,176 @@
+{
+  "10-lela-intro-linux": [
+    "lab110-flag",
+    "lab152-cd-ls-find",
+    "lab153-grep",
+    "lab160-grep-pipe",
+    "lab190-tester"
+  ],
+  "10-proj-intro-linux": [
+    "p10-level-01",
+    "p10-level-02",
+    "p10-level-03",
+    "p10-level-04",
+    "p10-level-05",
+    "p10-level-06",
+    "p10-level-07",
+    "p10-level-08",
+    "p10-level-09",
+    "p10-level-10",
+    "p10-level-11",
+    "p10-level-12",
+    "p10-level-13",
+    "p10-level-14"
+  ],
+  "21-lela-c-intro-vars": [
+    "lab2121-scanf-getch",
+    "lab2123ez-control-flow",
+    "lab2131-funcs",
+    "lab2132ez-pass-by-value",
+    "lab2151-debug"
+  ],
+  "21-proj-c-intro-vars": [
+    "p21-level-01",
+    "p21-level-02",
+    "p21-level-03",
+    "p21-level-04",
+    "p21-level-05",
+    "p21-level-06"
+  ],
+  "22-lela-arrays-strings": [
+    "lab2220-print-by-char",
+    "lab2221-debug",
+    "lab2241-leetcase",
+    "lab2251ez-strlen",
+    "lab2252ez-strcat",
+    "lab2253ez-strcmp",
+    "lab2254ez-strcpy",
+    "lab2256-str-highlighter"
+  ],
+  "22-proj-arrays-strings": [
+    "p22-level-01",
+    "p22-level-02",
+    "p22-level-03",
+    "p22-level-04",
+    "p22-level-05",
+    "p22-level-06",
+    "p22-level-07",
+    "p22-level-08",
+    "p22-level-09"
+  ],
+  "23-lela-pointers": [
+    "lab2310-check-ex-ch",
+    "lab2321ez-pointers",
+    "lab2321ez-string-pointers",
+    "lab2331-find-cnt",
+    "lab2331ez-strstr",
+    "lab2332-word-cnt",
+    "lab2332ez-strtok"
+  ],
+  "23-proj-pointers": [
+    "p23-level-01",
+    "p23-level-02",
+    "p23-level-03",
+    "p23-level-04"
+  ],
+  "24-lela-struct-make": [
+    "lab2411ez-struct",
+    "lab2414ez-loading-struct",
+    "lab2415-songs-list",
+    "lab2421ez-c-preprocessor",
+    "lab2426-filter-songs",
+    "lab2426-make-songs",
+    "lab2426ez-makefile"
+  ],
+  "25-lela-heap": [
+    "lab2516-stack",
+    "lab2516ez-heap",
+    "lab2524-paging-songs",
+    "lab2524ez-heap-based-array"
+  ],
+  "25-proj-mud": [
+    "p25-level-01",
+    "p25-level-02",
+    "p25-level-03",
+    "p25-level-04",
+    "p25-level-05",
+    "p25-level-06",
+    "p25-level-07",
+    "p25-level-08"
+  ],
+  "27-lela-advanced-memory": [
+    "lab2622ez-pass-by-address",
+    "lab2724-ll-paging",
+    "lab2724-ll-songs"
+  ],
+  "31-lela-cpp-intro": [
+    "lab3122-json11",
+    "lab3130ez-classes"
+  ],
+  "32-lela-oo": [
+    "lab3222ez-inherit"
+  ],
+  "32-proj-mudshop": [
+    "p32-level-01",
+    "p32-level-02",
+    "p32-level-03",
+    "p32-level-04",
+    "p32-level-05",
+    "p32-level-06",
+    "p32-level-07"
+  ],
+  "33-ec-pokemud-chal": [
+    "ec33-level-01",
+    "ec33-level-02",
+    "ec33-level-03",
+    "ec33-level-04",
+    "ec33-level-05",
+    "ec33-level-06",
+    "ec33-level-07",
+    "ec33-level-08",
+    "ec33-level-09",
+    "ec33-level-10",
+    "ec33-level-11",
+    "ec33-level-12"
+  ],
+  "33-proj-pokemud": [
+    "p33-level-01",
+    "p33-level-02",
+    "p33-level-03",
+    "p33-level-04",
+    "p33-level-05"
+  ],
+  "34-ec-muddydriver": [
+    "ec34-level-01",
+    "ec34-level-02"
+  ],
+  "34-lela-search": [
+    "lab3411ez-bfs"
+  ],
+  "41-lela-scheme-intro": [
+    "lab41-hello"
+  ],
+  "42-lela-scheme": [
+    "lab421-str-info",
+    "lab422-mangler",
+    "lab423-dmg-calc"
+  ],
+  "42-scheme": [
+    "p42-level-01",
+    "p42-level-02",
+    "p42-level-03",
+    "p42-level-04",
+    "p42-level-05",
+    "p42-level-06"
+  ],
+  "50-lela-prolog": [
+    "lab512-rj",
+    "lab513a-listing",
+    "lab513b-iffy",
+    "lab521-ancestors",
+    "lab522-findall"
+  ],
+  "50-proj-prolog": [
+    "p50-level-01"
+  ]
+}

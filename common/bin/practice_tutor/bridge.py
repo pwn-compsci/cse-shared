@@ -1,4 +1,4 @@
-"""Practice 20/03 tutor bridge; credentials and identity never come from the browser."""
+"""Lab/project tutor bridge; credentials and identity never come from the browser."""
 import json
 from pathlib import Path
 import secrets
@@ -14,18 +14,14 @@ SECRET = Path('/opt/practice_tutor.json')
 
 def enabled():
     try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('aita_scope', Path(__file__).with_name('eligibility.py'))
+        scope = importlib.util.module_from_spec(spec); spec.loader.exec_module(scope)
         config = json.loads(CONFIG.read_text())
-        if config.get('module') == '25-proj-mud':
-            settings = json.loads(SECRET.read_text())
-            return (config.get('practice_tutor', {}).get('enabled') is True
-                    and config.get('challenge') in {f'p25-level-{n:02}' for n in range(1,9)}
-                    and config['practice_tutor'].get('course_dir') == '/cse/intro-to-programming-languages'
-                    and settings.get('module') == config['module'] and settings.get('challenge') == config['challenge'])
-        return (config.get('module') == 'pex20' and config.get('challenge') == 'level-20-03'
-                and bool(config.get('is_practice_exam') or config.get('practice_exam'))
-                and config.get('practice_tutor', {}).get('enabled') is True
-                and config['practice_tutor'].get('course_dir') == '/cse/cse240-fc26')
-    except (OSError, ValueError):
+        settings = json.loads(SECRET.read_text())
+        return (scope.enabled(config) and settings.get('module') == config['module']
+                and settings.get('challenge') == config['challenge'])
+    except (OSError, ValueError, KeyError, TypeError):
         return False
 
 
@@ -34,7 +30,7 @@ def target():
         config = json.loads(CONFIG.read_text())
         return dict(module=config['module'], challenge=config['challenge'], variant='a')
     except OSError:
-        return dict(module='pex20', challenge='level-20-03', variant='a')
+        return dict(module='25-proj-mud', challenge='p25-level-01', variant='a')
 
 
 def register_routes(app, identity, authenticated):

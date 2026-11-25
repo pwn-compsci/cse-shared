@@ -1,3 +1,29 @@
+# Current rollout: labs and projects only
+
+Aita is enabled on an explicit allowlist of 126 published labs/projects in
+`intro-to-programming-languages` (24 modules). Lecture pages and retired challenges
+are excluded. Full exams are prohibited even for admins. Practice exams are a
+future rollout and are currently disabled, including the former FC26 pilot.
+
+`common/bin/practice_tutor/targets.json` is the bundle allowlist and matches the
+backend manifest. `eligibility.py` rejects assessment flags and an exam runtime
+marker before installation or serving the widget. Backend validation independently
+rejects exam targets and revokes old exam capabilities. Admins only bypass enrollment.
+
+The shared `.init` prepares the eligible editor and starts it late, after workspace
+setup. Already-tracked projects keep their clipboard editor; other labs/projects use
+a separate Aita copy without enabling clipboard tracking. Both use the normal
+code-service, port and WebSockets. Scheme/Prolog/shell/C++ header files are collected
+alongside C/C++. All request, safety-review and history policies are preserved.
+
+Validate with the project Python: `pytest test_practice_tutor.py -q` (root staging
+checks require root), plus `node test_practice_tutor_ui.js` and
+`node test_mud_tutor_route.js`. Run backend `test_chatbot_rollout.py` for exam-denial
+and capability-revocation checks. The earlier practice pilot notes below are
+historical and do not authorize practice-exam deployment.
+
+---
+
 # Aita practice tutor
 
 Shared assets are in `common/bin/practice_tutor/`. Link that directory and

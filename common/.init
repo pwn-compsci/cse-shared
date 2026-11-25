@@ -1954,6 +1954,12 @@ if [[ -z "${isExam:-}" ]]; then
     fi
 fi
 
+# Start the opted-in Aita editor only after workspace/environment setup.
+# The installer rechecks the lab/project allowlist and rejects exam metadata.
+if [ -f /opt/practice-tutor/install.py ]; then
+    python3 /opt/practice-tutor/install.py --start-editor >> "$STARTUP_LOG" 2>&1 || true
+fi
+
 startup_timing_end "final setup"
 early_startup_log "END remaining initialization"
 echo "Ending .init at $(date) in pid=$$" | tee -a $STARTUP_LOG 

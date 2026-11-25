@@ -33,7 +33,7 @@ def test_nonpilot_does_not_install():
     config = dict(course_code='cse240',module='pex20',challenge='level-20-03',is_practice_exam=True)
     assert not installer.opted_in(config)
     config['practice_tutor'] = dict(enabled=True,course_dir='/cse/cse240-fc26')
-    assert installer.opted_in(config)
+    assert not installer.opted_in(config)  # Practice rollout is deferred too.
     config['challenge'] = 'level-20-01'
     assert not installer.opted_in(config)
 
@@ -71,17 +71,15 @@ def test_identity_and_source_cannot_be_spoofed_by_browser(tmp_path):
 
 
 @pytest.mark.skipif(os.geteuid() != 0, reason='Root-owned startup staging; run with sudo')
-def test_actual_install_and_repeat_start_preserve_snapshot_before_cleanup():
+def test_root_owned_assets_and_snapshot_preserve_starter_before_cleanup():
     with tempfile.TemporaryDirectory(dir='/root',prefix='tutor-test-') as directory:
         root = Path(directory)
         challenge = root / 'challenge'
         web = challenge / 'web'; web.mkdir(parents=True)
-        (web / 'nginx.conf').write_text((ROOT / 'exam_common/web/nginx.conf').read_text())
         runtime = root / 'runtime'
         with patch.object(installer, 'RUNTIME', runtime):
-            installer.install_assets(challenge, BUNDLE)
-            installer.install_assets(challenge, BUNDLE)
-            assert (web / 'nginx.conf').read_text().count(installer.SCRIPT) == 1
+            for source, destination in installer.ASSETS.items():
+                installer.write_file(web / destination, (BUNDLE / source).read_text())
             assert (web / 'practice_tutor.py').is_file()
             assert (web / 'tutor_context.py').is_file()
             template = challenge / 'template'; template.mkdir()
@@ -159,3 +157,39 @@ def test_project_editor_patch_is_idempotent_and_preserves_clipboard_routes(tmp_p
     assert 'existing clipboard routes' in route.read_text()
     assert html.read_text().count('exam_api/tutor/widget.js')==1
     assert 'clipboard.js' in html.read_text()
+
+
+@pytest.mark.parametrize('flag,value', [('examLevel','level-20-03'),('is_exam',True),('is_practice_exam',True),('practice_exam',True)])
+def test_exam_flags_disable_installer_bridge_and_widget_even_with_valid_settings(tmp_path,flag,value):
+    config=dict(course_code='cse240',module='25-proj-mud',challenge='p25-level-01',practice_tutor=dict(enabled=True,course_dir='/cse/intro-to-programming-languages'))
+    config[flag]=value
+    assert not installer.opted_in(config)
+    config_path=tmp_path/'level.json';config_path.write_text(json.dumps(config))
+    secret=tmp_path/'settings.json';secret.write_text(json.dumps(dict(module='25-proj-mud',challenge='p25-level-01',endpoint_key='valid-admin-capability')))
+    with patch.object(tutor,'CONFIG',config_path),patch.object(tutor,'SECRET',secret):
+        assert not tutor.enabled()
+        browser=client()
+        assert browser.get('/exam_api/tutor/widget.js').data==b''
+        assert browser.get('/exam_api/tutor/session').status_code==404
+
+
+def test_exam_runtime_marker_disables_otherwise_allowed_lab():
+    config=dict(course_code='cse240',module='25-proj-mud',challenge='p25-level-01',practice_tutor=dict(enabled=True,course_dir='/cse/intro-to-programming-languages'))
+    with patch.object(Path,'exists',return_value=True):
+        assert not installer.opted_in(config)
+
+
+def test_nontracked_editor_start_preserves_service_and_drops_privileges(tmp_path):
+    from types import SimpleNamespace
+    runtime=tmp_path/'runtime';runtime.mkdir()
+    (runtime/'editor.json').write_text(json.dumps(dict(editor='/run/aita-code-server',node='/nix/node',tracked=False)))
+    user=SimpleNamespace(pw_dir='/home/hacker',pw_name='hacker',pw_uid=1000,pw_gid=1000)
+    with patch.object(installer,'RUNTIME',runtime),patch('pwd.getpwnam',return_value=user),patch.object(Path,'exists',return_value=False),patch.object(Path,'is_dir',return_value=True),patch.object(installer.subprocess,'run') as run:
+        installer.start_project_editor()
+    args=run.call_args.args[0]
+    assert args[:3]==['/run/dojo/bin/dojo-service','start','code-service/code-server']
+    assert '/run/aita-code-server/out/node/entry.js' in args
+    assert '--bind-addr=0.0.0.0:8080' in args
+    assert callable(run.call_args.kwargs['preexec_fn'])
+    assert run.call_args.kwargs['env']['HOME']=='/home/hacker'
+    assert 'ultima-terminal' not in str(args)
