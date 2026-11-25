@@ -1519,6 +1519,13 @@ def get_shapass():
         logger.info(f"Could not read Auth Token from {NGINX_CONF_FILE}: {e}")
         return None
 
+
+# Optional service installed from common/bin only for opted-in practice levels.
+if os.path.isfile('/challenge/web/practice_tutor.py'):
+    from practice_tutor import register_routes as register_tutor_routes
+    register_tutor_routes(app, get_pwn_college_id,
+        lambda: bool(shapass and request.cookies.get('auth_token') == shapass))
+
 if __name__ == '__main__':
     shapass = get_shapass()
     pwn_college_id = get_pwn_college_id() # Get from file instead of form

@@ -1204,6 +1204,12 @@ fi
 ##########################################################################################################################
 ######                                      Exam Setup                                                              ######
 ##########################################################################################################################
+# Opt-in tutor: stage its web assets and obtain a scoped root-only credential
+# before .examsetup starts Flask/nginx. Failure must not prevent practice access.
+if [ -f /challenge/bin/install_practice_tutor.py ]; then
+    timed_startup_step "practice tutor setup" python3 /challenge/bin/install_practice_tutor.py >> "$STARTUP_LOG" 2>&1 || true
+fi
+
 isExam=$(jq -r '.examLevel // empty' /challenge/.config/level.json)
 echo "isExam=$isExam" | tee -a $STARTUP_LOG
 if [[ -n $isExam ]]; then 
@@ -1480,6 +1486,11 @@ if [ "$module" != "pretest" ]; then
     else
         builder="build-gcc"
     fi
+fi
+
+# Preserve rendered starter requirements before normal exam template cleanup.
+if [ -f /challenge/bin/install_practice_tutor.py ]; then
+    python3 /challenge/bin/install_practice_tutor.py --snapshot >> "$STARTUP_LOG" 2>&1 || true
 fi
 
 if [[ -n "${isExam:-}" ]] && declare -F cleanup_non_admin_exam_source_artifacts >/dev/null; then
