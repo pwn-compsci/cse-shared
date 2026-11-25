@@ -122,9 +122,11 @@ def install_project_assets(config, challenge=Path('/challenge'), bundle=None):
         write_file(web / destination, (bundle / source).read_text())
     write_file(web / 'project_tutor_server.py', (bundle / 'project_server.py').read_text())
     write_file(RUNTIME / 'install.py', Path(__file__).read_text())
-    helper = challenge / 'bin/terminal_clipboard.py'
+    # Match .init's helper preference so its later --start sees the same
+    # clipboard patch identity and preserves the added Aita routes.
+    helper = Path('/usr/local/lib/cse240/terminal_clipboard.py')
     if not helper.is_file():
-        helper = Path('/usr/local/lib/cse240/terminal_clipboard.py')
+        helper = challenge / 'bin/terminal_clipboard.py'
     subprocess.run([sys.executable, str(helper), '--prepare-launcher',
                     '--pwn-college-id', container_identity()], check=True, capture_output=True)
     patch_project_editor(Path('/run/ultima-code-server'), bundle)
