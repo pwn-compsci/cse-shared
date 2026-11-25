@@ -47,3 +47,12 @@ Model context uses at most three recent completed exchanges, bounded to 6,000
 characters; viewing full history makes no model call. The database enforces one
 active request, a 10-second cooldown, 5 questions/5 minutes, 30/hour, and 100/day.
 The UI displays retry countdowns returned by the API.
+
+The chat now uses a compact drag bar with icon-only close and new-tab controls;
+the launcher shrinks while open and also serves as a drag handle. Escape or an
+outside click closes the popup. The standalone page loads the same saved history.
+The introductory notice/visible heading were removed, and scrollbars are themed.
+Requests for code/answers receive a policy warning. Backend detectors record
+perceived attempts separately in `chatbot_answer_requests`, including reasons,
+with counts in `chatbot_answer_request_summary` and an instructor-only report API.
+These records are perceptions for review, not findings of misconduct.

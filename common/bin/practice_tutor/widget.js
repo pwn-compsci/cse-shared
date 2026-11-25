@@ -8,10 +8,15 @@
 #practice-tutor-launcher,#practice-tutor-window{font:14px system-ui,sans-serif;box-sizing:border-box;color:#edf2f7;z-index:2147483000}
 #practice-tutor-launcher{position:fixed;right:20px;bottom:22px;width:58px;height:58px;border:1px solid #90b9e4;border-radius:50%;background:#214e7b;box-shadow:0 4px 20px #0007;cursor:pointer;font-size:25px}
 #practice-tutor-launcher:hover{background:#2b659e}
-#practice-tutor-window{position:fixed;right:20px;bottom:92px;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 115px);background:#172535;border:1px solid #54728e;border-radius:14px;box-shadow:0 8px 36px #0008;overflow:auto;padding:16px}
+#practice-tutor-launcher[data-open=true]{width:36px;height:36px;font-size:18px;opacity:.9}
+#practice-tutor-launcher{touch-action:none;cursor:grab}
+#practice-tutor-launcher:active{cursor:grabbing}
+#practice-tutor-window{position:fixed;right:20px;bottom:72px;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 115px);background:#172535;border:1px solid #54728e;border-radius:14px;box-shadow:0 8px 36px #0008;overflow:auto;padding:10px 12px}
 #practice-tutor-window[hidden],#practice-tutor-launcher[hidden]{display:none!important}
-#practice-tutor-window header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-#practice-tutor-window h2{font-size:18px;margin:0;flex:1}
+#practice-tutor-window header{display:flex;align-items:center;gap:4px;height:28px;margin-bottom:6px;cursor:grab;touch-action:none;user-select:none}
+#practice-tutor-window header:active{cursor:grabbing}
+#practice-tutor-window .tutor-grip{flex:1;color:#7f9bb4;font-size:17px;letter-spacing:3px;padding-left:3px}
+#practice-tutor-window .tutor-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 #practice-tutor-window button,#practice-tutor-window textarea{font:inherit;box-sizing:border-box;border:1px solid #7391ab;border-radius:6px}
 #practice-tutor-window button{background:#214e7b;color:#fff;padding:7px 12px;cursor:pointer}
 #practice-tutor-window button:disabled{opacity:.6;cursor:not-allowed}
@@ -24,10 +29,18 @@
 #practice-tutor-window .tutor-bubble strong{display:block;font-size:11px;margin-bottom:4px;letter-spacing:.02em}
 #practice-tutor-window .tutor-bubble p{white-space:pre-wrap;margin:0}
 #practice-tutor-window .tutor-session{text-align:center;color:#b9cbdc;font-size:11px;margin:18px 0 8px}
-#practice-tutor-window .tutor-note,#practice-tutor-window [role=status]{font-size:12px;color:#c3d3e2;line-height:1.5;margin:10px 0}
+#practice-tutor-window [role=status]{font-size:12px;color:#c3d3e2;line-height:1.5;margin:10px 0}
 #practice-tutor-window .tutor-history-tools{display:flex;gap:8px;margin-bottom:8px}
 #practice-tutor-window .tutor-history-tools button{font-size:12px;padding:5px 8px}
-#practice-tutor-window a{color:#b9dcff;font-size:12px}
+#practice-tutor-window .tutor-icon{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#b9dcff;text-decoration:none;font-size:20px;line-height:1;cursor:pointer}
+#practice-tutor-window .tutor-icon:hover{background:#2a4258;color:#fff}
+#practice-tutor-window .tutor-close{font-size:25px}
+#practice-tutor-window,#practice-tutor-window [role=log],#practice-tutor-window textarea{scrollbar-width:thin;scrollbar-color:#547f88 #122331;scrollbar-gutter:stable}
+#practice-tutor-window ::-webkit-scrollbar,#practice-tutor-window::-webkit-scrollbar{width:8px;height:8px}
+#practice-tutor-window ::-webkit-scrollbar-track,#practice-tutor-window::-webkit-scrollbar-track{background:#122331;border-radius:8px}
+#practice-tutor-window ::-webkit-scrollbar-thumb,#practice-tutor-window::-webkit-scrollbar-thumb{background:#547f88;border:2px solid #122331;border-radius:8px}
+#practice-tutor-window ::-webkit-scrollbar-thumb:hover,#practice-tutor-window::-webkit-scrollbar-thumb:hover{background:#79a9af}
+@media(pointer:coarse){#practice-tutor-window .tutor-icon{width:34px;height:34px}}
 #practice-tutor-window.tutor-standalone{position:static;width:100%;max-height:none;box-shadow:none}
 `;
   document.head.append(style);
@@ -41,11 +54,10 @@
   panel.hidden = !standalone;
   if (standalone) panel.classList.add('tutor-standalone');
   const header = document.createElement('header');
-  const title = document.createElement('h2'); title.id = 'practice-tutor-title'; title.textContent = 'Aita';
-  const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Close Aita'); close.hidden = standalone;
-  header.append(title, close);
-  const note = document.createElement('p'); note.className = 'tutor-note';
-  note.textContent = 'Save your files first. Aita offers conceptual hints using your saved code, recent tests, and a few recent messages. This problem’s chat is saved for you and your instructor.';
+  const title = document.createElement('span'); title.id = 'practice-tutor-title'; title.className = 'tutor-sr-only'; title.textContent = 'Aita';
+  const grip = document.createElement('span'); grip.className = 'tutor-grip'; grip.textContent = '⠿'; grip.setAttribute('aria-hidden','true');
+  header.title = 'Drag to move Aita';
+  const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Close Aita'); close.title = 'Close Aita (Esc)'; close.className = 'tutor-icon tutor-close';
   const historyTools = document.createElement('div'); historyTools.className = 'tutor-history-tools';
   const earlier = document.createElement('button'); earlier.type = 'button'; earlier.textContent = 'Load earlier messages'; earlier.hidden = true;
   const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = 'Reload history';
@@ -58,9 +70,12 @@
   const send = document.createElement('button'); send.type = 'submit'; send.textContent = 'Ask Aita';
   form.append(input, send);
   const pageLink = document.createElement('a'); pageLink.href = standalone ? new URL('../../', base).href : base.href;
-  pageLink.textContent = standalone ? 'Back to the editor' : 'Open chat in a separate tab';
+  pageLink.className = 'tutor-icon'; pageLink.textContent = standalone ? '←' : '↗';
+  pageLink.title = standalone ? 'Back to the editor' : 'Launch in a separate tab';
+  pageLink.setAttribute('aria-label',pageLink.title);
   if (!standalone) { pageLink.target = '_blank'; pageLink.rel = 'noopener'; }
-  panel.append(header, note, historyTools, log, status, form, pageLink);
+  header.append(grip, title, pageLink, close);
+  panel.append(header, historyTools, log, status, form);
   (document.getElementById('tutor-mount') || document.body).append(launcher, panel);
   let conversation, token, before, turns = [], historyReady = false, loading = false, sending = false, waitUntil = 0;
   function updateSend() {
@@ -120,15 +135,74 @@
     } catch (error) { status.textContent = error.message; }
     finally { loading = false; updateSend(); }
   }
-  const open = value => {
-    panel.hidden = !value; launcher.setAttribute('aria-expanded', String(value));
-    if (value) { input.focus(); if (!sending) void loadHistory(); else bottom(); } else launcher.focus();
+  const open = (value, restoreFocus = true) => {
+    panel.hidden = !value; launcher.setAttribute('aria-expanded', String(value)); launcher.setAttribute('data-open',String(value));
+    if (value) { if (panel.style.left) place(panel,box(panel),0,0); input.focus(); if (!sending) void loadHistory(); else bottom(); } else if (restoreFocus) launcher.focus();
   };
-  launcher.onclick = () => open(panel.hidden); close.onclick = () => open(false);
+  let drag = null, suppressLauncherClick = false;
+  function closeChat() {
+    if (!standalone) { open(false); return; }
+    window.close();
+    // Browsers may refuse to close a manually opened tab; return to its editor.
+    if (!window.closed) location.assign(new URL('../../',base).href);
+  }
+  launcher.onclick = event => {
+    if (suppressLauncherClick) { suppressLauncherClick = false; event?.preventDefault(); return; }
+    open(panel.hidden);
+  };
+  close.onclick = closeChat;
   reload.onclick = () => loadHistory(); earlier.onclick = () => loadHistory(true);
-  panel.addEventListener('keydown', event => {
-    event.stopPropagation();
-    if (event.key === 'Escape' && !standalone) { event.preventDefault(); open(false); }
+  panel.addEventListener('keydown', event => event.stopPropagation());
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !event.isComposing && !panel.hidden) {
+      event.preventDefault(); event.stopPropagation(); closeChat();
+    }
+  }, true);
+  document.addEventListener('pointerdown', event => {
+    if (!standalone && !panel.hidden && !drag && !panel.contains(event.target) && !launcher.contains(event.target)) open(false,false);
+  }, true);
+  window.addEventListener('blur', () => {
+    if (!standalone && !panel.hidden && !drag && document.activeElement?.tagName === 'IFRAME') open(false,false);
+  });
+  function box(element) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width && rect.height) return rect;
+    const width = Math.min(420, window.innerWidth - 32), height = Math.min(500, window.innerHeight - 115);
+    const left = parseFloat(element.style.left), top = parseFloat(element.style.top);
+    return {left:Number.isFinite(left) ? left : window.innerWidth-width-20,top:Number.isFinite(top) ? top : window.innerHeight-height-72,width,height};
+  }
+  function place(element, rect, dx, dy) {
+    element.style.left = Math.max(8,Math.min(rect.left+dx,window.innerWidth-rect.width-8)) + 'px';
+    const top = Math.max(8,Math.min(rect.top+dy,window.innerHeight-rect.height-8));
+    element.style.top = top + 'px';
+    if (element === panel) element.style.maxHeight = Math.max(28,window.innerHeight-top-8) + 'px';
+    element.style.right = element.style.bottom = 'auto';
+  }
+  for (const handle of [header, launcher]) {
+    handle.addEventListener('pointerdown', event => {
+      if (standalone || event.button !== 0 || event.isPrimary === false) return;
+      if (handle === header && event.target.closest?.('button,a,textarea')) return;
+      drag = {id:event.pointerId,x:event.clientX,y:event.clientY,handle,moved:false,panel:box(panel),launcher:box(launcher)};
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX-drag.x, dy = event.clientY-drag.y;
+      if (!drag.moved && Math.hypot(dx,dy) < 5) return;
+      drag.moved = true; event.preventDefault();
+      place(panel,drag.panel,dx,dy); place(launcher,drag.launcher,dx,dy);
+    });
+    const finish = event => {
+      if (!drag || drag.id !== event.pointerId) return;
+      if (drag.handle === launcher) suppressLauncherClick = drag.moved;
+      drag = null;
+    };
+    handle.addEventListener('pointerup',finish);
+    handle.addEventListener('pointercancel',finish);
+    handle.addEventListener('lostpointercapture',finish);
+  }
+  window.addEventListener('resize', () => {
+    if (!standalone) { place(panel,box(panel),0,0); place(launcher,box(launcher),0,0); }
   });
   input.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
@@ -156,6 +230,7 @@
       if (!input.value) input.value = message;
     } finally { sending = false; updateSend(); }
   };
+  launcher.setAttribute('data-open',String(standalone));
   updateSend();
   setInterval(updateSend, 250);
   if (standalone) void loadHistory();
