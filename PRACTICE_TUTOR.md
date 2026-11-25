@@ -1,4 +1,4 @@
-# Practice tutor
+# Aita practice tutor
 
 Shared assets are in `common/bin/practice_tutor/`. Link that directory and
 `common/bin/install_practice_tutor.py` into the challenge's `bin` directory.
@@ -14,7 +14,7 @@ and snapshots the rendered starter requirements before exam cleanup. The bridge
 uses the existing Flask listener behind `/exam_api`; no extra port or container
 process is required. nginx's overlay script is injected only into opted-in levels.
 
-The 💬 launcher opens a chat panel, and `/exam_api/tutor/` opens a standalone
+The 💬 Aita launcher opens a chat panel with blue student and teal Aita bubbles, and `/exam_api/tutor/` opens a standalone
 chat page. Both retain the current `/workspace/proxy/8080/` URL prefix.
 
 The root installer authenticates with the image's existing `/opt/.ring` credential
@@ -39,3 +39,11 @@ bash -n common/.init
 
 Push the shared commit, push the course submodule pointer and opt-in files,
 then call the course's dojo update webhook. Restart the challenge to load it.
+
+History is stored server-side per student/problem/variant and restored on every
+open, with date/session separators and the view scrolled to the bottom. Older
+turns can be loaded on demand. Enter sends and Shift+Enter inserts a newline.
+Model context uses at most three recent completed exchanges, bounded to 6,000
+characters; viewing full history makes no model call. The database enforces one
+active request, a 10-second cooldown, 5 questions/5 minutes, 30/hour, and 100/day.
+The UI displays retry countdowns returned by the API.

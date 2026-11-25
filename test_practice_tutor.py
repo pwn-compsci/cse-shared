@@ -105,4 +105,4 @@ def test_actual_install_and_repeat_start_preserve_snapshot_before_cleanup():
                 assert response.status_code == 200
                 assert b'data-tutor-standalone' in response.data
                 assert b'widget.js' in response.data
-                assert b'Practice tutor' in app.test_client().get('/exam_api/tutor/widget.js').data
+                assert b'Aita' in app.test_client().get('/exam_api/tutor/widget.js').data

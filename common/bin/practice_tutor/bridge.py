@@ -34,8 +34,8 @@ def register_routes(app, identity, authenticated):
     @app.get('/exam_api/tutor/widget.js')
     def widget():
         if not enabled():
-            return Response('', mimetype='text/javascript')
-        return Response(Path(__file__).with_name('practice_tutor.js').read_text(), mimetype='text/javascript')
+            return Response('', mimetype='text/javascript', headers={'Cache-Control':'no-store'})
+        return Response(Path(__file__).with_name('practice_tutor.js').read_text(), mimetype='text/javascript', headers={'Cache-Control':'no-store'})
 
     def check():
         if not enabled():
@@ -76,6 +76,23 @@ def register_routes(app, identity, authenticated):
             capture_output=True, timeout=8, check=True)
         return json.loads(result.stdout)
 
+    @app.get('/exam_api/tutor/history')
+    def history():
+        check()
+        before = request.args.get('before')
+        if before and len(before) > 200:
+            abort(400)
+        try:
+            credentials = settings()
+            payload = dict(pwn_college_id=identity(), module='pex20', challenge='level-20-03', variant='a')
+            if before:
+                payload['before'] = before
+            reply = requests.post('https://api.cse545.com/api/chatbot/history', json=payload,
+                headers={'Authorization':'Bearer ' + credentials['endpoint_key']}, timeout=(5,15))
+            return jsonify(reply.json()), reply.status_code, {'Cache-Control':'no-store'}
+        except Exception:
+            return jsonify(error='Aita history is unavailable; please try again'), 503
+
     @app.post('/exam_api/tutor/context')
     def context():
         check()
@@ -96,6 +113,9 @@ def register_routes(app, identity, authenticated):
                            conversation_id=data.get('conversation_id'))
             reply = requests.post('https://api.cse545.com/api/chatbot/messages', json=payload,
                                   headers={'Authorization': 'Bearer ' + credentials['endpoint_key']}, timeout=(5, 60))
-            return jsonify(reply.json()), reply.status_code, {'Cache-Control': 'no-store'}
+            headers = {'Cache-Control':'no-store'}
+            if reply.headers.get('Retry-After'):
+                headers['Retry-After'] = reply.headers['Retry-After']
+            return jsonify(reply.json()), reply.status_code, headers
         except Exception:
             return jsonify(error='Tutor unavailable; please try again shortly'), 503
