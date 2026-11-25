@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -20,6 +22,11 @@ SCRIPT = '<script defer src="./exam_api/tutor/widget.js"></script>'
 
 
 def opted_in(config):
+    if config.get('module') == '25-proj-mud':
+        return (config.get('course_code') == 'cse240'
+                and config.get('challenge') in {f'p25-level-{n:02}' for n in range(1,9)}
+                and config.get('practice_tutor', {}).get('enabled') is True
+                and config['practice_tutor'].get('course_dir') == '/cse/intro-to-programming-languages')
     return (config.get('course_code') == 'cse240' and config.get('module') == 'pex20'
             and config.get('challenge') == 'level-20-03'
             and bool(config.get('is_practice_exam') or config.get('practice_exam'))
@@ -84,6 +91,7 @@ def provision(config):
         settings = json.loads(response.read(8000))
     if not isinstance(settings.get('endpoint_key'), str) or not settings.get('expires_at'):
         raise ValueError('Invalid tutor credential response')
+    settings.update(module=config['module'], challenge=config['challenge'], course_dir=config['practice_tutor']['course_dir'])
     write_file(SETTINGS, json.dumps(settings), 0o600)
 
 
@@ -105,6 +113,58 @@ def snapshot(challenge=Path('/challenge')):
     write_file(RUNTIME / 'rendered.json', json.dumps(rendered))
 
 
+
+def install_project_assets(config, challenge=Path('/challenge'), bundle=None):
+    """Only called after the backend confirms current course enrollment."""
+    bundle = bundle or Path(__file__).with_name('practice_tutor')
+    web = challenge / 'web'
+    for source, destination in ASSETS.items():
+        write_file(web / destination, (bundle / source).read_text())
+    write_file(web / 'project_tutor_server.py', (bundle / 'project_server.py').read_text())
+    write_file(RUNTIME / 'install.py', Path(__file__).read_text())
+    helper = challenge / 'bin/terminal_clipboard.py'
+    if not helper.is_file():
+        helper = Path('/usr/local/lib/cse240/terminal_clipboard.py')
+    subprocess.run([sys.executable, str(helper), '--prepare-launcher',
+                    '--pwn-college-id', container_identity()], check=True, capture_output=True)
+    patch_project_editor(Path('/run/ultima-code-server'), bundle)
+    pidfile = RUNTIME / 'bridge.pid'
+    alive = False
+    try:
+        os.kill(int(pidfile.read_text()), 0)
+        alive = True
+    except (OSError, ValueError):
+        pass
+    if not alive:
+        with open('/var/log/aita-bridge.log', 'ab') as log:
+            child = subprocess.Popen([sys.executable, str(web / 'project_tutor_server.py')],
+                cwd='/', env={'PATH':'/usr/bin:/bin'}, stdout=log, stderr=log, start_new_session=True)
+        write_file(pidfile, str(child.pid), 0o600)
+
+
+def container_identity():
+    match = re.search(r"^pwn_college_id='(\d+)'$", Path('/.user_info').read_text(), re.M)
+    if not match:
+        raise ValueError('Student identity unavailable')
+    return match[1]
+
+
+def patch_project_editor(editor, bundle):
+    route = editor / 'out/node/routes/vscode.js'
+    html = editor / 'lib/vscode/out/vs/code/browser/workbench/workbench.html'
+    anchor = 'exports.router = express.Router();'
+    contents = route.read_text()
+    markup = html.read_text()
+    script = '<script defer src="{{BASE}}/exam_api/tutor/widget.js"></script>'
+    patch = (bundle / 'editor_route.js').read_text()
+    if '// AITA_PROJECT_ROUTES' not in contents:
+        if contents.count(anchor) != 1 or markup.count('</head>') != 1:
+            raise ValueError('Unsupported editor version')
+        write_file(route, contents.replace(anchor, anchor + '\n' + patch, 1))
+    if script not in markup:
+        write_file(html, markup.replace('</head>', script + '\n</head>', 1))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshot', action='store_true')
@@ -118,16 +178,21 @@ def main():
     if args.snapshot:
         snapshot()
         return
-    if not args.credentials:
+    mud = config.get('module') == '25-proj-mud'
+    if not args.credentials and not mud:
         install_assets()
     try:
         provision(config)
     except Exception as error:
+        if mud:
+            SETTINGS.unlink(missing_ok=True)
         # Do not put HTTP bodies or credentials into the student's startup log.
         print('[tutor] Credential provisioning unavailable (' + type(error).__name__ + '); will retry when opened')
         if args.credentials:
             raise SystemExit(1)
         return
+    if mud and not args.credentials:
+        install_project_assets(config)
     print('[tutor] Scoped tutor session installed')
 
 

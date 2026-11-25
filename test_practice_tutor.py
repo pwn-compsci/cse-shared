@@ -106,3 +106,56 @@ def test_actual_install_and_repeat_start_preserve_snapshot_before_cleanup():
                 assert b'data-tutor-standalone' in response.data
                 assert b'widget.js' in response.data
                 assert b'Aita' in app.test_client().get('/exam_api/tutor/widget.js').data
+
+
+def test_mud_optin_and_no_widget_without_provisioned_enrollment(tmp_path):
+    config=dict(course_code='cse240',module='25-proj-mud',challenge='p25-level-01',
+                practice_tutor=dict(enabled=True,course_dir='/cse/intro-to-programming-languages'))
+    assert installer.opted_in(config)
+    config_path=tmp_path/'level.json';config_path.write_text(json.dumps(config))
+    secret=tmp_path/'settings.json'
+    with patch.object(tutor,'CONFIG',config_path),patch.object(tutor,'SECRET',secret):
+        assert not tutor.enabled()
+        secret.write_text(json.dumps(dict(module='25-proj-mud',challenge='p25-level-01',endpoint_key='capability')))
+        assert tutor.enabled()
+        secret.write_text(json.dumps(dict(module='25-proj-mud',challenge='p25-level-02',endpoint_key='capability')))
+        assert not tutor.enabled()
+    config['challenge']='p25-level-09'
+    assert not installer.opted_in(config)
+
+
+def test_mud_denied_provisioning_never_installs_editor_assets(tmp_path):
+    config=dict(course_code='cse240',module='25-proj-mud',challenge='p25-level-01',
+                practice_tutor=dict(enabled=True,course_dir='/cse/intro-to-programming-languages'))
+    config_path=tmp_path/'level.json';config_path.write_text(json.dumps(config))
+    with patch.object(installer,'CONFIG',config_path),patch.object(installer,'SETTINGS',tmp_path/'settings.json'),patch.object(installer.os,'geteuid',return_value=0),patch.object(installer,'provision',side_effect=PermissionError()),patch.object(installer,'install_project_assets') as install,patch('sys.argv',['install']):
+        installer.main()
+    install.assert_not_called()
+
+
+def test_mud_bridge_uses_container_assignment_not_browser(tmp_path):
+    config_path=tmp_path/'level.json';config_path.write_text(json.dumps(dict(module='25-proj-mud',challenge='p25-level-04')))
+    secret=tmp_path/'settings.json';secret.write_text(json.dumps(dict(endpoint_key='secret',expires_at=4102444800)))
+    browser=client()
+    with patch.object(tutor,'enabled',return_value=True),patch.object(tutor,'CONFIG',config_path),patch.object(tutor,'SECRET',secret),patch.object(tutor.subprocess,'run') as run,patch.object(tutor.requests,'post') as post:
+        token=browser.get('/exam_api/tutor/session').json['token']
+        run.return_value.stdout=b'{"files":{}}';post.return_value.status_code=200;post.return_value.json.return_value={'reply':'concept'}
+        result=browser.post('/exam_api/tutor/messages',json=dict(message='help',module='pex20',challenge='forged'),headers={'X-Tutor-Token':token})
+        assert result.status_code==200
+        assert post.call_args.kwargs['json']['module']=='25-proj-mud'
+        assert post.call_args.kwargs['json']['challenge']=='p25-level-04'
+
+
+def test_project_editor_patch_is_idempotent_and_preserves_clipboard_routes(tmp_path):
+    editor=tmp_path/'editor';route=editor/'out/node/routes/vscode.js';html=editor/'lib/vscode/out/vs/code/browser/workbench/workbench.html'
+    route.parent.mkdir(parents=True);html.parent.mkdir(parents=True)
+    route.write_text('exports.router = express.Router();\n// existing clipboard routes\n')
+    html.write_text('<head><script src="clipboard.js"></script></head>')
+    def write(path,content,mode=0o644):path.write_text(content)
+    with patch.object(installer,'write_file',side_effect=write):
+        installer.patch_project_editor(editor,BUNDLE)
+        installer.patch_project_editor(editor,BUNDLE)
+    assert route.read_text().count('// AITA_PROJECT_ROUTES')==1
+    assert 'existing clipboard routes' in route.read_text()
+    assert html.read_text().count('exam_api/tutor/widget.js')==1
+    assert 'clipboard.js' in html.read_text()

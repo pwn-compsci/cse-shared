@@ -54,7 +54,7 @@ def collect():
         try:
             cursor = conn.execute('''SELECT timestamp,passed,failed,substr(error_message,1,2000) FROM tests
                 WHERE module=? AND (level=? OR level=?) ORDER BY id DESC LIMIT 5''',
-                ('pex20', str(config['level']), str(int(config['level']))))
+                (config['module'], str(config['level']), str(int(config['level']))))
             tests = [dict(zip(('timestamp','passed','failed','error'), row)) for row in cursor]
         finally:
             conn.close()

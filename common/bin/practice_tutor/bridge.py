@@ -15,12 +15,26 @@ SECRET = Path('/opt/practice_tutor.json')
 def enabled():
     try:
         config = json.loads(CONFIG.read_text())
+        if config.get('module') == '25-proj-mud':
+            settings = json.loads(SECRET.read_text())
+            return (config.get('practice_tutor', {}).get('enabled') is True
+                    and config.get('challenge') in {f'p25-level-{n:02}' for n in range(1,9)}
+                    and config['practice_tutor'].get('course_dir') == '/cse/intro-to-programming-languages'
+                    and settings.get('module') == config['module'] and settings.get('challenge') == config['challenge'])
         return (config.get('module') == 'pex20' and config.get('challenge') == 'level-20-03'
                 and bool(config.get('is_practice_exam') or config.get('practice_exam'))
                 and config.get('practice_tutor', {}).get('enabled') is True
                 and config['practice_tutor'].get('course_dir') == '/cse/cse240-fc26')
     except (OSError, ValueError):
         return False
+
+
+def target():
+    try:
+        config = json.loads(CONFIG.read_text())
+        return dict(module=config['module'], challenge=config['challenge'], variant='a')
+    except OSError:
+        return dict(module='pex20', challenge='level-20-03', variant='a')
 
 
 def register_routes(app, identity, authenticated):
@@ -84,7 +98,7 @@ def register_routes(app, identity, authenticated):
             abort(400)
         try:
             credentials = settings()
-            payload = dict(pwn_college_id=identity(), module='pex20', challenge='level-20-03', variant='a')
+            payload = dict(pwn_college_id=identity(), **target())
             if before:
                 payload['before'] = before
             reply = requests.post('https://api.cse545.com/api/chatbot/history', json=payload,
@@ -108,8 +122,8 @@ def register_routes(app, identity, authenticated):
             abort(400)
         try:
             credentials = settings()
-            payload = dict(pwn_college_id=identity(), module='pex20', challenge='level-20-03',
-                           variant='a', message=data['message'], context=collect(),
+            payload = dict(pwn_college_id=identity(), **target(),
+                           message=data['message'], context=collect(),
                            conversation_id=data.get('conversation_id'))
             reply = requests.post('https://api.cse545.com/api/chatbot/messages', json=payload,
                                   headers={'Authorization': 'Bearer ' + credentials['endpoint_key']}, timeout=(5, 60))

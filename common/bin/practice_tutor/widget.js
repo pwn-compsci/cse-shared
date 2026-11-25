@@ -12,6 +12,9 @@
 #practice-tutor-launcher{touch-action:none;cursor:grab}
 #practice-tutor-launcher:active{cursor:grabbing}
 #practice-tutor-window{position:fixed;right:20px;bottom:72px;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 115px);background:#172535;border:1px solid #54728e;border-radius:14px;box-shadow:0 8px 36px #0008;overflow:auto;padding:10px 12px}
+#practice-tutor-window[data-expanded=true]{width:min(900px,calc(100vw - 32px));height:calc(100dvh - 90px);display:flex;flex-direction:column}
+#practice-tutor-window[data-expanded=true] [role=log]{flex:1;min-height:80px;height:auto}
+#practice-tutor-window[data-expanded=true] header,#practice-tutor-window[data-expanded=true] form,#practice-tutor-window[data-expanded=true] .tutor-history-tools,#practice-tutor-window[data-expanded=true] [role=status]{flex-shrink:0}
 #practice-tutor-window[hidden],#practice-tutor-launcher[hidden]{display:none!important}
 #practice-tutor-window header{display:flex;align-items:center;gap:4px;height:28px;margin-bottom:6px;cursor:grab;touch-action:none;user-select:none}
 #practice-tutor-window header:active{cursor:grabbing}
@@ -74,7 +77,25 @@
   pageLink.title = standalone ? 'Back to the editor' : 'Launch in a separate tab';
   pageLink.setAttribute('aria-label',pageLink.title);
   if (!standalone) { pageLink.target = '_blank'; pageLink.rel = 'noopener'; }
-  header.append(grip, title, pageLink, close);
+  const expand = document.createElement('button'); expand.type = 'button'; expand.className = 'tutor-icon';
+  expand.textContent = '⛶'; expand.title = 'Enlarge chat'; expand.setAttribute('aria-label', expand.title);
+  expand.setAttribute('aria-pressed', 'false'); expand.hidden = standalone;
+  let expanded = false, compactPosition;
+  expand.onclick = () => {
+    expanded = !expanded;
+    if (expanded) compactPosition = {left:panel.style.left, top:panel.style.top, right:panel.style.right, bottom:panel.style.bottom, maxHeight:panel.style.maxHeight};
+    panel.setAttribute('data-expanded', String(expanded));
+    expand.setAttribute('aria-pressed', String(expanded));
+    expand.title = expanded ? 'Restore chat size' : 'Enlarge chat'; expand.setAttribute('aria-label', expand.title);
+    if (expanded) {
+      panel.style.maxHeight = Math.max(160, window.innerHeight - 32) + 'px';
+      place(panel, box(panel), 0, 0);
+    } else {
+      Object.assign(panel.style, compactPosition);
+    }
+    bottom();
+  };
+  header.append(grip, title, expand, pageLink, close);
   panel.append(header, historyTools, log, status, form);
   (document.getElementById('tutor-mount') || document.body).append(launcher, panel);
   let conversation, token, before, turns = [], historyReady = false, loading = false, sending = false, waitUntil = 0;
