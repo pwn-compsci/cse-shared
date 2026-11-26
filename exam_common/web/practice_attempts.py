@@ -11,7 +11,7 @@ import stat
 from zoneinfo import ZoneInfo
 
 SKIP = {'system_tests', 'model', 'template', 'Desktop', '__pycache__'}
-TEXT = {'.c', '.cpp', '.cc', '.h', '.hpp', '.py', '.rkt', '.pl', '.java', '.md', '.txt', '.json', '.log', '.dat', '.csv', '.in', '.out', '.sh', '.html', '.css', '.js', '.yml', '.yaml'}
+TEXT = {'.c', '.cpp', '.cc', '.h', '.hpp', '.py', '.rkt', '.scm', '.pl', '.java', '.md', '.txt', '.json', '.log', '.dat', '.csv', '.in', '.out', '.sh', '.html', '.css', '.js', '.yml', '.yaml'}
 
 
 def now():

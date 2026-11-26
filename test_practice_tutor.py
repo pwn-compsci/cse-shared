@@ -242,3 +242,25 @@ def test_practice_install_stages_overlay_and_selection():
         assert (root/'runtime/practice_tutor/eligibility.py').is_file()
         assert (web/'tutor_selection.py').is_file()
         assert (web/'tutor_practice_context.py').is_file()
+
+
+@pytest.mark.parametrize('name,source', [
+    ('main.rkt', '#lang racket\n(displayln "student work")'),
+    ('main.scm', '(display "student work")'),
+    ('main.pl', 'student_work(example).'),
+])
+def test_practice_collector_includes_language_source_and_excludes_unsafe_files(tmp_path, monkeypatch, name, source):
+    monkeypatch.syspath_prepend(str(ROOT / 'exam_common/web'))
+    import practice_attempts as attempts
+    collector = module('language_practice_context', BUNDLE / 'practice_context.py')
+    active = tmp_path / 'active'; active.mkdir()
+    (active / name).write_text('different active work')
+    saved = tmp_path / 'saved'; saved.mkdir()
+    (saved / name).write_text(source)
+    (saved / ('leak_' + name)).symlink_to(active / name)
+    (saved / 'model').mkdir()
+    (saved / 'model' / name).write_text('hidden solution')
+    with patch.object(attempts, 'feedback', return_value=[]):
+        context = collector.collect(dict(workdir=str(saved), home=str(tmp_path),
+            config={}, record={}, selection=dict(key='saved')))
+    assert context['files'] == {name: source}

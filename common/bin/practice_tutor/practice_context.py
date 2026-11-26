@@ -10,7 +10,7 @@ def collect(selected):
     work = Path(selected['workdir'])
     files, logs, budget = {}, {}, 80000
     for name in attempts.files(work)[:200]:
-        if Path(name).suffix.lower() not in ('.c', '.cpp', '.cc', '.h', '.hpp', '.md', '.dat', '.txt') and Path(name).name != 'Makefile':
+        if Path(name).suffix.lower() not in ('.c', '.cpp', '.cc', '.h', '.hpp', '.rkt', '.scm', '.pl', '.md', '.dat', '.txt') and Path(name).name != 'Makefile':
             continue
         try:
             text = attempts.read_work(work, name, limit=16000).decode('utf-8', 'replace')
