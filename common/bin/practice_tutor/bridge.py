@@ -64,7 +64,7 @@ def register_routes(app, identity, authenticated):
         if len(tokens) >= 100:
             tokens.clear()
         tokens.add(token)
-        if target()['module'] != 'pex30':
+        if target()['module'] not in ('pex20', 'pex23', 'pex30'):
             return jsonify(token=token), 200, {'Cache-Control': 'no-store'}
         try:
             selected = collect(request.args.get('attempt'))
@@ -88,7 +88,7 @@ def register_routes(app, identity, authenticated):
         # must be read by hacker, never by root. Do not inherit service credentials.
         options = {}
         command = [sys.executable, str(Path(__file__).with_name('tutor_context.py'))]
-        if target()['module'] == 'pex30':
+        if target()['module'] in ('pex20', 'pex23', 'pex30'):
             from tutor_selection import resolve
             options = dict(input=json.dumps(resolve(attempt)), text=True)
             command.append('--practice')

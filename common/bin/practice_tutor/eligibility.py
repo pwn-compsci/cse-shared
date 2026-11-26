@@ -24,14 +24,15 @@ def allowed_config(config, targets):
 
 def practice_enabled(config):
     return (isinstance(config, dict) and config.get('course_code') == 'cse240'
-            and config.get('module') == 'pex30' and config.get('challenge') == 'level-30-02'
-            and config.get('is_practice_exam') is True and config.get('examLevel') == 'exam-30-02'
+            and config.get('module') in ('pex20', 'pex23', 'pex30')
+            and config.get('challenge') in {f"level-{config['module'][3:]}-{n:02d}" for n in range(1, 7)}
+            and config.get('is_practice_exam') is True and config.get('examLevel') in (config['challenge'], 'exam-' + config['challenge'].removeprefix('level-'))
             and not any('exam' in key.lower() and key not in ('examLevel', 'is_practice_exam', 'practice_exam')
                         and value not in (None, False, 0, '', 'false', '0', 'none', 'null')
                         for key, value in config.items())
             and isinstance(config.get('practice_tutor'), dict)
             and config['practice_tutor'].get('enabled') is True
-            and config['practice_tutor'].get('course_dir') == '/cse/cse240-fc26')
+            and config['practice_tutor'].get('course_dir') in ('/cse/cse240-fc26', '/cse/cse240-fb26'))
 
 
 def enabled(config):

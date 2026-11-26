@@ -231,7 +231,7 @@ def main():
         return
     if os.geteuid() != 0:
         raise SystemExit('Tutor installation requires root')
-    practice = config.get('module') == 'pex30' and config.get('challenge') == 'level-30-02'
+    practice = config.get('is_practice_exam') is True
     if args.start_editor and practice:
         return
     if args.start_editor:
