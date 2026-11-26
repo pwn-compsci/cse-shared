@@ -29,4 +29,4 @@ def resolve(attempt=None, config_path=Path('/challenge/.config/level.json'), run
             raise ValueError('This old attempt has no reliable question identity')
         key = variant + ':' + hashlib.sha256(record['started_at'].encode()).hexdigest()[:32]
         return dict(workdir=str(work), home=state['home'], record=record, config=config,
-                    selection=dict(key=key, variant=variant, attempt=attempt, label=label + ' · Question ' + variant.upper()))
+                    selection=dict(key=key, variant=variant, attempt=attempt, label=label + ' : ' + str(config.get('level', '')) + variant.upper()))

@@ -40,7 +40,7 @@ async function mount(standalone = false, limited = false, attempt = null, reply 
   vm.runInNewContext(source, {document,location,window,URL,setInterval:()=>0,
     fetch:async (url,options) => {
       calls.push({url:url.href,options});
-      if (url.pathname.endsWith('session')) return {ok:true,json:async()=>({token:'csrf',selection:{key:'a:'+'0'.repeat(32),label:'Current attempt · Question A'}})};
+      if (url.pathname.endsWith('session')) return {ok:true,json:async()=>({token:'csrf',selection:{key:'a:'+'0'.repeat(32),label:'Current attempt : 02B'}})};
       if (url.pathname.endsWith('history')) return {ok:true,json:async()=>({conversation_id:'conversation',before:url.searchParams.has('before') ? null : 'older-cursor',turns:url.searchParams.has('before') ? [old] : sent ? [latest,{id:'new',created_at:'2026-11-25T12:15:00Z',message:'Why does the input repeat?',reply:'What did you expect to observe?',status:'completed'}] : [latest],retry_after:0})};
       sent = true;
       return limited ? {ok:false,status:429,json:async()=>({error:'Take a moment to try the hints.',retry_after:20})}
@@ -154,7 +154,11 @@ async function mount(standalone = false, limited = false, attempt = null, reply 
   savedInput.value = 'Help with the older attempt';
   await saved.elements.find(element => element.tag === 'form').onsubmit({preventDefault(){}});
   assert.equal(JSON.parse(saved.calls.find(call => call.url.endsWith('messages')).options.body).attempt, '02_saved');
-  assert(saved.elements.some(element => element.textContent === 'Current attempt · Question A · saved files'));
+  const attemptLabel = saved.elements.find(element => element.className === 'tutor-context-label');
+  const reloadHistory = saved.elements.find(element => element.tag === 'button' && element.textContent === 'Reload history');
+  assert.equal(attemptLabel.textContent, 'Current attempt : 02B');
+  assert.equal(attemptLabel.parent, reloadHistory.parent, 'attempt label and reload share a row');
+  assert.equal(attemptLabel.parent.className, 'tutor-history-tools');
   const limited = await mount(false,true);
   const limitedElements = limited.elements;
   const textarea = limitedElements.find(element => element.tag === 'textarea');

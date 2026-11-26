@@ -4,7 +4,9 @@
   const attempt = new URL(location.href).searchParams.get('attempt');
   const endpoint = name => { const url = new URL(name, base); if (attempt) url.searchParams.set('attempt', attempt); return url; };
   let contextKey;
-  const contextLabel = document.createElement('p');
+  const contextLabel = document.createElement('span');
+  contextLabel.className = 'tutor-context-label';
+  contextLabel.title = 'Uses saved files from this attempt';
   contextLabel.setAttribute('aria-live', 'polite');
   if (location.pathname.includes('/practice-editor/')) return;
   const standalone = document.body.dataset.tutorStandalone === 'true';
@@ -48,7 +50,8 @@
 #practice-tutor-window .tutor-markup h1,#practice-tutor-window .tutor-markup h2,#practice-tutor-window .tutor-markup h3,#practice-tutor-window .tutor-markup h4,#practice-tutor-window .tutor-markup h5,#practice-tutor-window .tutor-markup h6{font-size:1.1em;line-height:1.4}
 #practice-tutor-window .tutor-session{text-align:center;color:#b9cbdc;font-size:11px;margin:18px 0 8px}
 #practice-tutor-window [role=status]{font-size:12px;color:#c3d3e2;line-height:1.5;margin:10px 0}
-#practice-tutor-window .tutor-history-tools{display:flex;gap:8px;margin-bottom:8px}
+#practice-tutor-window .tutor-history-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+#practice-tutor-window .tutor-context-label{flex:1;font-size:12px;color:#c3d3e2}
 #practice-tutor-window .tutor-history-tools button{font-size:12px;padding:5px 8px}
 #practice-tutor-window .tutor-icon{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#b9dcff;text-decoration:none;font-size:20px;line-height:1;cursor:pointer}
 #practice-tutor-window .tutor-icon:hover{background:#2a4258;color:#fff}
@@ -79,7 +82,7 @@
   const historyTools = document.createElement('div'); historyTools.className = 'tutor-history-tools';
   const earlier = document.createElement('button'); earlier.type = 'button'; earlier.textContent = 'Load earlier messages'; earlier.hidden = true;
   const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = 'Reload history';
-  historyTools.append(earlier, reload);
+  historyTools.append(contextLabel, reload, earlier);
   const log = document.createElement('div'); log.setAttribute('role', 'log'); log.setAttribute('aria-live', 'polite'); log.setAttribute('aria-label', 'Saved conversation with Aita');
   const status = document.createElement('p'); status.setAttribute('role', 'status');
   const form = document.createElement('form');
@@ -112,7 +115,7 @@
     bottom();
   };
   header.append(grip, title, expand, pageLink, close);
-  panel.append(header, contextLabel, historyTools, log, status, form);
+  panel.append(header, historyTools, log, status, form);
   (document.getElementById('tutor-mount') || document.body).append(launcher, panel);
   let conversation, token, before, turns = [], historyReady = false, loading = false, sending = false, waitUntil = 0;
   function updateSend() {
@@ -221,7 +224,8 @@
     if (!response.ok) throw Error('Aita is unavailable. Reload the editor and try again.');
     const result = await response.json();
     token = result.token; contextKey = result.selection?.key;
-    contextLabel.textContent = result.selection ? result.selection.label + ' · saved files' : '';
+    contextLabel.textContent = result.selection?.label || '';
+    contextLabel.hidden = !result.selection;
   }
   async function loadHistory(older = false) {
     if (loading) return;
