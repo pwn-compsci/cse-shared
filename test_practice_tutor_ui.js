@@ -21,7 +21,7 @@ class Element {
   requestSubmit() { this.submission = this.onsubmit({preventDefault(){}}); }
 }
 async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-async function mount(standalone = false, limited = false) {
+async function mount(standalone = false, limited = false, attempt = null) {
   const head = new Element('head'), body = new Element('body');
   body.dataset.tutorStandalone = String(standalone);
   const elements = [], calls = [];
@@ -31,12 +31,12 @@ async function mount(standalone = false, limited = false) {
   const document = {head,body,events:{},addEventListener(key,callback){this.events[key]=callback;},currentScript:{src:'https://example.edu/workspace/proxy/8080/exam_api/tutor/widget.js'},
     createElement:tag => {const element = new Element(tag); elements.push(element); return element;},
     getElementById:id => elements.find(element => element.id === id)};
-  const location = {pathname:'/workspace/proxy/8080/',assign(url){this.assigned=url;}};
+  const location = {href:'https://example.edu/workspace/proxy/8080/' + (attempt ? '?attempt=' + attempt : ''),pathname:'/workspace/proxy/8080/',assign(url){this.assigned=url;}};
   const window = {innerWidth:1200,innerHeight:800,closed:false,events:{},addEventListener(key,callback){this.events[key]=callback;},close(){this.closed=true;}};
   vm.runInNewContext(source, {document,location,window,URL,setInterval:()=>0,
     fetch:async (url,options) => {
       calls.push({url:url.href,options});
-      if (url.pathname.endsWith('session')) return {ok:true,json:async()=>({token:'csrf'})};
+      if (url.pathname.endsWith('session')) return {ok:true,json:async()=>({token:'csrf',selection:{key:'a:'+'0'.repeat(32),label:'Current attempt · Question A'}})};
       if (url.pathname.endsWith('history')) return {ok:true,json:async()=>({conversation_id:'conversation',before:url.searchParams.has('before') ? null : 'older-cursor',turns:url.searchParams.has('before') ? [old] : sent ? [latest,{id:'new',created_at:'2026-11-25T12:15:00Z',message:'Why does the input repeat?',reply:'What did you expect to observe?',status:'completed'}] : [latest],retry_after:0})};
       sent = true;
       return limited ? {ok:false,status:429,json:async()=>({error:'Take a moment to try the hints.',retry_after:20})}
@@ -74,7 +74,7 @@ async function mount(standalone = false, limited = false) {
     assert.equal(prevented,true); await form.submission;
     const messages = calls.filter(call => call.url.endsWith('messages'));
     assert.equal(messages.length,1);
-    assert.deepEqual(JSON.parse(messages[0].options.body),{message:'Why does the input repeat?',conversation_id:'conversation'});
+    assert.deepEqual(JSON.parse(messages[0].options.body),{message:'Why does the input repeat?',conversation_id:'conversation',attempt:null,context_key:'a:'+'0'.repeat(32)});
     assert.equal(messages[0].options.headers['X-Tutor-Token'],'csrf');
     assert.equal(messages[0].url,'https://example.edu/workspace/proxy/8080/exam_api/tutor/messages');
     assert(text().includes('What did you expect to observe?'));
@@ -121,6 +121,13 @@ async function mount(standalone = false, limited = false) {
   const page = await mount(true);
   page.document.events.keydown({key:'Escape',stopPropagation(){},preventDefault(){}});
   assert.equal(page.window.closed,true,'Escape closes standalone tab');
+  const saved = await mount(true, false, '02_saved');
+  assert(saved.calls.filter(call => /session|history/.test(call.url)).every(call => new URL(call.url).searchParams.get('attempt') === '02_saved'));
+  const savedInput = saved.elements.find(element => element.tag === 'textarea');
+  savedInput.value = 'Help with the older attempt';
+  await saved.elements.find(element => element.tag === 'form').onsubmit({preventDefault(){}});
+  assert.equal(JSON.parse(saved.calls.find(call => call.url.endsWith('messages')).options.body).attempt, '02_saved');
+  assert(saved.elements.some(element => element.textContent === 'Current attempt · Question A · saved files'));
   const limited = await mount(false,true);
   const limitedElements = limited.elements;
   const textarea = limitedElements.find(element => element.tag === 'textarea');

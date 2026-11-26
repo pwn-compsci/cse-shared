@@ -1,6 +1,11 @@
 (() => {
   if (document.getElementById('practice-tutor-launcher')) return;
   const base = new URL('./', document.currentScript.src);
+  const attempt = new URL(location.href).searchParams.get('attempt');
+  const endpoint = name => { const url = new URL(name, base); if (attempt) url.searchParams.set('attempt', attempt); return url; };
+  let contextKey;
+  const contextLabel = document.createElement('p');
+  contextLabel.setAttribute('aria-live', 'polite');
   if (location.pathname.includes('/practice-editor/')) return;
   const standalone = document.body.dataset.tutorStandalone === 'true';
   const style = document.createElement('style');
@@ -73,6 +78,7 @@
   const send = document.createElement('button'); send.type = 'submit'; send.textContent = 'Ask Aita';
   form.append(input, send);
   const pageLink = document.createElement('a'); pageLink.href = standalone ? new URL('../../', base).href : base.href;
+  if (attempt && !standalone) pageLink.href = endpoint('./').href;
   pageLink.className = 'tutor-icon'; pageLink.textContent = standalone ? '←' : '↗';
   pageLink.title = standalone ? 'Back to the editor' : 'Launch in a separate tab';
   pageLink.setAttribute('aria-label',pageLink.title);
@@ -96,7 +102,7 @@
     bottom();
   };
   header.append(grip, title, expand, pageLink, close);
-  panel.append(header, historyTools, log, status, form);
+  panel.append(header, contextLabel, historyTools, log, status, form);
   (document.getElementById('tutor-mount') || document.body).append(launcher, panel);
   let conversation, token, before, turns = [], historyReady = false, loading = false, sending = false, waitUntil = 0;
   function updateSend() {
@@ -132,17 +138,20 @@
   }
   async function sessionToken() {
     if (token) return;
-    const response = await fetch(new URL('session', base), {cache:'no-store'});
+    const response = await fetch(endpoint('session'), {cache:'no-store'});
     if (!response.ok) throw Error('Aita is unavailable. Reload the editor and try again.');
-    token = (await response.json()).token;
+    const result = await response.json();
+    token = result.token; contextKey = result.selection?.key;
+    contextLabel.textContent = result.selection ? result.selection.label + ' · saved files' : '';
   }
   async function loadHistory(older = false) {
     if (loading) return;
     loading = true; updateSend(); status.textContent = 'Loading saved chat…';
     const oldHeight = log.scrollHeight, oldScroll = log.scrollTop;
     try {
+      token = null;
       await sessionToken();
-      const url = new URL('history', base);
+      const url = endpoint('history');
       if (older && before) url.searchParams.set('before', before);
       const response = await fetch(url, {cache:'no-store'});
       const result = await response.json();
@@ -239,7 +248,7 @@
       await sessionToken(); line('You', message); bottom(); input.value = '';
       const response = await fetch(new URL('messages', base), {
         method:'POST', headers:{'Content-Type':'application/json', 'X-Tutor-Token':token},
-        body:JSON.stringify({message, conversation_id:conversation})
+        body:JSON.stringify({message, conversation_id:conversation, ...(contextKey ? {attempt, context_key:contextKey} : {})})
       });
       const result = await response.json(); cooldown(result.retry_after || 0);
       if (!response.ok) { if (response.status === 403) token = null; throw Error(result.error || 'Aita is unavailable. Please try again shortly.'); }

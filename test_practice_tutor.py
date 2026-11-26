@@ -193,3 +193,51 @@ def test_nontracked_editor_start_preserves_service_and_drops_privileges(tmp_path
     assert callable(run.call_args.kwargs['preexec_fn'])
     assert run.call_args.kwargs['env']['HOME']=='/home/hacker'
     assert 'ultima-terminal' not in str(args)
+
+
+def test_pex30_is_a_narrow_practice_opt_in():
+    config = dict(course_code='cse240', module='pex30', challenge='level-30-02',
+                  examLevel='exam-30-02', is_practice_exam=True,
+                  practice_tutor=dict(enabled=True, course_dir='/cse/cse240-fc26'))
+    assert installer.opted_in(config)
+    for change in [dict(challenge='level-30-01'), dict(is_exam=True), dict(is_practice_exam=False), dict(examLevel='exam-30-01')]:
+        assert not installer.opted_in({**config, **change})
+
+
+def test_practice_bridge_rejects_stale_context_before_forwarding(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    monkeypatch.setattr(tutor, 'enabled', lambda: True)
+    monkeypatch.setattr(tutor, 'target', lambda: dict(module='pex30', challenge='level-30-02', variant='a'))
+    monkeypatch.setitem(sys.modules, 'tutor_selection', SimpleNamespace(resolve=lambda attempt: {'workdir':'saved'}))
+    key = 'b:'+'1'*32
+    context = dict(selection=dict(key=key, label='Saved attempt · Question B'), files={'Movie.cpp':'saved'})
+    settings = tmp_path/'settings.json'
+    settings.write_text(json.dumps(dict(endpoint_key='secret', expires_at=4102444800)))
+    monkeypatch.setattr(tutor, 'SECRET', settings)
+    browser = client()
+    with patch.object(tutor.subprocess, 'run', return_value=SimpleNamespace(stdout=json.dumps(context))) as run, patch.object(tutor.requests, 'post') as post:
+        token = browser.get('/exam_api/tutor/session?attempt=02_saved').json['token']
+        headers = {'X-Tutor-Token':token}
+        assert browser.post('/exam_api/tutor/messages', json=dict(message='help', attempt='02_saved', context_key='wrong'), headers=headers).status_code == 409
+        post.assert_not_called()
+        post.return_value.status_code = 200
+        post.return_value.json.return_value = {'reply':'concept'}
+        assert browser.post('/exam_api/tutor/messages', json=dict(message='help', attempt='02_saved', context_key=key), headers=headers).status_code == 200
+        assert post.call_args.kwargs['json']['variant'] == key
+        assert post.call_args.kwargs['json']['context']['files'] == {'Movie.cpp':'saved'}
+        assert run.call_args.args[0][-1] == '--practice'
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason='Root-owned startup staging')
+def test_practice_install_stages_overlay_and_selection():
+    with tempfile.TemporaryDirectory(dir='/root', prefix='aita-practice-') as directory:
+        root = Path(directory)
+        web = root/'web'; web.mkdir()
+        (web/'nginx.conf').write_text('<!--CSE240_EXAM-->')
+        with patch.object(installer, 'RUNTIME', root/'runtime'):
+            installer.install_assets(root, BUNDLE)
+            installer.install_assets(root, BUNDLE)
+        assert (web/'nginx.conf').read_text().count(installer.SCRIPT) == 1
+        assert (web/'tutor_selection.py').is_file()
+        assert (web/'tutor_practice_context.py').is_file()

@@ -21,7 +21,10 @@ def read(path, limit=16000, tail=False):
         return None
 
 
-def collect():
+def collect(selected=None):
+    if selected is not None:
+        from tutor_practice_context import collect as collect_practice
+        return collect_practice(selected)
     config = json.loads(Path('/challenge/.config/level.json').read_text())
     work = Path(config['hwdir']) / str(config['level'])
     files, budget = {}, 80000
@@ -65,4 +68,6 @@ def collect():
 
 
 if __name__ == '__main__':
-    print(json.dumps(collect()))
+    import sys
+    selected = json.load(sys.stdin) if len(sys.argv) > 1 and sys.argv[1] == '--practice' else None
+    print(json.dumps(collect(selected)))

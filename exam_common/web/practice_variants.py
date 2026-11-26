@@ -416,6 +416,8 @@ def register_routes(app, config_path=CONFIG, runtime=ATTEMPT):
                     label=attempts.display_time(record["saved_at"]), names=names, selected=selected,
                     content=content, feedback=feedback, csrf=csrf_token,
                     editor_href=("../../?" if other_page else "../?") + urlencode(attempts.active_editor_target(config, state.get("home") or Path(state["history"]).parent.parent, active)),
+                    tutor_enabled=config.get("practice_tutor", {}).get("enabled") is True,
+                    tutor_href=("../tutor/" if other_page else "tutor/") + "?" + urlencode({"attempt": record["id"]}),
                     resumable=record.get("variant") in encountered))
             else:
                 response = make_response(render_template_string(PAGE, current=state["current"],
@@ -559,6 +561,7 @@ Resume copies saved source and data files into your next attempt; it does not re
 <section class="feedback"><h2>Test feedback</h2><ul>{% for result in feedback %}
 <li>{{ result.label }}: {% if result.passed >= 0 and result.failed >= 0 %}{{ result.passed }} passed, {{ result.failed }} failed{% else %}No completed test run{% endif %}{% if result.error_message %}<pre>{{ result.error_message }}</pre>{% endif %}</li>
 {% else %}<li>No recorded test summary can be reliably linked to this attempt. Saved text logs, if present, are listed above.</li>{% endfor %}</ul></section>
+{% if tutor_enabled and record.variant and record.started_at %}<p><a href="{{ tutor_href }}" target="_blank" rel="noopener">Ask Aita about this saved attempt (Question {{ record.variant|upper }})</a></p>{% endif %}
 <footer><a href="?">&larr; Back to practice choices</a></footer></main></body></html>"""
 
 

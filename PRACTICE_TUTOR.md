@@ -1,9 +1,9 @@
-# Current rollout: labs and projects only
+# Current rollout: labs, projects, and PEX30 level 2
 
 Aita is enabled on an explicit allowlist of 126 published labs/projects in
 `intro-to-programming-languages` (24 modules). Lecture pages and retired challenges
-are excluded. Full exams are prohibited even for admins. Practice exams are a
-future rollout and are currently disabled, including the former FC26 pilot.
+are excluded. Full exams are prohibited even for admins. One practice level is opted in: FC26 `pex30/level-30-02`. All other practice
+exams, including the former PEX20 pilot, remain disabled.
 
 `common/bin/practice_tutor/targets.json` is the bundle allowlist and matches the
 backend manifest. `eligibility.py` rejects assessment flags and an exam runtime
@@ -19,8 +19,7 @@ alongside C/C++. All request, safety-review and history policies are preserved.
 Validate with the project Python: `pytest test_practice_tutor.py -q` (root staging
 checks require root), plus `node test_practice_tutor_ui.js` and
 `node test_mud_tutor_route.js`. Run backend `test_chatbot_rollout.py` for exam-denial
-and capability-revocation checks. The earlier practice pilot notes below are
-historical and do not authorize practice-exam deployment.
+and capability-revocation checks. The practice rollout below applies only to that explicitly opted-in PEX30 level.
 
 ---
 
@@ -28,7 +27,9 @@ historical and do not authorize practice-exam deployment.
 
 Shared assets are in `common/bin/practice_tutor/`. Link that directory and
 `common/bin/install_practice_tutor.py` into the challenge's `bin` directory.
-The current server pilot accepts only FC26 `pex20/level-20-03`, variant `a`.
+The current server pilot accepts only FC26 `pex30/level-30-02`, variants `a` through `j`.
+The level links both `bin/install_practice_tutor.py` and `bin/practice_tutor`
+to the shared installer and asset bundle; the opt-in alone does not install them.
 Its `.config/level.json` opts in with:
 
 ```json
@@ -50,9 +51,15 @@ it when expired. No global tutor key or OpenAI key is distributed through the
 course repository, and no credential reaches the browser. Provisioning failure
 leaves practice access working and is retried when the tutor is used.
 
-The collector runs as `hacker`, limits reads of current source and recent logs,
-and queries recent tester results read-only. Rendered starter requirements
-survive template cleanup in `/opt/practice-tutor/rendered.json`. The API strips
+The bridge resolves current or saved attempts from root-owned practice history.
+The collector runs as `hacker` and reads only that attempt’s saved source, data,
+local logs, and tester rows within its recorded start/end window. Unsaved editor
+buffers are unavailable. The API loads only the selected variant’s starter files.
+The saved-attempt review page links to a separate Aita tab for that attempt;
+records without a known variant and start time are not offered chat help.
+A visible question label and a context-key check prevent stale sends.
+Each attempt uses a distinct history key (`letter:SHA256(started_at)[:32]`),
+including repeated attempts at the same variant. The API strips
 hidden and known injected prompt content and supplies the tutoring policy.
 
 Validate using the project Python:

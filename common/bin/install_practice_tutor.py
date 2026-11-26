@@ -16,7 +16,8 @@ CONFIG = Path('/challenge/.config/level.json')
 RUNTIME = Path('/opt/practice-tutor')
 SETTINGS = Path('/opt/practice_tutor.json')
 API = 'https://api.cse545.com/api/chatbot/session'
-ASSETS = {'bridge.py': 'practice_tutor.py', 'context.py': 'tutor_context.py',
+SCRIPT = '<script defer src="./exam_api/tutor/widget.js"></script>'
+ASSETS = {'selection.py': 'tutor_selection.py', 'practice_context.py': 'tutor_practice_context.py', 'bridge.py': 'practice_tutor.py', 'context.py': 'tutor_context.py',
           'widget.js': 'practice_tutor.js', 'chat.html': 'practice_tutor.html',
           'eligibility.py':'eligibility.py', 'targets.json':'targets.json'}
 
@@ -57,6 +58,21 @@ def write_file(path, content, mode=0o644):
         if os.path.exists(temporary):
             os.unlink(temporary)
 
+
+
+def install_assets(challenge=Path('/challenge'), bundle=None):
+    bundle = bundle or Path(__file__).with_name('practice_tutor')
+    web = challenge / 'web'
+    for source, destination in ASSETS.items():
+        write_file(web / destination, (bundle / source).read_text())
+    write_file(RUNTIME / 'install.py', Path(__file__).read_text())
+    nginx = web / 'nginx.conf'
+    content = nginx.read_text()
+    if SCRIPT not in content:
+        if '<!--CSE240_EXAM-->' not in content:
+            raise ValueError('Exam web overlay marker missing')
+        content = content.replace('<!--CSE240_EXAM-->', '<!--CSE240_EXAM-->\n' + SCRIPT, 1)
+        write_file(nginx, content)
 
 
 def provision(config):
@@ -213,6 +229,9 @@ def main():
         return
     if os.geteuid() != 0:
         raise SystemExit('Tutor installation requires root')
+    practice = config.get('module') == 'pex30' and config.get('challenge') == 'level-30-02'
+    if args.start_editor and practice:
+        return
     if args.start_editor:
         if SETTINGS.exists():
             start_project_editor()
@@ -220,6 +239,8 @@ def main():
     if args.snapshot:
         snapshot()
         return
+    if practice and not args.credentials:
+        install_assets()
     try:
         provision(config)
     except Exception as error:
@@ -229,7 +250,7 @@ def main():
         if args.credentials:
             raise SystemExit(1)
         return
-    if not args.credentials:
+    if not args.credentials and not practice:
         install_project_assets(config)
     print('[tutor] Scoped tutor session installed')
 
