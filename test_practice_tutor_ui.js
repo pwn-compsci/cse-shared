@@ -5,6 +5,9 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, 'common/bin/practice_tutor/widget.js'), 'utf8');
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.attributes = {}; this.dataset = {}; this.hidden = false; this.events = {}; this.style = {}; this.classList = {add: () => {}}; this.value = ''; this.scrollHeight = 1200; this.scrollTop = 0; }
+  get tagName() { return this.tag.toUpperCase(); }
+  get textContent() { return (this._text || '') + this.children.map(child => child.textContent || '').join(''); }
+  set textContent(value) { this._text = value; this.children = []; }
   append(...children) { for (const child of children) child.parent = this; this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(key, value) { this.attributes[key] = value; }
@@ -21,14 +24,15 @@ class Element {
   requestSubmit() { this.submission = this.onsubmit({preventDefault(){}}); }
 }
 async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-async function mount(standalone = false, limited = false, attempt = null) {
+async function mount(standalone = false, limited = false, attempt = null, reply = 'Saved hint') {
   const head = new Element('head'), body = new Element('body');
   body.dataset.tutorStandalone = String(standalone);
   const elements = [], calls = [];
   const old = {id:'old',created_at:'2026-11-24T12:00:00Z',message:'An earlier question',reply:'An earlier hint',status:'completed'};
-  const latest = {id:'latest',created_at:'2026-11-25T12:00:00Z',message:'Saved question',reply:'Saved hint',status:'completed'};
+  const latest = {id:'latest',created_at:'2026-11-25T12:00:00Z',message:'Saved question',reply,status:'completed'};
   let sent = false;
   const document = {head,body,events:{},addEventListener(key,callback){this.events[key]=callback;},currentScript:{src:'https://example.edu/workspace/proxy/8080/exam_api/tutor/widget.js'},
+    createTextNode:text => { const node = new Element('#text'); node.textContent = text; return node; },
     createElement:tag => {const element = new Element(tag); elements.push(element); return element;},
     getElementById:id => elements.find(element => element.id === id)};
   const location = {href:'https://example.edu/workspace/proxy/8080/' + (attempt ? '?attempt=' + attempt : ''),pathname:'/workspace/proxy/8080/',assign(url){this.assigned=url;}};
@@ -89,6 +93,29 @@ async function mount(standalone = false, limited = false, attempt = null) {
       assert.equal(log.scrollTop,log.scrollHeight);
     }
   }
+  const markup = await mount(false, false, null, [
+    '# Heading', '', '**Bold** and *italic* and ~~removed~~ with `a < b` and `ifstream`.', '',
+    '- First', '- Second', '', '3. Third', '4. Fourth', '', '> A quote', '',
+    '[Docs](https://example.edu/docs) [Bad](javascript:alert) [Data](data:text/html,bad)', '',
+    '<img src=x onerror=alert(1)>', '', '```cpp', '<script>alert(1)</script>', 'int x = 1;', '```'
+  ].join('\n'));
+  const logMarkup = markup.elements.find(element => element.attributes.role === 'log');
+  const assistant = logMarkup.children.find(element => element.className === 'tutor-bubble tutor-aita');
+  const content = assistant.children[1];
+  const descendants = node => [node, ...node.children.flatMap(descendants)];
+  const nodes = descendants(content);
+  for (const tag of ['h1','strong','em','del','code','ul','ol','li','blockquote','pre','a']) {
+    assert(nodes.some(node => node.tag === tag), `renders ${tag}`);
+  }
+  assert(nodes.some(node => node.tag === 'code' && node.textContent === 'ifstream'), 'ifstream backticks render as inline code');
+  assert.equal(nodes.filter(node => node.tag === 'a').length, 1, 'unsafe URLs remain text');
+  assert.equal(nodes.find(node => node.tag === 'ol').attributes.start, '3');
+  assert.equal(nodes.find(node => node.tag === 'a').rel, 'noopener noreferrer');
+  assert.equal(nodes.find(node => node.tag === 'pre').textContent, '<script>alert(1)</script>\nint x = 1;');
+  assert(content.textContent.includes('<img src=x onerror=alert(1)>'));
+  assert(!nodes.some(node => ['img','script'].includes(node.tag)), 'raw HTML never becomes elements');
+  const unclosed = await mount(true, false, null, '```\n**literal** <b>code</b>');
+  assert(unclosed.elements.some(node => node.tag === 'code' && node.textContent === '**literal** <b>code</b>'));
   const moved = await mount(false);
   const {panel,launcher,document,elements} = moved;
   const header = elements.find(element => element.tag === 'header');

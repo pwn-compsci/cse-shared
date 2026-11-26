@@ -34,8 +34,18 @@
 #practice-tutor-window .tutor-bubble{border-radius:10px;padding:10px 12px;margin:10px 0;max-width:90%;box-sizing:border-box;line-height:1.5;border:1px solid transparent}
 #practice-tutor-window .tutor-you{background:#234e73;color:#f1f7ff;border-color:#547fa4;margin-left:auto}
 #practice-tutor-window .tutor-aita{background:#193e3d;color:#e4f7f2;border-color:#4c8d87;margin-right:auto}
-#practice-tutor-window .tutor-bubble strong{display:block;font-size:11px;margin-bottom:4px;letter-spacing:.02em}
+#practice-tutor-window .tutor-bubble > strong{display:block;font-size:11px;margin-bottom:4px;letter-spacing:.02em}
 #practice-tutor-window .tutor-bubble p{white-space:pre-wrap;margin:0}
+#practice-tutor-window .tutor-markup > *,#practice-tutor-window .tutor-markup > p{margin:0 0 .65em}
+#practice-tutor-window .tutor-markup > :last-child{margin-bottom:0}
+#practice-tutor-window .tutor-markup strong{font-size:inherit;letter-spacing:normal}
+#practice-tutor-window .tutor-markup pre{overflow:auto;white-space:pre;background:#0f1c2a;padding:10px;border-radius:6px}
+#practice-tutor-window .tutor-markup code{font-family:ui-monospace,monospace;background:#0f1c2a;border-radius:3px;padding:1px 3px}
+#practice-tutor-window .tutor-markup pre code{padding:0}
+#practice-tutor-window .tutor-markup a{color:#b9dcff;text-decoration:underline}
+#practice-tutor-window .tutor-markup blockquote{border-left:3px solid #79a9af;padding-left:10px;margin-left:0}
+#practice-tutor-window .tutor-markup ul,#practice-tutor-window .tutor-markup ol{padding-left:24px}
+#practice-tutor-window .tutor-markup h1,#practice-tutor-window .tutor-markup h2,#practice-tutor-window .tutor-markup h3,#practice-tutor-window .tutor-markup h4,#practice-tutor-window .tutor-markup h5,#practice-tutor-window .tutor-markup h6{font-size:1.1em;line-height:1.4}
 #practice-tutor-window .tutor-session{text-align:center;color:#b9cbdc;font-size:11px;margin:18px 0 8px}
 #practice-tutor-window [role=status]{font-size:12px;color:#c3d3e2;line-height:1.5;margin:10px 0}
 #practice-tutor-window .tutor-history-tools{display:flex;gap:8px;margin-bottom:8px}
@@ -113,10 +123,79 @@
   }
   function cooldown(seconds) { if (seconds > 0) waitUntil = Math.max(waitUntil, Date.now() + seconds * 1000); updateSend(); }
   function bottom() { log.scrollTop = log.scrollHeight; }
+  // Build a small Markdown subset using DOM nodes only. Model HTML is always text.
+  function inlineMarkup(parent, text, depth = 0) {
+    if (depth > 8) { parent.append(document.createTextNode(text)); return; }
+    const tokens = /(`+)([^`]*?)\1|\[([^\]\n]+)\]\(([^\s)]+)\)|(\*\*|__)(.+?)\5|(\*|_)([^\n]+?)\7|~~(.+?)~~/g;
+    let offset = 0, match;
+    while ((match = tokens.exec(text))) {
+      parent.append(document.createTextNode(text.slice(offset, match.index)));
+      let node;
+      if (match[1]) { node = document.createElement('code'); node.textContent = match[2]; }
+      else if (match[3]) {
+        // Only explicit web/mail links; no relative, script or data URLs.
+        if (/^(https?:\/\/|mailto:)/i.test(match[4])) {
+          node = document.createElement('a'); node.href = match[4];
+          node.target = '_blank'; node.rel = 'noopener noreferrer';
+          inlineMarkup(node, match[3], depth + 1);
+        } else { node = document.createTextNode(match[0]); }
+      } else {
+        node = document.createElement(match[5] ? 'strong' : match[7] ? 'em' : 'del');
+        inlineMarkup(node, match[6] || match[8] || match[9], depth + 1);
+      }
+      parent.append(node); offset = tokens.lastIndex;
+    }
+    parent.append(document.createTextNode(text.slice(offset)));
+  }
+  function renderMarkup(container, text) {
+    const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
+    let paragraph = [], list;
+    const flush = () => {
+      if (paragraph.length) {
+        const p = document.createElement('p'); inlineMarkup(p, paragraph.join('\n'));
+        container.append(p); paragraph = [];
+      }
+    };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+      if (fence) {
+        flush(); list = null;
+        const codeLines = [];
+        const close = new RegExp('^ {0,3}' + fence[1][0] + '{' + fence[1].length + ',}\\s*$');
+        while (++i < lines.length && !close.test(lines[i])) codeLines.push(lines[i]);
+        const pre = document.createElement('pre'), code = document.createElement('code');
+        code.textContent = codeLines.join('\n'); pre.append(code); container.append(pre); continue;
+      }
+      if (!line.trim()) { flush(); list = null; continue; }
+      const heading = line.match(/^ {0,3}(#{1,6})\s+(.+?)(?:\s+#+)?$/);
+      const item = line.match(/^\s*(?:([-+*])|\d+[.)])\s+(.+)$/);
+      const quote = line.match(/^ {0,3}> ?(.*)$/);
+      if (heading || item || quote) {
+        flush();
+        if (item) {
+          const tag = item[1] ? 'ul' : 'ol';
+          if (!list || list.tagName.toLowerCase() !== tag) {
+            list = document.createElement(tag);
+            if (tag === 'ol') list.setAttribute('start', String(parseInt(line.trim(), 10)));
+            container.append(list);
+          }
+          const li = document.createElement('li'); inlineMarkup(li, item[2]); list.append(li);
+        } else {
+          list = null;
+          const node = document.createElement(heading ? 'h' + heading[1].length : 'blockquote');
+          inlineMarkup(node, heading ? heading[2] : quote[1]); container.append(node);
+        }
+      } else { list = null; paragraph.push(line); }
+    }
+    flush();
+  }
   function line(who, text) {
     const bubble = document.createElement('article'); bubble.className = 'tutor-bubble ' + (who === 'You' ? 'tutor-you' : 'tutor-aita');
     const label = document.createElement('strong'); label.textContent = who;
-    const paragraph = document.createElement('p'); paragraph.textContent = text;
+    const paragraph = document.createElement(who === 'You' ? 'p' : 'div');
+    if (who === 'You') paragraph.textContent = text;
+    else { paragraph.className = 'tutor-markup'; renderMarkup(paragraph, text); }
     bubble.append(label, paragraph); log.append(bubble);
   }
   function render() {
