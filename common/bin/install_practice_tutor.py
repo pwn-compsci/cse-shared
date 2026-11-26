@@ -66,6 +66,8 @@ def install_assets(challenge=Path('/challenge'), bundle=None):
     for source, destination in ASSETS.items():
         write_file(web / destination, (bundle / source).read_text())
     write_file(RUNTIME / 'install.py', Path(__file__).read_text())
+    for name in ('eligibility.py', 'targets.json'):
+        write_file(RUNTIME / 'practice_tutor' / name, (bundle / name).read_text())
     nginx = web / 'nginx.conf'
     content = nginx.read_text()
     if SCRIPT not in content:

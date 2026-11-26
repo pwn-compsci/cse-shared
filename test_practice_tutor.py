@@ -239,5 +239,6 @@ def test_practice_install_stages_overlay_and_selection():
             installer.install_assets(root, BUNDLE)
             installer.install_assets(root, BUNDLE)
         assert (web/'nginx.conf').read_text().count(installer.SCRIPT) == 1
+        assert (root/'runtime/practice_tutor/eligibility.py').is_file()
         assert (web/'tutor_selection.py').is_file()
         assert (web/'tutor_practice_context.py').is_file()
