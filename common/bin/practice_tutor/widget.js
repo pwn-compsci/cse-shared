@@ -55,6 +55,7 @@
 #practice-tutor-window .tutor-history-tools button{font-size:12px;padding:5px 8px}
 #practice-tutor-window .tutor-icon{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#b9dcff;text-decoration:none;font-size:20px;line-height:1;cursor:pointer}
 #practice-tutor-window .tutor-icon:hover{background:#2a4258;color:#fff}
+#practice-tutor-window .tutor-icon[aria-pressed=true]{background:#356b87;color:#fff;box-shadow:inset 0 0 0 1px #90cbea}
 #practice-tutor-window .tutor-close{font-size:25px}
 #practice-tutor-window,#practice-tutor-window [role=log],#practice-tutor-window textarea{scrollbar-width:thin;scrollbar-color:#547f88 #122331;scrollbar-gutter:stable}
 #practice-tutor-window ::-webkit-scrollbar,#practice-tutor-window::-webkit-scrollbar{width:8px;height:8px}
@@ -78,6 +79,14 @@
   const title = document.createElement('span'); title.id = 'practice-tutor-title'; title.className = 'tutor-sr-only'; title.textContent = 'Aita';
   const grip = document.createElement('span'); grip.className = 'tutor-grip'; grip.textContent = '⠿'; grip.setAttribute('aria-hidden','true');
   header.title = 'Drag to move Aita';
+  let pinned = false;
+  const pin = document.createElement('button'); pin.type = 'button'; pin.textContent = '📌'; pin.className = 'tutor-icon tutor-pin';
+  pin.title = 'Pin chat open'; pin.setAttribute('aria-label', pin.title); pin.setAttribute('aria-pressed', 'false'); pin.hidden = standalone;
+  pin.onclick = () => {
+    pinned = !pinned;
+    pin.setAttribute('aria-pressed', String(pinned));
+    pin.title = pinned ? 'Unpin chat' : 'Pin chat open'; pin.setAttribute('aria-label', pin.title);
+  };
   const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Close Aita'); close.title = 'Close Aita (Esc)'; close.className = 'tutor-icon tutor-close';
   const historyTools = document.createElement('div'); historyTools.className = 'tutor-history-tools';
   const earlier = document.createElement('button'); earlier.type = 'button'; earlier.textContent = 'Load earlier messages'; earlier.hidden = true;
@@ -114,7 +123,7 @@
     }
     bottom();
   };
-  header.append(grip, title, expand, pageLink, close);
+  header.append(grip, title, pin, expand, pageLink, close);
   panel.append(header, historyTools, log, status, form);
   (document.getElementById('tutor-mount') || document.body).append(launcher, panel);
   let conversation, token, before, turns = [], historyReady = false, loading = false, sending = false, waitUntil = 0;
@@ -272,10 +281,10 @@
     }
   }, true);
   document.addEventListener('pointerdown', event => {
-    if (!standalone && !panel.hidden && !drag && !panel.contains(event.target) && !launcher.contains(event.target)) open(false,false);
+    if (!standalone && !pinned && !panel.hidden && !drag && !panel.contains(event.target) && !launcher.contains(event.target)) open(false,false);
   }, true);
   window.addEventListener('blur', () => {
-    if (!standalone && !panel.hidden && !drag && document.activeElement?.tagName === 'IFRAME') open(false,false);
+    if (!standalone && !pinned && !panel.hidden && !drag && document.activeElement?.tagName === 'IFRAME') open(false,false);
   });
   function box(element) {
     const rect = element.getBoundingClientRect();
