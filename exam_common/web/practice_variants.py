@@ -211,6 +211,7 @@ def launch(config, home, variants, attempt_id, override="", runtime=ATTEMPT):
             metadata[key] = entry
         entry = metadata[key]
         active = attempts.workdir(config, home)
+        attempts.migrate_workdir(entry, config, home)
         attempts.discover(entry, active)
         same_attempt = entry.get("attempt_id") == attempt_id
         pending_resume = entry.get("pending", {}).get("attempt") if not override else None

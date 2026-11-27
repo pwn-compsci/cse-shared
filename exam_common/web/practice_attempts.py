@@ -87,6 +87,82 @@ def workdir(config, home):
     return Path(config.get('hwdir') or Path(home) / str(config['module'])) / str(config['level'])
 
 
+def migrate_workdir(entry, config, home):
+    """Copy indexed practice saves when separating a formerly shared workspace.
+
+    Originals stay in place. Only a last launch explicitly identified as practice
+    permits a snapshot of the shared active folder; actual exam work is untouched.
+    """
+    previous = config.get('previous_practice_hwdir')
+    if not previous or entry.get('workdir_migrated') == str(workdir(config, home)):
+        return
+    module, level = str(config['module']), str(config['level'])
+    if (not re.fullmatch(r'pex\d+', module) or not re.fullmatch(r'\d+', level)
+            or Path(previous) != Path(home) / 'exam' / module[3:]
+            or workdir(config, home) != Path(home) / module / level):
+        raise ValueError('Invalid practice workspace migration.')
+    old = Path(previous) / level
+    active = workdir(config, home)
+    if not old.parent.exists():
+        entry['workdir_migrated'] = str(active)
+        return
+    owner = pwd.getpwnam('hacker')
+    with directory(home) as parent:
+        try:
+            os.mkdir(module, 0o755, dir_fd=parent)
+        except FileExistsError:
+            pass
+        child = os.open(module, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            os.fchown(child, owner.pw_uid, owner.pw_gid)
+        finally:
+            os.close(child)
+
+    def copy_saved(source, name):
+        # Publish only a fully copied source/data snapshot. Existing destinations
+        # are never overwritten, including on a repeated/interrupted startup.
+        with directory(active.parent) as parent:
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                with directory(active.parent / name):
+                    return
+            temporary = '.practice-migrate-' + os.urandom(8).hex()
+            os.mkdir(temporary, 0o755, dir_fd=parent)
+            target = active.parent / temporary
+            with directory(target) as fd:
+                os.fchown(fd, owner.pw_uid, owner.pw_gid)
+            restore(source, target)
+            os.rename(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+
+    for record in entry.get('attempts', []):
+        name = record.get('directory', '')
+        if not re.fullmatch(re.escape(level) + r'_[A-Za-z0-9_-]+', name):
+            raise ValueError('Unsafe saved practice directory.')
+        source = old.parent / name
+        if source.exists() or source.is_symlink():
+            copy_saved(source, name)
+
+    last = None
+    try:
+        for line in (Path(home) / '.vscode/starts.log').read_text().splitlines():
+            fields = dict(field.split('=', 1) for field in line.split('|') if '=' in field)
+            if fields.get('level') == level and fields.get('module') in (module, 'exam' + module[3:]):
+                last = fields
+    except FileNotFoundError:
+        pass
+    if last and last['module'] == module and old.is_dir():
+        saved = now()
+        name = level + '_' + datetime.fromisoformat(saved).strftime('%Y-%m-%d_%H%M%S_%f')
+        copy_saved(old, name)
+        entry.setdefault('attempts', []).append(dict(
+            id=name, directory=name, variant=last.get('chosen_problem'),
+            started_at=entry.get('started_at'), saved_at=saved))
+    entry['workdir_migrated'] = str(active)
+
+
 def discover(entry, active):
     """Keep old timestamped folders reviewable without guessing their variant."""
     known = {a['directory'] for a in entry.setdefault('attempts', [])}
